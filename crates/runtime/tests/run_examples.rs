@@ -78,6 +78,7 @@ const ARRAY_METHODS: &str = include_str!("../../../examples/array_methods.ts");
 const DUPLICATE_VAR: &str = include_str!("../../../examples/duplicate_var.ts");
 const FUNCTION_CALL: &str = include_str!("../../../examples/function_call.ts");
 const PRIMITIVE_WRAPPERS: &str = include_str!("../../../examples/primitive_wrappers.ts");
+const ARRAY_EXTRA: &str = include_str!("../../../examples/array_extra.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -802,6 +803,14 @@ fn allows_duplicate_parameters_in_sloppy_functions() {
         )
         .unwrap();
     assert_eq!(host.output(), "2\n");
+}
+
+#[test]
+fn runs_extra_array_methods() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARRAY_EXTRA, &mut host).unwrap();
+    assert_eq!(host.output(), "2,3,3\n1,2,3\n1,1,2,2\n0\n");
 }
 
 #[test]

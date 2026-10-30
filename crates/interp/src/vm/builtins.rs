@@ -2394,6 +2394,44 @@ impl<'a> Interpreter<'a> {
         )
     }
 
+    fn flatten_array(
+        &mut self,
+        array: ObjectId,
+        depth: u32,
+        out: &mut Vec<Value>,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let length = self
+            .objects
+            .array_length(array)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for index in 0..length {
+            if !self
+                .objects
+                .array_has(array, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                continue;
+            }
+            let value = self
+                .objects
+                .array_get(array, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if depth > 0
+                && let Some(value_id) = value.object_offset().map(ObjectId::new)
+                && self
+                    .objects
+                    .is_array(value_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                self.flatten_array(value_id, depth - 1, out, span)?;
+            } else {
+                out.push(value);
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn call_builtin(
         &mut self,
         object: Value,
@@ -3402,6 +3440,161 @@ impl<'a> Interpreter<'a> {
                     roots.push(accumulator);
                 }
                 accumulator
+            }
+            "reduceRight" => {
+                let callback = args.first().copied().unwrap_or_else(Value::undefined);
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let mut index = length as i64 - 1;
+                let mut accumulator = if let Some(initial) = args.get(1) {
+                    *initial
+                } else {
+                    let mut first = None;
+                    while index >= 0 {
+                        if self
+                            .objects
+                            .array_has(object_id, index as u32)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                        {
+                            first = Some(index);
+                            break;
+                        }
+                        index -= 1;
+                    }
+                    let Some(first) = first else {
+                        return Err(RuntimeError::type_error(
+                            "reduceRight of empty array with no initial value",
+                            span,
+                        ));
+                    };
+                    index = first - 1;
+                    self.objects
+                        .array_get(object_id, first as u32)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                };
+                let mut roots = roots.to_vec();
+                roots.push(accumulator);
+                while index >= 0 {
+                    let current = index as u32;
+                    if self
+                        .objects
+                        .array_has(object_id, current)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        let value = self
+                            .objects
+                            .array_get(object_id, current)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        let callback_args =
+                            [accumulator, value, self.heap.number(current as f64), object];
+                        accumulator =
+                            self.invoke_callable(callback, &callback_args, &roots, span)?;
+                        roots.push(accumulator);
+                    }
+                    index -= 1;
+                }
+                accumulator
+            }
+            "copyWithin" => {
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let target = relative_array_index(self.heap, args.first().copied(), length, 0);
+                let start = relative_array_index(self.heap, args.get(1).copied(), length, 0);
+                let end = relative_array_index(self.heap, args.get(2).copied(), length, length);
+                let count = end.saturating_sub(start).min(length.saturating_sub(target));
+                let mut values = Vec::with_capacity(count as usize);
+                for index in 0..count {
+                    let source = start + index;
+                    let value = if self
+                        .objects
+                        .array_has(object_id, source)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        self.objects
+                            .array_get(object_id, source)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    } else {
+                        Value::hole()
+                    };
+                    values.push(value);
+                }
+                for (index, value) in values.into_iter().enumerate() {
+                    self.objects
+                        .array_set(object_id, target + index as u32, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                Value::object(object_id.index())
+            }
+            "flat" => {
+                let depth = args
+                    .first()
+                    .and_then(|value| self.heap.to_number(*value))
+                    .unwrap_or(1.0)
+                    .max(0.0) as u32;
+                let result = self
+                    .objects
+                    .allocate_array(self.shapes.root())
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let mut values = Vec::new();
+                self.flatten_array(object_id, depth, &mut values, span)?;
+                for value in values {
+                    self.objects
+                        .array_push(result, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                Value::object(result.index())
+            }
+            "flatMap" => {
+                let callback = args.first().copied().unwrap_or_else(Value::undefined);
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let result = self
+                    .objects
+                    .allocate_array(self.shapes.root())
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let mut callback_roots = roots.to_vec();
+                callback_roots.push(Value::object(result.index()));
+                for index in 0..length {
+                    if !self
+                        .objects
+                        .array_has(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        continue;
+                    }
+                    let value = self
+                        .objects
+                        .array_get(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let callback_args = [value, self.heap.number(index as f64), object];
+                    let mapped =
+                        self.invoke_callable(callback, &callback_args, &callback_roots, span)?;
+                    if let Some(mapped_id) = mapped.object_offset().map(ObjectId::new)
+                        && self
+                            .objects
+                            .is_array(mapped_id)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        let mut flat = Vec::new();
+                        self.flatten_array(mapped_id, 1, &mut flat, span)?;
+                        for value in flat {
+                            self.objects
+                                .array_push(result, value)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        }
+                    } else {
+                        self.objects
+                            .array_push(result, mapped)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                }
+                Value::object(result.index())
             }
             _ => return Ok(None),
         }))
