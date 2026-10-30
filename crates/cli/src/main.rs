@@ -321,6 +321,8 @@ fn run_test262_inner(
     let mut oracle_matched = 0usize;
     let mut oracle_mismatched = 0usize;
     let mut oracle_both_failed = 0usize;
+    let mut oracle_kagura_fail_node_pass = 0usize;
+    let mut oracle_kagura_pass_node_fail = 0usize;
     let mut oracle_failures = Vec::new();
     let mut failures = Vec::new();
     let mut skip_reasons: BTreeMap<String, usize> = BTreeMap::new();
@@ -355,6 +357,11 @@ fn run_test262_inner(
                 oracle_both_failed += 1;
             } else {
                 oracle_mismatched += 1;
+                if report.outcome == Outcome::Fail && oracle.success {
+                    oracle_kagura_fail_node_pass += 1;
+                } else {
+                    oracle_kagura_pass_node_fail += 1;
+                }
                 if oracle_failures.len() < 25 {
                     oracle_failures.push(format!(
                         "{}: kagura={:?} node_success={} node_stdout={:?} node_stderr={:?}",
@@ -394,6 +401,8 @@ fn run_test262_inner(
             oracle_matched,
             oracle_mismatched,
             oracle_both_failed,
+            oracle_kagura_fail_node_pass,
+            oracle_kagura_pass_node_fail,
             &oracle_failures,
         );
     } else {
@@ -409,7 +418,7 @@ fn run_test262_inner(
         }
         if harness.is_some() {
             println!(
-                "oracle node: {oracle_checked} checked, {oracle_matched} matched, {oracle_mismatched} mismatched, {oracle_both_failed} both-failed"
+                "oracle node: {oracle_checked} checked, {oracle_matched} matched, {oracle_mismatched} mismatched, {oracle_both_failed} both-failed, {oracle_kagura_fail_node_pass} kagura-fail/node-pass, {oracle_kagura_pass_node_fail} kagura-pass/node-fail"
             );
             for failure in &oracle_failures {
                 println!("{failure}");
@@ -441,6 +450,8 @@ fn print_test262_json(
     oracle_matched: usize,
     oracle_mismatched: usize,
     oracle_both_failed: usize,
+    oracle_kagura_fail_node_pass: usize,
+    oracle_kagura_pass_node_fail: usize,
     oracle_failures: &[String],
 ) {
     let skip_reasons = skip_reasons
@@ -460,7 +471,7 @@ fn print_test262_json(
         .join(",");
     let oracle = if oracle_enabled {
         format!(
-            "{{\"checked\":{oracle_checked},\"matched\":{oracle_matched},\"mismatched\":{oracle_mismatched},\"both_failed\":{oracle_both_failed},\"mismatches\":[{oracle_failures}]}}"
+            "{{\"checked\":{oracle_checked},\"matched\":{oracle_matched},\"mismatched\":{oracle_mismatched},\"both_failed\":{oracle_both_failed},\"kagura_fail_node_pass\":{oracle_kagura_fail_node_pass},\"kagura_pass_node_fail\":{oracle_kagura_pass_node_fail},\"mismatches\":[{oracle_failures}]}}"
         )
     } else {
         "null".to_owned()
