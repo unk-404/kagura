@@ -1,0 +1,11 @@
+let target = { a: 1 };
+let result = Object.assign(target, { b: 2 }, { c: 3 });
+console.log(result === target);
+console.log(target.a);
+console.log(target.b);
+console.log(target.c);
+let array = [];
+Object.assign(array, { 0: "x", 1: "y" });
+console.log(array.join(","));
+let skipped = Object.assign({}, null, undefined, { d: 4 });
+console.log(skipped.d);

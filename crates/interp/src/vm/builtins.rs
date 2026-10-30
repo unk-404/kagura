@@ -28,6 +28,22 @@ impl<'a> Interpreter<'a> {
             let right = args.get(1).copied().unwrap_or_else(Value::undefined);
             return Ok(Some(Value::boolean(self.same_value(left, right))));
         }
+        if path == "Object.assign" {
+            let Some(target) = args.first().copied() else {
+                return Err(RuntimeError::type_error(
+                    "Object.assign requires a target",
+                    span,
+                ));
+            };
+            self.object_id(target, span)?;
+            for source in args.iter().skip(1) {
+                if source.is_null() || source.is_undefined() {
+                    continue;
+                }
+                self.assign_source(target, *source, span)?;
+            }
+            return Ok(Some(target));
+        }
         if path == "Object.create" {
             let Some(prototype) = args.first().copied() else {
                 return Err(RuntimeError::type_error(
@@ -233,6 +249,94 @@ impl<'a> Interpreter<'a> {
             Some(callee),
             receiver,
         )
+    }
+
+    fn assign_source(
+        &mut self,
+        target: Value,
+        source: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        if let Some(text) = self.heap.as_str(source).map(|text| text.to_owned()) {
+            for (index, ch) in text.chars().enumerate() {
+                let value = self.heap.string(&ch.to_string());
+                self.assign_property(target, &index.to_string(), value, span)?;
+            }
+            return Ok(());
+        }
+        let Some(source_id) = source.object_offset().map(ObjectId::new) else {
+            return Ok(());
+        };
+        if self
+            .objects
+            .is_array(source_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            let length = self
+                .objects
+                .array_length(source_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            for index in 0..length {
+                if !self
+                    .objects
+                    .array_has(source_id, index)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                {
+                    continue;
+                }
+                let value = self
+                    .objects
+                    .array_get(source_id, index)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                self.assign_property(target, &index.to_string(), value, span)?;
+            }
+            return Ok(());
+        }
+        let shape = self
+            .objects
+            .shape(source_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let keys = own_property_keys(self.shapes, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for key in keys {
+            let descriptor = self
+                .shapes
+                .lookup(shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if !descriptor.is_some_and(|descriptor| descriptor.attributes.enumerable) {
+                continue;
+            }
+            let key_string = match &key {
+                PropertyKey::Index(index) => index.to_string(),
+                PropertyKey::String(key) => key.clone(),
+                PropertyKey::Symbol(_) => continue,
+            };
+            let value = self.get_property(source, &key_string, span)?;
+            self.assign_property(target, &key_string, value, span)?;
+        }
+        Ok(())
+    }
+
+    fn assign_property(
+        &mut self,
+        target: Value,
+        key: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let target_id = self.object_id(target, span)?;
+        if self
+            .objects
+            .is_array(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            && let Ok(index) = key.parse::<u32>()
+        {
+            return self
+                .objects
+                .array_set(target_id, index, value)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+        }
+        self.set_property(target, key, value, span)
     }
 
     fn same_value(&self, left: Value, right: Value) -> bool {

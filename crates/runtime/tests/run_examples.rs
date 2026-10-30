@@ -50,6 +50,7 @@ const REST_PARAMS: &str = include_str!("../../../examples/rest_params.ts");
 const ARGUMENTS: &str = include_str!("../../../examples/arguments.ts");
 const OBJECT_CHECKS: &str = include_str!("../../../examples/object_checks.ts");
 const FINALLY_RETURN: &str = include_str!("../../../examples/finally_return.ts");
+const OBJECT_ASSIGN: &str = include_str!("../../../examples/object_assign.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -508,13 +509,21 @@ fn runs_object_checks() {
 }
 
 #[test]
+fn runs_object_assign() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(OBJECT_ASSIGN, &mut host).unwrap();
+    assert_eq!(host.output(), "true\n1\n2\n3\nx,y\n4\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
     runtime.run(FINALLY_RETURN, &mut host).unwrap();
     assert_eq!(
         host.output(),
-        "a\n1\n3\nc\n4\ninner\nboom\nbody\nfinally\nouter\ncatch finally\nreplaced\n"
+        "a\n1\n3\nc\n4\ninner\nboom\nbody\nfinally\nouter\ncatch finally\nreplaced\noverride\n"
     );
 }
 

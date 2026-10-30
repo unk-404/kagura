@@ -53,3 +53,12 @@ try {
 } catch (error) {
   console.log(error);
 }
+try {
+  try {
+    return 5;
+  } finally {
+    throw "override";
+  }
+} catch (error) {
+  console.log(error);
+}
