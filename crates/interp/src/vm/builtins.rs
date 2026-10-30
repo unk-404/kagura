@@ -1980,6 +1980,10 @@ impl<'a> Interpreter<'a> {
                     "filter",
                     "find",
                     "findIndex",
+                    "findLast",
+                    "findLastIndex",
+                    "flat",
+                    "flatMap",
                     "forEach",
                     "includes",
                     "indexOf",
@@ -1989,10 +1993,12 @@ impl<'a> Interpreter<'a> {
                     "pop",
                     "push",
                     "reduce",
+                    "reduceRight",
                     "reverse",
                     "slice",
                     "some",
                     "sort",
+                    "copyWithin",
                 ]
             } else {
                 &[

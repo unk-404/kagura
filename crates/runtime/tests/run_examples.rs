@@ -1205,6 +1205,19 @@ fn creates_implicit_global_in_sloppy_mode() {
 }
 
 #[test]
+fn array_flat_reduce_right_and_find_last_are_available() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log([1, [2, [3]]].flat(2).join(','), [1, 2, 3].reduceRight(function (a, b) { return a - b; }), [1, 2, 3].findLast(function (value) { return value < 3; }));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "1,2,3 0 2\n");
+}
+
+#[test]
 fn global_parse_builtins_are_installed() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
