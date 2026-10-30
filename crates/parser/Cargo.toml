@@ -1,0 +1,11 @@
+[package]
+name = "kagura-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kagura-ast = { version = "0.1.0", path = "../ast" }
+kagura-diagnostics = { version = "0.1.0", path = "../diagnostics" }
+kagura-support = { version = "0.1.0", path = "../support" }
+tracing = { workspace = true }

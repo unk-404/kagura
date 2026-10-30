@@ -1,0 +1,18 @@
+[package]
+name = "kagura-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kagura"
+path = "src/main.rs"
+
+[dependencies]
+kagura-diagnostics = { version = "0.1.0", path = "../diagnostics" }
+kagura-runtime = { version = "0.1.0", path = "../runtime" }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+
+[features]
+debug = ["kagura-runtime/debug"]
+

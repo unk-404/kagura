@@ -1,0 +1,15 @@
+[package]
+name = "kagura-interp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kagura-bytecode = { version = "0.1.0", path = "../bytecode" }
+kagura-diagnostics = { version = "0.1.0", path = "../diagnostics" }
+kagura-support = { version = "0.1.0", path = "../support" }
+kagura-value = { version = "0.1.0", path = "../value" }
+tracing = { workspace = true }
+
+[features]
+debug = []

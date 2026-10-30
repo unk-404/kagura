@@ -1,0 +1,9 @@
+[package]
+name = "kagura-kmem"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kagura-support = { version = "0.1.0", path = "../support" }
+kagura-target = { version = "0.1.0", path = "../target" }

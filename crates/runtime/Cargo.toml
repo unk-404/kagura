@@ -1,0 +1,20 @@
+[package]
+name = "kagura-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kagura-ast = { version = "0.1.0", path = "../ast" }
+kagura-bytecode = { version = "0.1.0", path = "../bytecode" }
+kagura-diagnostics = { version = "0.1.0", path = "../diagnostics" }
+kagura-interp = { version = "0.1.0", path = "../interp" }
+kagura-kmem = { version = "0.1.0", path = "../kmem" }
+kagura-parser = { version = "0.1.0", path = "../parser" }
+kagura-support = { version = "0.1.0", path = "../support" }
+kagura-target = { version = "0.1.0", path = "../target" }
+kagura-value = { version = "0.1.0", path = "../value" }
+tracing = { workspace = true }
+
+[features]
+debug = ["kagura-interp/debug"]
