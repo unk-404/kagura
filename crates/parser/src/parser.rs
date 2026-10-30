@@ -108,6 +108,7 @@ impl Parser {
                     }
                 }
             }
+            TokenKind::Class => self.parse_class_decl(),
             TokenKind::Function => Ok(Stmt::Func(self.parse_func_decl()?)),
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),

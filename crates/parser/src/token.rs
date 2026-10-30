@@ -9,6 +9,7 @@ pub(crate) enum TokenKind {
     Let,
     Const,
     Function,
+    Class,
     If,
     Else,
     While,

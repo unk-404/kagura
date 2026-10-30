@@ -1,4 +1,4 @@
-use kagura_ast::{ArrowBody, Expr, FuncDecl, Param, Stmt};
+use kagura_ast::{ArrowBody, ClassMethod, Expr, FuncDecl, Param, Stmt};
 use kagura_support::Span;
 
 use crate::error::ParseError;
@@ -124,6 +124,58 @@ impl Parser {
             body,
             span: start.merge(end),
         }))
+    }
+
+    pub(super) fn parse_class_decl(&mut self) -> Result<Stmt, ParseError> {
+        let start = self.advance().span;
+        let name_token = self.expect_ident("expected class name")?;
+        let name = match name_token.kind {
+            TokenKind::Ident(name) => name,
+            _ => unreachable!(),
+        };
+        if matches!(&self.peek().kind, TokenKind::Ident(word) if word == "extends") {
+            return Err(ParseError::new(
+                "class extends is not implemented yet",
+                self.peek().span,
+            ));
+        }
+        self.expect(&TokenKind::LBrace, "expected '{' after class name")?;
+        let mut methods = Vec::new();
+        while !self.at(&TokenKind::RBrace) {
+            let method_start = self.peek().span;
+            let is_static = matches!(&self.peek().kind, TokenKind::Ident(word) if word == "static")
+                && !matches!(
+                    self.tokens.get(self.pos + 1).map(|token| &token.kind),
+                    Some(TokenKind::LParen)
+                );
+            if is_static {
+                self.advance();
+            }
+            let name_token = self.expect_ident("expected method name")?;
+            let method_name = match name_token.kind {
+                TokenKind::Ident(name) => name,
+                _ => unreachable!(),
+            };
+            let params = self.parse_params("expected '(' after method name")?;
+            let body = self.parse_block()?;
+            let end = body
+                .last()
+                .map(Stmt::span)
+                .unwrap_or_else(|| name_token.span);
+            methods.push(ClassMethod {
+                name: method_name,
+                params,
+                body,
+                is_static,
+                span: method_start.merge(end),
+            });
+        }
+        let end = self.expect(&TokenKind::RBrace, "expected '}' after class body")?;
+        Ok(Stmt::Class {
+            name,
+            methods,
+            span: start.merge(end.span),
+        })
     }
 
     pub(super) fn parse_func_decl(&mut self) -> Result<FuncDecl, ParseError> {

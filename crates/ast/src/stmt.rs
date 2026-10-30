@@ -34,6 +34,15 @@ pub struct SwitchCase {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ClassMethod {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub body: Vec<Stmt>,
+    pub is_static: bool,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ForInit {
     Var(VarDecl),
     Expr(Expr),
@@ -66,6 +75,11 @@ pub struct DestructureDecl {
 pub enum Stmt {
     Var(VarDecl),
     VarList(Vec<VarDecl>),
+    Class {
+        name: String,
+        methods: Vec<ClassMethod>,
+        span: Span,
+    },
     Destructure(DestructureDecl),
     Func(FuncDecl),
     Block(Vec<Stmt>),
@@ -152,6 +166,7 @@ impl Stmt {
                 .last()
                 .map(|decl| decl.span)
                 .unwrap_or_else(|| Span::empty(0)),
+            Self::Class { span, .. } => *span,
             Self::Destructure(decl) => decl.span,
             Self::Func(decl) => decl.span,
             Self::Block(body) => body

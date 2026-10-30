@@ -1035,6 +1035,19 @@ fn wires_constructor_prototypes_and_instanceof() {
 }
 
 #[test]
+fn runs_basic_class_declarations() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "class Point { constructor(x, y) { this.x = x; this.y = y; } sum() { return this.x + this.y; } static origin() { return new Point(0, 0); } } var p = new Point(2, 3); var o = Point.origin(); console.log(p.sum(), p instanceof Point, o.x, o.y, typeof Point);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "5 true 0 0 function\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

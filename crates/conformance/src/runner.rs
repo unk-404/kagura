@@ -68,6 +68,7 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
         "destructuring-binding",
         "object-rest",
         "destructuring-assignment",
+        "class",
         "string-trimming",
         "Array.prototype.reduce",
         "Array.prototype.reduceRight",

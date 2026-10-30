@@ -246,6 +246,7 @@ fn keyword_or_ident(text: &str) -> TokenKind {
         "let" => TokenKind::Let,
         "const" => TokenKind::Const,
         "function" => TokenKind::Function,
+        "class" => TokenKind::Class,
         "if" => TokenKind::If,
         "else" => TokenKind::Else,
         "while" => TokenKind::While,

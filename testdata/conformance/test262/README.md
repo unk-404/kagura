@@ -78,6 +78,9 @@ The current P1 slice adds:
 - array/object destructuring declarations (`var [a,b]`, `var {x,y}`),
   including nested, renamed, default-valued, array rest, object rest,
   destructuring parameters, and destructuring assignment expressions
+- basic class declarations: constructor, prototype methods, static methods;
+  `extends`/`super`, class fields, private names, and accessors are not
+  implemented yet
 - function `prototype` objects, constructor-created instance prototype chains,
   and general `instanceof` prototype-chain checks
 - `for...of` over arrays and strings by index (the iterator protocol itself is
@@ -165,8 +168,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 21707 executed, 4817 passed, 16890 failed, 32322 skipped
-oracle node: 4817 checked, 4812 matched, 5 mismatched
+54029 selected, 22017 executed, 4914 passed, 17103 failed, 32012 skipped
+oracle node: 4914 checked, 4909 matched, 5 mismatched
 ```
 
 The five Node mismatches are tracked as differential warnings, not hidden:

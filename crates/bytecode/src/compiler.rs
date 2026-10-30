@@ -49,6 +49,9 @@ impl Compiler {
                 Stmt::Func(decl) => {
                     script.predeclare_or_error(&decl.name, true, decl.span, false)?;
                 }
+                Stmt::Class { name, span, .. } => {
+                    script.predeclare_or_error(name, false, *span, false)?;
+                }
                 Stmt::VarList(decls) => {
                     for decl in decls {
                         script.predeclare_or_error(
@@ -314,6 +317,11 @@ impl<'a> FunctionCompiler<'a> {
                 Ok(())
             }
             Stmt::Destructure(decl) => self.compile_destructure(decl),
+            Stmt::Class {
+                name,
+                methods,
+                span,
+            } => self.compile_class(name, methods, *span),
             Stmt::Func(decl) => {
                 if self.strict && matches!(decl.name.as_str(), "eval" | "arguments") {
                     return Err(CompileError::new(
@@ -996,6 +1004,58 @@ impl<'a> FunctionCompiler<'a> {
             self.compile_stmt(stmt)?;
         }
         self.close_scope();
+        Ok(())
+    }
+
+    fn compile_class(
+        &mut self,
+        name: &str,
+        methods: &[kagura_ast::ClassMethod],
+        span: Span,
+    ) -> Result<(), CompileError> {
+        let slot = match self.resolve(name) {
+            Some(Resolved::Local { slot, .. }) => slot,
+            Some(_) => {
+                return Err(CompileError::new(
+                    format!("unsupported class binding '{name}'"),
+                    span,
+                ));
+            }
+            None => self
+                .declare(name, false, span)
+                .ok_or_else(|| CompileError::new(format!("duplicate class '{name}'"), span))?,
+        };
+        if let Some(constructor) = methods.iter().find(|method| method.name == "constructor") {
+            self.compile_closure(
+                name,
+                &constructor.params,
+                &constructor.body,
+                None,
+                constructor.span,
+            )?;
+        } else {
+            self.compile_closure(name, &[], &[], None, span)?;
+        }
+        self.emit_u16(Op::StoreLocal, slot, span);
+        for method in methods {
+            if method.name == "constructor" {
+                continue;
+            }
+            self.emit_u16(Op::LoadLocal, slot, span);
+            if !method.is_static {
+                let prototype_key = self.add_const(Const::String("prototype".into()));
+                self.emit_u32(Op::GetProp, prototype_key, span);
+            }
+            self.compile_closure(
+                &method.name,
+                &method.params,
+                &method.body,
+                None,
+                method.span,
+            )?;
+            let key = self.add_const(Const::String(method.name.clone()));
+            self.emit_u32(Op::SetProp, key, method.span);
+        }
         Ok(())
     }
 
