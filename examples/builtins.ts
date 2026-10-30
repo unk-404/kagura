@@ -1,0 +1,13 @@
+let values = [1, 2];
+console.log(values.push(3));
+console.log(values.join("-"));
+console.log(values.pop());
+console.log(values.includes(2));
+console.log(values.indexOf(2));
+let part = values.slice(0, 1);
+console.log(part.join(","));
+let text = "hello";
+console.log(text.charAt(1));
+console.log(text.toUpperCase());
+console.log(text.indexOf("ll"));
+console.log(text.slice(1, 3));

@@ -53,6 +53,7 @@ pub enum Op {
     Throw = 49,
     TryBegin = 50,
     TryEnd = 51,
+    CallMethod = 52,
 }
 
 impl Op {
@@ -110,6 +111,7 @@ impl Op {
             49 => Self::Throw,
             50 => Self::TryBegin,
             51 => Self::TryEnd,
+            52 => Self::CallMethod,
             _ => return None,
         })
     }

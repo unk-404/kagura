@@ -265,6 +265,16 @@ impl ObjectHeap {
         }
     }
 
+    pub fn array_pop(&mut self, object: ObjectId) -> Result<Value, ObjectHeapError> {
+        let length = self.array_length(object)?;
+        if length == 0 {
+            return Ok(Value::undefined());
+        }
+        let value = self.array_get(object, length - 1)?;
+        self.set_array_length(object, length - 1)?;
+        Ok(value)
+    }
+
     pub fn array_get_raw(&self, object: ObjectId, index: u32) -> Result<Value, ObjectHeapError> {
         if !self.is_array(object)? {
             return Err(ObjectHeapError::NotArray);

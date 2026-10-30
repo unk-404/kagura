@@ -34,6 +34,7 @@ const TRY_CATCH: &str = include_str!("../../../examples/try_catch.ts");
 const TRY_FINALLY: &str = include_str!("../../../examples/try_finally.ts");
 const TRY_NESTED: &str = include_str!("../../../examples/try_nested.ts");
 const TRY_CROSS_FUNCTION: &str = include_str!("../../../examples/try_cross_function.ts");
+const BUILTINS: &str = include_str!("../../../examples/builtins.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -343,6 +344,14 @@ fn catches_missing_host_error() {
         )
         .unwrap();
     assert_eq!(host.output(), "caught\n");
+}
+
+#[test]
+fn runs_array_and_string_builtin_methods() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(BUILTINS, &mut host).unwrap();
+    assert_eq!(host.output(), "3\n1-2-3\n3\ntrue\n1\n1\ne\nHELLO\n2\nel\n");
 }
 
 #[test]

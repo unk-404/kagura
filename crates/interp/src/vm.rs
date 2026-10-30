@@ -609,6 +609,24 @@ impl<'a> Interpreter<'a> {
                     };
                     push(&mut stack, value, span)?;
                 }
+                Op::CallMethod => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let argc = read_u8(&function.code, &mut pc, span)? as usize;
+                    let key = match self.module.constants.get(index as usize) {
+                        Some(Const::String(key)) => key.clone(),
+                        _ => return Err(RuntimeError::runtime("invalid method name", span)),
+                    };
+                    let mut args = Vec::with_capacity(argc);
+                    for _ in 0..argc {
+                        args.push(pop(&mut stack, span)?);
+                    }
+                    args.reverse();
+                    let object = pop(&mut stack, span)?;
+                    let value = self
+                        .call_builtin(object, &key, &args, span)?
+                        .ok_or_else(|| RuntimeError::type_error("method is not supported", span))?;
+                    push(&mut stack, value, span)?;
+                }
                 Op::CallHost => {
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let argc = read_u8(&function.code, &mut pc, span)? as usize;
@@ -844,6 +862,185 @@ impl<'a> Interpreter<'a> {
         self.host
             .invoke(id, &mut call)
             .map_err(|error| RuntimeError::runtime(error.message, span))
+    }
+
+    fn call_builtin(
+        &mut self,
+        object: Value,
+        key: &str,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let arg_index = |args: &[Value], index: usize| {
+            args.get(index)
+                .and_then(|value| value.as_smi())
+                .unwrap_or(0)
+                .max(0) as usize
+        };
+        if object.is_string() {
+            let text = self.heap.as_str(object).unwrap_or_default().to_owned();
+            return Ok(Some(match key {
+                "charAt" => text
+                    .chars()
+                    .nth(arg_index(args, 0))
+                    .map(|ch| self.heap.string(&ch.to_string()))
+                    .unwrap_or_else(Value::undefined),
+                "charCodeAt" => text
+                    .encode_utf16()
+                    .nth(arg_index(args, 0))
+                    .map(|unit| self.heap.number(unit as f64))
+                    .unwrap_or_else(Value::undefined),
+                "indexOf" => {
+                    let needle = args
+                        .first()
+                        .map(|value| self.heap.to_js_string(*value))
+                        .unwrap_or_default();
+                    let from = arg_index(args, 1);
+                    let found = text
+                        .char_indices()
+                        .enumerate()
+                        .find(|(index, (byte, _))| {
+                            *index >= from && text[*byte..].starts_with(&needle)
+                        })
+                        .map(|(index, _)| index as f64)
+                        .unwrap_or(-1.0);
+                    self.heap.number(found)
+                }
+                "includes" => {
+                    let needle = args
+                        .first()
+                        .map(|value| self.heap.to_js_string(*value))
+                        .unwrap_or_default();
+                    Value::boolean(text.contains(&needle))
+                }
+                "slice" => {
+                    let length = text.chars().count();
+                    let start = arg_index(args, 0).min(length);
+                    let end = args
+                        .get(1)
+                        .and_then(|value| value.as_smi())
+                        .map(|value| value.max(0) as usize)
+                        .unwrap_or(length)
+                        .min(length)
+                        .max(start);
+                    let value: String = text.chars().skip(start).take(end - start).collect();
+                    self.heap.string(&value)
+                }
+                "toUpperCase" => self.heap.string(&text.to_uppercase()),
+                "toLowerCase" => self.heap.string(&text.to_lowercase()),
+                "trim" => self.heap.string(text.trim()),
+                _ => return Ok(None),
+            }));
+        }
+        let Ok(object_id) = self.object_id(object, span) else {
+            return Ok(None);
+        };
+        if !self
+            .objects
+            .is_array(object_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Ok(None);
+        }
+        Ok(Some(match key {
+            "push" => {
+                for value in args {
+                    self.objects
+                        .array_push(object_id, *value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                self.heap.number(length as f64)
+            }
+            "pop" => self
+                .objects
+                .array_pop(object_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+            "join" => {
+                let separator = args
+                    .first()
+                    .map(|value| self.heap.to_js_string(*value))
+                    .unwrap_or_else(|| ",".into());
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let mut parts = Vec::with_capacity(length as usize);
+                for index in 0..length {
+                    let value = self
+                        .objects
+                        .array_get(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if value.is_undefined() || value.is_null() {
+                        parts.push(String::new());
+                    } else {
+                        parts.push(self.heap.to_js_string(value));
+                    }
+                }
+                self.heap.string(&parts.join(&separator))
+            }
+            "indexOf" | "includes" => {
+                let needle = args.first().copied().unwrap_or_else(Value::undefined);
+                let from = arg_index(args, 1) as u32;
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let mut found = None;
+                for index in from..length {
+                    let value = self
+                        .objects
+                        .array_get(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if self.heap.strict_eq(value, needle) {
+                        found = Some(index);
+                        break;
+                    }
+                }
+                if key == "includes" {
+                    Value::boolean(found.is_some())
+                } else {
+                    found
+                        .map(|index| self.heap.number(index as f64))
+                        .unwrap_or_else(|| self.heap.number(-1.0))
+                }
+            }
+            "slice" => {
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    as i32;
+                let start = args
+                    .first()
+                    .and_then(|value| value.as_smi())
+                    .unwrap_or(0)
+                    .clamp(0, length);
+                let end = args
+                    .get(1)
+                    .and_then(|value| value.as_smi())
+                    .unwrap_or(length)
+                    .clamp(start, length);
+                let array = self
+                    .objects
+                    .allocate_array(self.shapes.root())
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                for index in start..end {
+                    let value = self
+                        .objects
+                        .array_get(object_id, index as u32)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    self.objects
+                        .array_push(array, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                Value::object(array.index())
+            }
+            _ => return Ok(None),
+        }))
     }
 
     fn catch_error(
