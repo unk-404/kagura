@@ -30,7 +30,8 @@ pub struct Module {
 }
 
 pub const MAGIC: [u8; 4] = *b"KGB1";
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
+pub const MIN_VERSION: u16 = 1;
 
 impl Module {
     pub fn find_function(&self, name: &str) -> Option<usize> {
@@ -90,7 +91,7 @@ impl Module {
             return Err(DecodeError::BadMagic);
         }
         let version = reader.u16()?;
-        if version != VERSION {
+        if !(MIN_VERSION..=VERSION).contains(&version) {
             return Err(DecodeError::UnsupportedVersion(version));
         }
         let constant_count = reader.u32()? as usize;

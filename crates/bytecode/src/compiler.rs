@@ -1,7 +1,5 @@
-use std::collections::HashSet;
-
 use kagura_ast::{BinaryOp, Expr, ForInit, FuncDecl, Param, Program, Stmt, UnaryOp, VarDecl};
-use kagura_support::Span;
+use kagura_support::{FastHashSet, Span};
 
 use crate::error::CompileError;
 use crate::module::{Const, FunctionProto, Module, VERSION};
@@ -20,7 +18,7 @@ struct Compiler {
 
 impl Compiler {
     fn compile(&mut self, program: &Program) -> Result<Module, CompileError> {
-        let mut names = HashSet::new();
+        let mut names = FastHashSet::default();
         for stmt in &program.body {
             if let Stmt::Func(decl) = stmt {
                 if !names.insert(decl.name.clone()) {
@@ -60,7 +58,7 @@ fn compile_function(
     decl: &FuncDecl,
     constants: &mut Vec<Const>,
 ) -> Result<FunctionProto, CompileError> {
-    let mut params = HashSet::new();
+    let mut params = FastHashSet::default();
     for param in &decl.params {
         if !params.insert(param.name.as_str()) {
             return Err(CompileError::new(
@@ -372,13 +370,15 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit_u16(Op::StoreLocal, slot, *span);
             }
             Expr::Call { callee, args, span } => {
-                if is_console_log(callee) {
-                    self.compile_args(args)?;
-                    self.emit_u8(Op::Print, args.len(), *span);
-                } else if let Expr::Ident { name, .. } = callee.as_ref() {
+                if let Expr::Ident { name, .. } = callee.as_ref() {
                     self.compile_args(args)?;
                     let index = self.add_const(Const::String(name.clone()));
                     self.emit_u32(Op::CallName, index, *span);
+                    self.emit_u8_raw(args.len(), *span);
+                } else if let Some(path) = member_path(callee) {
+                    self.compile_args(args)?;
+                    let index = self.add_const(Const::String(path));
+                    self.emit_u32(Op::CallHost, index, *span);
                     self.emit_u8_raw(args.len(), *span);
                 } else {
                     return Err(CompileError::new(
@@ -448,11 +448,6 @@ impl<'a> FunctionCompiler<'a> {
         self.emit_raw(op as u8, span);
     }
 
-    fn emit_u8(&mut self, op: Op, value: usize, span: Span) {
-        self.emit(op, span);
-        self.emit_u8_raw(value, span);
-    }
-
     fn emit_u8_raw(&mut self, value: usize, span: Span) {
         self.emit_raw(value as u8, span);
     }
@@ -517,14 +512,12 @@ fn binary_op(op: BinaryOp) -> Op {
     }
 }
 
-fn is_console_log(expr: &Expr) -> bool {
-    matches!(
-        expr,
+fn member_path(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Ident { name, .. } => Some(name.clone()),
         Expr::Member {
-            object,
-            property,
-            ..
-        } if property == "log"
-            && matches!(object.as_ref(), Expr::Ident { name, .. } if name == "console")
-    )
+            object, property, ..
+        } => Some(format!("{}.{}", member_path(object)?, property)),
+        _ => None,
+    }
 }

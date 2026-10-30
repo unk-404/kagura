@@ -177,6 +177,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c66915cc5391097de7a2b0b972e8505aa33c0df401fd3a6811dbdb32881ba48"
 
 [[package]]
+name = "foldhash"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -185,6 +191,15 @@ dependencies = [
  "cfg-if",
  "crunchy",
  "zerocopy",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+dependencies = [
+ "rustc-std-workspace-alloc",
 ]
 
 [[package]]
@@ -226,6 +241,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kagura-bindgen"
+version = "0.1.0"
+dependencies = [
+ "kagura-interp",
+ "kagura-support",
+ "kagura-value",
+]
+
+[[package]]
 name = "kagura-bytecode"
 version = "0.1.0"
 dependencies = [
@@ -241,11 +265,12 @@ name = "kagura-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "kagura-bindgen",
  "kagura-bytecode",
  "kagura-diagnostics",
- "kagura-interp",
  "kagura-parser",
  "kagura-runtime",
+ "kagura-value",
  "tracing-subscriber",
 ]
 
@@ -308,6 +333,10 @@ dependencies = [
 [[package]]
 name = "kagura-support"
 version = "0.1.0"
+dependencies = [
+ "foldhash",
+ "hashbrown",
+]
 
 [[package]]
 name = "kagura-target"
@@ -317,7 +346,8 @@ version = "0.1.0"
 name = "kagura-testkit"
 version = "0.1.0"
 dependencies = [
- "kagura-interp",
+ "kagura-bindgen",
+ "kagura-value",
 ]
 
 [[package]]
@@ -429,6 +459,12 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "rustc-std-workspace-alloc"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9d441c3b2ebf55cebf796bfdc265d67fa09db17b7bb6bd4be75c509e1e8fec3"
 
 [[package]]
 name = "same-file"

@@ -4,7 +4,7 @@ use kagura_value::{Heap, Value};
 use tracing::instrument;
 
 use crate::error::{RuntimeError, RuntimeErrorKind};
-use crate::host::Host;
+use crate::host::{Host, HostCall, HostFunctionId};
 
 const MAX_CALL_DEPTH: usize = 256;
 const MAX_STACK: usize = 4096;
@@ -13,6 +13,7 @@ pub struct Interpreter<'a> {
     module: &'a Module,
     heap: &'a mut Heap,
     host: &'a mut dyn Host,
+    host_cache: Vec<Option<HostFunctionId>>,
     depth: usize,
 }
 
@@ -22,6 +23,7 @@ impl<'a> Interpreter<'a> {
             module,
             heap,
             host,
+            host_cache: vec![None; module.constants.len()],
             depth: 0,
         }
     }
@@ -228,23 +230,46 @@ impl<'a> Interpreter<'a> {
                         args.push(pop(&mut stack, span)?);
                     }
                     args.reverse();
-                    let value = self.call_name(&name, &args, span)?;
+                    let value = self.call_name(&name, index as usize, &args, span)?;
+                    push(&mut stack, value, span)?;
+                }
+                Op::CallHost => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let argc = read_u8(&function.code, &mut pc, span)? as usize;
+                    let path = match self.module.constants.get(index as usize) {
+                        Some(Const::String(path)) => path.clone(),
+                        _ => {
+                            return Err(RuntimeError::new(
+                                RuntimeErrorKind::Runtime,
+                                "invalid host path",
+                                span,
+                            ));
+                        }
+                    };
+                    let mut args = Vec::with_capacity(argc);
+                    for _ in 0..argc {
+                        args.push(pop(&mut stack, span)?);
+                    }
+                    args.reverse();
+                    let id = self.resolve_host(&path, index as usize, span)?;
+                    let value = self.invoke_host(id, &args, span)?;
                     push(&mut stack, value, span)?;
                 }
                 Op::Print => {
+                    // Bytecode v1 compatibility: Print is permanently reserved and
+                    // is routed through the host's console.log binding, not an
+                    // engine-internal output path.
                     let argc = read_u8(&function.code, &mut pc, span)? as usize;
                     let mut args = Vec::with_capacity(argc);
                     for _ in 0..argc {
                         args.push(pop(&mut stack, span)?);
                     }
                     args.reverse();
-                    let text = args
-                        .iter()
-                        .map(|value| self.heap.to_js_string(*value))
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    self.host.print(&text);
-                    push(&mut stack, Value::undefined(), span)?;
+                    let id = self.host.resolve("console.log").ok_or_else(|| {
+                        RuntimeError::runtime("console.log is not registered", span)
+                    })?;
+                    let value = self.invoke_host(id, &args, span)?;
+                    push(&mut stack, value, span)?;
                 }
                 Op::Pop => {
                     pop(&mut stack, span)?;
@@ -262,23 +287,49 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    fn call_name(&mut self, name: &str, args: &[Value], span: Span) -> Result<Value, RuntimeError> {
-        if let Some(index) = self.module.find_function(name) {
-            return self.call(index, args);
+    fn call_name(
+        &mut self,
+        name: &str,
+        index: usize,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if let Some(function) = self.module.find_function(name) {
+            return self.call(function, args);
         }
-        if name == "print" {
-            let text = args
-                .iter()
-                .map(|value| self.heap.to_js_string(*value))
-                .collect::<Vec<_>>()
-                .join(" ");
-            self.host.print(&text);
-            return Ok(Value::undefined());
+        let id = self.resolve_host(name, index, span)?;
+        self.invoke_host(id, args, span)
+    }
+
+    fn resolve_host(
+        &mut self,
+        path: &str,
+        index: usize,
+        span: Span,
+    ) -> Result<HostFunctionId, RuntimeError> {
+        if let Some(Some(id)) = self.host_cache.get(index) {
+            return Ok(*id);
         }
-        Err(RuntimeError::reference(
-            format!("{name} is not defined"),
-            span,
-        ))
+        let id = self
+            .host
+            .resolve(path)
+            .ok_or_else(|| RuntimeError::reference(format!("{path} is not defined"), span))?;
+        if let Some(slot) = self.host_cache.get_mut(index) {
+            *slot = Some(id);
+        }
+        Ok(id)
+    }
+
+    fn invoke_host(
+        &mut self,
+        id: HostFunctionId,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let mut call = HostCall::new(&mut *self.heap, args);
+        self.host
+            .invoke(id, &mut call)
+            .map_err(|error| RuntimeError::runtime(error.message, span))
     }
 
     fn add(&mut self, left: Value, right: Value, span: Span) -> Result<Value, RuntimeError> {

@@ -10,11 +10,12 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+kagura-bindgen = { version = "0.1.0", path = "../bindgen" }
 kagura-bytecode = { version = "0.1.0", path = "../bytecode" }
 kagura-diagnostics = { version = "0.1.0", path = "../diagnostics" }
-kagura-interp = { version = "0.1.0", path = "../interp" }
 kagura-parser = { version = "0.1.0", path = "../parser" }
 kagura-runtime = { version = "0.1.0", path = "../runtime" }
+kagura-value = { version = "0.1.0", path = "../value" }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"], optional = true }
 
 [features]

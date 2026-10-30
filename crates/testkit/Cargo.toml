@@ -5,4 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-kagura-interp = { version = "0.1.0", path = "../interp" }
+kagura-bindgen = { version = "0.1.0", path = "../bindgen" }
+kagura-value = { version = "0.1.0", path = "../value" }

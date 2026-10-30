@@ -1,0 +1,10 @@
+[package]
+name = "kagura-bindgen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kagura-interp = { version = "0.1.0", path = "../interp" }
+kagura-support = { version = "0.1.0", path = "../support" }
+kagura-value = { version = "0.1.0", path = "../value" }

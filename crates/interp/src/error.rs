@@ -39,6 +39,10 @@ impl RuntimeError {
         Self::new(RuntimeErrorKind::Range, message, span)
     }
 
+    pub fn runtime(message: impl Into<String>, span: Span) -> Self {
+        Self::new(RuntimeErrorKind::Runtime, message, span)
+    }
+
     pub fn diagnostic(&self) -> Diagnostic {
         let kind = match self.kind {
             RuntimeErrorKind::Type => DiagnosticKind::Type,

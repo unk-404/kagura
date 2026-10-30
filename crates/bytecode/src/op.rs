@@ -28,6 +28,7 @@ pub enum Op {
     Pop = 24,
     Return = 25,
     Dup = 26,
+    CallHost = 27,
 }
 
 impl Op {
@@ -60,6 +61,7 @@ impl Op {
             24 => Self::Pop,
             25 => Self::Return,
             26 => Self::Dup,
+            27 => Self::CallHost,
             _ => return None,
         })
     }

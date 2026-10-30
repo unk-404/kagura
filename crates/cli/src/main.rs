@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
+use kagura_bindgen::{Bindings, HostCall, HostError};
 use kagura_bytecode::compile;
 use kagura_diagnostics::{Diagnostic, render};
-use kagura_interp::Host;
 use kagura_parser::parse;
 use kagura_runtime::Runtime;
+use kagura_value::Value;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -41,14 +42,6 @@ enum Command {
     },
 }
 
-struct StdoutHost;
-
-impl Host for StdoutHost {
-    fn print(&mut self, text: &str) {
-        println!("{text}");
-    }
-}
-
 fn main() {
     let cli = Cli::parse();
     let code = match cli.command {
@@ -62,6 +55,24 @@ fn main() {
         Command::RunBytecode { file, trace } => run_bytecode(file, trace),
     };
     std::process::exit(code);
+}
+
+fn stdout_bindings() -> Bindings {
+    let mut bindings = Bindings::new();
+    bindings.bind("console.log", stdout_print);
+    bindings.bind("print", stdout_print);
+    bindings
+}
+
+fn stdout_print(call: &mut HostCall<'_>) -> Result<Value, HostError> {
+    let text = call
+        .args()
+        .iter()
+        .map(|value| call.heap().to_js_string(*value))
+        .collect::<Vec<_>>()
+        .join(" ");
+    println!("{text}");
+    Ok(Value::undefined())
 }
 
 fn run_file(file: PathBuf, print_ast: bool, print_bytecode: bool, trace: bool) -> i32 {
@@ -104,7 +115,7 @@ fn run_file(file: PathBuf, print_ast: bool, print_bytecode: bool, trace: bool) -
     }
 
     let mut runtime = Runtime::default();
-    let mut host = StdoutHost;
+    let mut host = stdout_bindings();
     match runtime.run(&source, &mut host) {
         Ok(_) => 0,
         Err(error) => report(&source, &path, &error.diagnostic()),
@@ -160,7 +171,7 @@ fn run_bytecode(file: PathBuf, trace: bool) -> i32 {
         init_tracing();
     }
     let mut runtime = Runtime::default();
-    let mut host = StdoutHost;
+    let mut host = stdout_bindings();
     match runtime.run_bytecode(&bytes, &mut host) {
         Ok(_) => 0,
         Err(error) => {

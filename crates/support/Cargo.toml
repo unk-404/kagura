@@ -5,3 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+foldhash = { version = "0.2.0", default-features = false }
+hashbrown = { version = "0.17.1", default-features = false, features = ["alloc", "inline-more"] }
