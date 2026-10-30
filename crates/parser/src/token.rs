@@ -10,6 +10,8 @@ pub(crate) enum TokenKind {
     Const,
     Function,
     Class,
+    Async,
+    Await,
     If,
     Else,
     While,

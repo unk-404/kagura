@@ -82,6 +82,10 @@ The current P1 slice adds:
 - array/object destructuring declarations (`var [a,b]`, `var {x,y}`),
   including nested, renamed, default-valued, array rest, object rest,
   destructuring parameters, and destructuring assignment expressions
+- test262 `_FIXTURE.js` helper files are excluded from selection instead of
+  being counted as tests
+- async-function syntax with a synchronous `await` execution shim; full
+  Promise job semantics are not implemented
 - basic class declarations: constructor, non-enumerable prototype methods,
   static methods, public instance/static fields, `extends`, default derived
   constructors, explicit `super(...)` calls, and `super.method()` calls;
@@ -173,8 +177,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 22410 executed, 5028 passed, 17382 failed, 31619 skipped
-oracle node: 5028 checked, 5023 matched, 5 mismatched
+53733 selected, 22267 executed, 5095 passed, 17172 failed, 31466 skipped
+oracle node: 5095 checked, 5090 matched, 5 mismatched
 ```
 
 The five Node mismatches are tracked as differential warnings, not hidden:

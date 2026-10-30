@@ -1587,6 +1587,10 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit(Op::CallThis, *span);
                 self.emit_u8_raw(args.len(), *span);
             }
+            Expr::Await { expr, span } => {
+                self.compile_expr(expr)?;
+                self.emit(Op::Await, *span);
+            }
             Expr::SuperMember { property, span } => {
                 self.compile_expr(&Expr::This { span: *span })?;
                 let class_key = self.add_const(Const::String("__kaguraClass".into()));

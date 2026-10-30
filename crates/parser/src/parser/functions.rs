@@ -7,7 +7,7 @@ use crate::token::TokenKind;
 use super::{Parser, body_span};
 
 impl Parser {
-    fn parse_params(&mut self, opener: &str) -> Result<Vec<Param>, ParseError> {
+    pub(super) fn parse_params(&mut self, opener: &str) -> Result<Vec<Param>, ParseError> {
         self.expect(&TokenKind::LParen, opener)?;
         let mut params = Vec::new();
         if !self.at(&TokenKind::RParen) {
@@ -151,6 +151,14 @@ impl Parser {
                     Some(TokenKind::LParen)
                 );
             if is_static {
+                self.advance();
+            }
+            if matches!(&self.peek().kind, TokenKind::Ident(word) if word == "async")
+                && !matches!(
+                    self.tokens.get(self.pos + 1).map(|token| &token.kind),
+                    Some(TokenKind::LParen)
+                )
+            {
                 self.advance();
             }
             let name_token = self.expect_ident("expected method name")?;

@@ -134,6 +134,20 @@ impl Parser {
                 let token = self.advance();
                 Ok(Stmt::Empty { span: token.span })
             }
+            TokenKind::Async => {
+                if matches!(
+                    self.tokens.get(self.pos + 1).map(|token| &token.kind),
+                    Some(TokenKind::Function)
+                ) {
+                    self.advance();
+                    Ok(Stmt::Func(self.parse_func_decl()?))
+                } else {
+                    let expr = self.parse_expr()?;
+                    let span = expr.span();
+                    self.expect(&TokenKind::Semi, "expected ';' after expression")?;
+                    Ok(Stmt::Expr { expr, span })
+                }
+            }
             _ => {
                 let expr = self.parse_expr()?;
                 let span = expr.span();
@@ -1095,6 +1109,49 @@ impl Parser {
                 Ok(Expr::Ident {
                     name,
                     span: token.span,
+                })
+            }
+            TokenKind::Await => {
+                let start = self.advance().span;
+                let expr = self.parse_unary()?;
+                let span = start.merge(expr.span());
+                Ok(Expr::Await {
+                    expr: Box::new(expr),
+                    span,
+                })
+            }
+            TokenKind::Async => {
+                let start = self.advance().span;
+                if self.at(&TokenKind::Function) {
+                    return self.parse_function_expr();
+                }
+                if let TokenKind::Ident(name) = self.peek().kind.clone() {
+                    let param_span = self.advance().span;
+                    let params = vec![Param {
+                        name,
+                        pattern: None,
+                        ty: None,
+                        default: None,
+                        rest: false,
+                        span: param_span,
+                    }];
+                    self.expect(&TokenKind::Arrow, "expected '=>' after async parameter")?;
+                    let body = self.parse_arrow_body()?;
+                    let end = body_span(&body);
+                    return Ok(Expr::Arrow {
+                        params,
+                        body,
+                        span: start.merge(end),
+                    });
+                }
+                let params = self.parse_params("expected '(' after async")?;
+                self.expect(&TokenKind::Arrow, "expected '=>' after async parameters")?;
+                let body = self.parse_arrow_body()?;
+                let end = body_span(&body);
+                Ok(Expr::Arrow {
+                    params,
+                    body,
+                    span: start.merge(end),
                 })
             }
             TokenKind::Super => {

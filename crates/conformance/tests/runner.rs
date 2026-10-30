@@ -1,5 +1,5 @@
 use kagura_conformance::{
-    Metadata, Negative, Outcome, TestCase, parse_metadata, run_case, skip_reason,
+    Metadata, Negative, Outcome, TestCase, discover, parse_metadata, run_case, skip_reason,
 };
 
 #[test]
@@ -60,6 +60,28 @@ fn skips_unsupported_harness_and_flags() {
         ..Metadata::default()
     };
     assert_eq!(skip_reason(&metadata), None);
+}
+
+#[test]
+fn excludes_test262_fixture_files() {
+    let root = std::env::current_dir()
+        .unwrap()
+        .join("target")
+        .join(format!(
+            "kagura-conformance-fixture-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("real.js"), "assert.sameValue(1, 1);").unwrap();
+    std::fs::write(root.join("helper_FIXTURE.js"), "assert.sameValue(1, 1);").unwrap();
+    let cases = discover(&root).unwrap();
+    assert_eq!(cases.len(), 1);
+    assert!(cases[0].path.ends_with("real.js"));
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

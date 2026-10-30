@@ -71,6 +71,7 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
         "class",
         "class-fields-public",
         "class-static-fields-public",
+        "async-functions",
         "string-trimming",
         "Array.prototype.reduce",
         "Array.prototype.reduceRight",
@@ -288,6 +289,13 @@ fn visit(root: &Path, cases: &mut Vec<TestCase>) -> io::Result<()> {
             }
             visit(&path, cases)?;
         } else if path.extension().is_some_and(|extension| extension == "js") {
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with("_FIXTURE.js"))
+            {
+                continue;
+            }
             let source = fs::read_to_string(&path)?;
             let metadata = parse_metadata(&source);
             cases.push(TestCase {

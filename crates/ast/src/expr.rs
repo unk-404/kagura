@@ -65,6 +65,10 @@ pub enum Expr {
         property: String,
         span: Span,
     },
+    Await {
+        expr: Box<Expr>,
+        span: Span,
+    },
     Update {
         target: AssignTarget,
         prefix: bool,
@@ -156,6 +160,7 @@ impl Expr {
             | Self::DestructureAssign { span, .. }
             | Self::SuperCall { span, .. }
             | Self::SuperMember { span, .. }
+            | Self::Await { span, .. }
             | Self::Update { span, .. }
             | Self::Call { span, .. }
             | Self::New { span, .. }

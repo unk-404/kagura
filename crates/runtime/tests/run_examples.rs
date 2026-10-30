@@ -1100,6 +1100,19 @@ fn supports_super_method_calls() {
 }
 
 #[test]
+fn runs_synchronous_async_await_shim() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "function P(executor) { this.__resolved = false; executor((v) => { this.__value = v; this.__resolved = true; }, (e) => { throw e; }); } async function f() { var x = await new P((resolve) => resolve(4)); return x + 1; } var arrow = async (v) => (await v) * 2; console.log(f(), arrow(3));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "5 6\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

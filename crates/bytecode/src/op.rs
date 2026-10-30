@@ -74,6 +74,7 @@ pub enum Op {
     SetPropNonEnum = 70,
     SetPrototype = 71,
     CallThis = 72,
+    Await = 73,
 }
 
 impl Op {
@@ -152,6 +153,7 @@ impl Op {
             70 => Self::SetPropNonEnum,
             71 => Self::SetPrototype,
             72 => Self::CallThis,
+            73 => Self::Await,
             _ => return None,
         })
     }

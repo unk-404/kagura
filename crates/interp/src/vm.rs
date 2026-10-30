@@ -280,6 +280,20 @@ impl<'a> Interpreter<'a> {
                     let value = try_op!(self.object_rest(source, &excluded, span));
                     push(&mut stack, value, span)?;
                 }
+                Op::Await => {
+                    let value = pop(&mut stack, span)?;
+                    let resolved = if value.object_offset().is_some() {
+                        let resolved = try_op!(self.get_property(value, "__resolved", span));
+                        if self.heap.truthy(resolved) {
+                            try_op!(self.get_property(value, "__value", span))
+                        } else {
+                            value
+                        }
+                    } else {
+                        value
+                    };
+                    push(&mut stack, resolved, span)?;
+                }
                 Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;
