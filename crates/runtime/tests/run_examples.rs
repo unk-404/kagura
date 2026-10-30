@@ -1313,6 +1313,23 @@ fn provides_performance_now() {
 }
 
 #[test]
+fn property_inline_cache_hits_and_stays_correct() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.set_step_limit(5_000_000);
+    runtime
+        .run(
+            "var object = { value: 1 }; var total = 0; for (var i = 0; i < 1000; i++) { total += object.value; object.value = total % 7; } console.log(total > 0, object.value);",
+            &mut host,
+        )
+        .unwrap();
+    assert!(host.output().starts_with("true "));
+    let (hits, misses) = runtime.property_ic_stats();
+    assert!(misses > 0, "expected at least one IC fill");
+    assert!(hits > 0, "expected repeated property access to hit the IC");
+}
+
+#[test]
 fn grows_value_heap_for_long_string_building() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

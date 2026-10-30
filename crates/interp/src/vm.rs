@@ -3,7 +3,7 @@ mod calls;
 mod properties;
 
 use kagura_bytecode::{Const, Module, Op};
-use kagura_object::{ObjectHeap, ObjectId, ShapeId, ShapeTable};
+use kagura_object::{ObjectHeap, ObjectId, PropertyLocation, ShapeId, ShapeTable};
 use kagura_support::{FastHashMap, Span};
 use kagura_value::{Heap, Value};
 use tracing::instrument;
@@ -14,6 +14,17 @@ use crate::host::{Host, HostFunctionId};
 const MAX_CALL_DEPTH: usize = 256;
 const MAX_STACK: usize = 4096;
 const GC_THRESHOLD: u32 = 32 * 1024;
+
+#[derive(Clone, Copy, Debug, Default)]
+enum PropertyFeedback {
+    #[default]
+    Empty,
+    OwnData {
+        shape: ShapeId,
+        location: PropertyLocation,
+        writable: bool,
+    },
+}
 
 struct FrameContext<'a> {
     caller_roots: &'a [Value],
@@ -41,6 +52,9 @@ pub struct Interpreter<'a> {
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     builtin_cache: FastHashMap<String, Value>,
+    property_feedback: Vec<PropertyFeedback>,
+    property_ic_hits: u64,
+    property_ic_misses: u64,
     rng_state: u64,
     global_object: Option<ObjectId>,
     array_prototype: Option<ObjectId>,
@@ -66,6 +80,9 @@ impl<'a> Interpreter<'a> {
             host,
             host_cache: vec![None; module.constants.len()],
             builtin_cache: FastHashMap::default(),
+            property_feedback: vec![PropertyFeedback::Empty; module.constants.len()],
+            property_ic_hits: 0,
+            property_ic_misses: 0,
             rng_state: 0x9E37_79B9_7F4A_7C15,
             global_object: None,
             array_prototype: None,
@@ -73,6 +90,10 @@ impl<'a> Interpreter<'a> {
             depth: 0,
             step_limit,
         }
+    }
+
+    pub fn property_ic_stats(&self) -> (u64, u64) {
+        (self.property_ic_hits, self.property_ic_misses)
     }
 
     #[instrument(skip(self), fields(entry = self.module.entry))]
@@ -1065,7 +1086,7 @@ impl<'a> Interpreter<'a> {
                         }
                     };
                     let object = pop(&mut stack, span)?;
-                    let value = try_op!(self.get_property(object, &key, span));
+                    let value = try_op!(self.get_property_ic(object, index, &key, span));
                     push(&mut stack, value, span)?;
                 }
                 Op::SetProp => {
@@ -1119,7 +1140,7 @@ impl<'a> Interpreter<'a> {
                     };
                     let value = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
-                    try_op!(self.set_property(object, &key, value, span));
+                    try_op!(self.set_property_ic(object, index, &key, value, span));
                     push(&mut stack, value, span)?;
                 }
                 Op::NewArray => {

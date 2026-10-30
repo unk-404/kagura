@@ -1,10 +1,10 @@
-use kagura_object::{PropertyAttributes, PropertyKey, PropertyLocation};
+use kagura_object::{ObjectId, PropertyAttributes, PropertyKey, PropertyLocation};
 use kagura_support::Span;
 use kagura_value::Value;
 
 use crate::error::RuntimeError;
 
-use super::Interpreter;
+use super::{Interpreter, PropertyFeedback};
 
 impl<'a> Interpreter<'a> {
     pub(super) fn get_own_data_property(
@@ -36,6 +36,146 @@ impl<'a> Interpreter<'a> {
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
         };
         Ok(Some(value))
+    }
+
+    pub(super) fn get_property_ic(
+        &mut self,
+        object: Value,
+        feedback_index: u32,
+        key: &str,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if !object.is_object() || key == "length" {
+            self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+            return self.get_property(object, key, span);
+        }
+        let id = self.object_id(object, span)?;
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(PropertyFeedback::OwnData {
+            shape: cached_shape,
+            location,
+            ..
+        }) = self.property_feedback.get(feedback_index as usize).copied()
+            && cached_shape == shape
+        {
+            self.property_ic_hits = self.property_ic_hits.saturating_add(1);
+            return self.load_property_location(id, location, span);
+        }
+        self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+        let value = self.get_property(object, key, span)?;
+        let descriptor = self
+            .shapes
+            .lookup(shape, &PropertyKey::from_string(key))
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(slot) = self.property_feedback.get_mut(feedback_index as usize) {
+            *slot = match descriptor {
+                Some(descriptor) => PropertyFeedback::OwnData {
+                    shape,
+                    location: descriptor.location,
+                    writable: descriptor.attributes.writable,
+                },
+                None => PropertyFeedback::Empty,
+            };
+        }
+        Ok(value)
+    }
+
+    pub(super) fn set_property_ic(
+        &mut self,
+        object: Value,
+        feedback_index: u32,
+        key: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        if !object.is_object() || key == "length" {
+            self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+            return self.set_property(object, key, value, span);
+        }
+        let id = self.object_id(object, span)?;
+        if self
+            .objects
+            .is_frozen(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+            return self.set_property(object, key, value, span);
+        }
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(PropertyFeedback::OwnData {
+            shape: cached_shape,
+            location,
+            writable: true,
+        }) = self.property_feedback.get(feedback_index as usize).copied()
+            && cached_shape == shape
+        {
+            self.property_ic_hits = self.property_ic_hits.saturating_add(1);
+            return self.store_property_location(id, location, value, span);
+        }
+        self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+        self.set_property(object, key, value, span)?;
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let descriptor = self
+            .shapes
+            .lookup(shape, &PropertyKey::from_string(key))
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(slot) = self.property_feedback.get_mut(feedback_index as usize) {
+            *slot = match descriptor {
+                Some(descriptor) if descriptor.attributes.writable => PropertyFeedback::OwnData {
+                    shape,
+                    location: descriptor.location,
+                    writable: true,
+                },
+                _ => PropertyFeedback::Empty,
+            };
+        }
+        Ok(())
+    }
+
+    fn load_property_location(
+        &mut self,
+        object: ObjectId,
+        location: PropertyLocation,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        match location {
+            PropertyLocation::InObject(slot) => self
+                .objects
+                .get_slot(object, slot)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+            PropertyLocation::PropertyArray(index) => self
+                .objects
+                .get_property_array(object, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+        }
+    }
+
+    fn store_property_location(
+        &mut self,
+        object: ObjectId,
+        location: PropertyLocation,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        match location {
+            PropertyLocation::InObject(slot) => self
+                .objects
+                .set_slot(object, slot, value)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+            PropertyLocation::PropertyArray(index) => self
+                .objects
+                .set_property_array(object, index, value)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+        }
     }
 
     pub(super) fn get_property(
