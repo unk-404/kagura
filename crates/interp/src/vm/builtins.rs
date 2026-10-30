@@ -653,16 +653,28 @@ impl<'a> Interpreter<'a> {
             .shape(target_id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         let property = PropertyKey::from_string(key);
-        let existing = self
+        let existing_descriptor = self
             .shapes
             .lookup(shape, &property)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-            .is_some();
+            .map(|descriptor| descriptor.attributes);
+        let existing = existing_descriptor.is_some();
         let attributes = PropertyAttributes {
             writable,
             enumerable,
             configurable,
         };
+        if let Some(old_attributes) = existing_descriptor {
+            let old_value = self.get_property(target, key, span)?;
+            if !old_attributes.configurable
+                && (old_attributes != attributes || !self.same_value(old_value, value))
+            {
+                return Err(RuntimeError::type_error(
+                    "cannot redefine a non-configurable property",
+                    span,
+                ));
+            }
+        }
         let shape = if existing {
             self.shapes
                 .redescribe(shape, &property, attributes)

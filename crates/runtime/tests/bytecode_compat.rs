@@ -72,6 +72,8 @@ const OBJECT_FREEZE: &[u8] =
 const ARRAY_FREEZE: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/array_freeze.kbc");
 const OBJECT_SEAL: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/object_seal.kbc");
 const ARRAY_STATIC: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/array_static.kbc");
+const CONFIGURABLE_PROPERTY: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/configurable_property.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -468,4 +470,14 @@ fn executes_v1_array_static_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(ARRAY_STATIC, &mut host).unwrap();
     assert_eq!(host.output(), "1,2,3\na,b\n1,2\ntrue\nfalse\n");
+}
+
+#[test]
+fn executes_v1_configurable_property_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run_bytecode(CONFIGURABLE_PROPERTY, &mut host)
+        .unwrap();
+    assert_eq!(host.output(), "locked\n1\nsame\n");
 }

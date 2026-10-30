@@ -62,6 +62,7 @@ const OBJECT_FREEZE: &str = include_str!("../../../examples/object_freeze.ts");
 const ARRAY_FREEZE: &str = include_str!("../../../examples/array_freeze.ts");
 const OBJECT_SEAL: &str = include_str!("../../../examples/object_seal.ts");
 const ARRAY_STATIC: &str = include_str!("../../../examples/array_static.ts");
+const CONFIGURABLE_PROPERTY: &str = include_str!("../../../examples/configurable_property.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -616,6 +617,14 @@ fn runs_array_static_and_has_own() {
     let mut runtime = Runtime::default();
     runtime.run(ARRAY_STATIC, &mut host).unwrap();
     assert_eq!(host.output(), "1,2,3\na,b\n1,2\ntrue\nfalse\n");
+}
+
+#[test]
+fn enforces_non_configurable_properties() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(CONFIGURABLE_PROPERTY, &mut host).unwrap();
+    assert_eq!(host.output(), "locked\n1\nsame\n");
 }
 
 #[test]
