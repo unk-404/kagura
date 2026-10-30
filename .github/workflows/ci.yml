@@ -79,14 +79,19 @@ jobs:
   test262:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.test262 == 'true'
     runs-on: ubuntu-latest
+    env:
+      TEST262_COMMIT: 91c70759363c46557b694792bf34a2551a7af5ba
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
       - name: Download official test262
         run: |
           curl -L --fail --silent --show-error \
             -o /tmp/test262.tar.gz \
-            https://codeload.github.com/tc39/test262/tar.gz/refs/heads/main
+            "https://codeload.github.com/tc39/test262/tar.gz/${{ env.TEST262_COMMIT }}"
           mkdir -p /tmp/test262
           tar -xzf /tmp/test262.tar.gz -C /tmp/test262 --strip-components=1
       - name: Run test262
@@ -96,12 +101,12 @@ jobs:
           if [[ -n "${{ github.event.inputs.limit }}" ]]; then
             ARGS+=(--limit "${{ github.event.inputs.limit }}")
           fi
-          cargo run -q -p kagura-cli -- test262 /tmp/test262 --node --min-pass 1200 "${ARGS[@]}" | tee /tmp/test262-report.txt
+          cargo run -q -p kagura-cli -- test262 /tmp/test262 --node --json --min-pass 1200 "${ARGS[@]}" | tee /tmp/test262-report.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test262-report
-          path: /tmp/test262-report.txt
+          path: /tmp/test262-report.json
 
   wasm-build-only:
     runs-on: ubuntu-latest

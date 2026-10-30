@@ -59,6 +59,10 @@ enum Command {
         #[arg(long)]
         node: bool,
         #[arg(long)]
+        node_all: bool,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
         harness: Option<PathBuf>,
     },
 }
@@ -82,8 +86,20 @@ fn main() {
             verbose,
             min_pass,
             node,
+            node_all,
+            json,
             harness,
-        } => run_test262(path, limit, fail_on_error, verbose, min_pass, node, harness),
+        } => run_test262(
+            path,
+            limit,
+            fail_on_error,
+            verbose,
+            min_pass,
+            node,
+            node_all,
+            json,
+            harness,
+        ),
     };
     std::process::exit(code);
 }
@@ -222,6 +238,7 @@ fn report(source: &str, path: &str, diagnostic: &Diagnostic) -> i32 {
     1
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_test262(
     path: PathBuf,
     limit: Option<usize>,
@@ -229,13 +246,25 @@ fn run_test262(
     verbose: bool,
     min_pass: Option<usize>,
     node: bool,
+    node_all: bool,
+    json: bool,
     harness: Option<PathBuf>,
 ) -> i32 {
     let worker = std::thread::Builder::new()
         .name("kagura-test262".into())
         .stack_size(64 * 1024 * 1024)
         .spawn(move || {
-            run_test262_inner(path, limit, fail_on_error, verbose, min_pass, node, harness)
+            run_test262_inner(
+                path,
+                limit,
+                fail_on_error,
+                verbose,
+                min_pass,
+                node,
+                node_all,
+                json,
+                harness,
+            )
         });
     match worker {
         Ok(worker) => worker.join().unwrap_or(2),
@@ -246,6 +275,7 @@ fn run_test262(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_test262_inner(
     path: PathBuf,
     limit: Option<usize>,
@@ -253,8 +283,11 @@ fn run_test262_inner(
     verbose: bool,
     min_pass: Option<usize>,
     node: bool,
+    node_all: bool,
+    json: bool,
     harness: Option<PathBuf>,
 ) -> i32 {
+    let oracle_enabled = node || node_all;
     let cases = match discover_test262(&path) {
         Ok(cases) => cases,
         Err(error) => {
@@ -263,7 +296,7 @@ fn run_test262_inner(
         }
     };
     let selected = limit.map_or(cases.len(), |limit| limit.min(cases.len()));
-    let harness = if node {
+    let harness = if oracle_enabled {
         let harness = harness.or_else(|| find_harness(&path));
         let Some(harness) = harness else {
             eprintln!("kagura: cannot find test262 harness (assert.js/sta.js)");
@@ -286,6 +319,8 @@ fn run_test262_inner(
     let mut skipped = 0usize;
     let mut oracle_checked = 0usize;
     let mut oracle_matched = 0usize;
+    let mut oracle_mismatched = 0usize;
+    let mut oracle_both_failed = 0usize;
     let mut oracle_failures = Vec::new();
     let mut failures = Vec::new();
     let mut skip_reasons: BTreeMap<String, usize> = BTreeMap::new();
@@ -295,7 +330,8 @@ fn run_test262_inner(
         }
         let report = run_test262_case(case);
         if let Some(harness) = &harness
-            && report.outcome == Outcome::Pass
+            && report.outcome != Outcome::Skip
+            && (node_all || report.outcome == Outcome::Pass)
         {
             oracle_checked += 1;
             let oracle = match kagura_conformance::node::run_case(case, harness) {
@@ -305,22 +341,30 @@ fn run_test262_inner(
                     return 2;
                 }
             };
-            let matched = if case.metadata.negative.is_some() {
-                !oracle.success
-            } else {
+            let negative = case.metadata.negative.is_some();
+            let matched = if negative {
+                report.outcome == Outcome::Pass && !oracle.success
+            } else if report.outcome == Outcome::Pass {
                 oracle.success && oracle.stdout == report.output
+            } else {
+                false
             };
             if matched {
                 oracle_matched += 1;
-            } else if oracle_failures.len() < 25 {
-                oracle_failures.push(format!(
-                    "{}: kagura={:?} node_success={} node_stdout={:?} node_stderr={:?}",
-                    report.path.display(),
-                    report.outcome,
-                    oracle.success,
-                    oracle.stdout,
-                    oracle.stderr.lines().next().unwrap_or_default()
-                ));
+            } else if report.outcome == Outcome::Fail && !oracle.success {
+                oracle_both_failed += 1;
+            } else {
+                oracle_mismatched += 1;
+                if oracle_failures.len() < 25 {
+                    oracle_failures.push(format!(
+                        "{}: kagura={:?} node_success={} node_stdout={:?} node_stderr={:?}",
+                        report.path.display(),
+                        report.outcome,
+                        oracle.success,
+                        oracle.stdout,
+                        oracle.stderr.lines().next().unwrap_or_default()
+                    ));
+                }
             }
         }
         match report.outcome {
@@ -337,35 +381,110 @@ fn run_test262_inner(
             }
         }
     }
-    println!(
-        "test262: {selected} selected, {} executed, {passed} passed, {failed} failed, {skipped} skipped",
-        passed + failed
-    );
-    for (reason, count) in skip_reasons.iter().take(10) {
-        println!("skip {count}: {reason}");
-    }
-    for failure in &failures {
-        println!("{failure}");
-    }
-    if harness.is_some() {
-        println!(
-            "oracle node: {oracle_checked} checked, {oracle_matched} matched, {} mismatched",
-            oracle_checked.saturating_sub(oracle_matched)
+    if json {
+        print_test262_json(
+            selected,
+            passed,
+            failed,
+            skipped,
+            &skip_reasons,
+            &failures,
+            harness.is_some(),
+            oracle_checked,
+            oracle_matched,
+            oracle_mismatched,
+            oracle_both_failed,
+            &oracle_failures,
         );
-        for failure in &oracle_failures {
+    } else {
+        println!(
+            "test262: {selected} selected, {} executed, {passed} passed, {failed} failed, {skipped} skipped",
+            passed + failed
+        );
+        for (reason, count) in skip_reasons.iter().take(10) {
+            println!("skip {count}: {reason}");
+        }
+        for failure in &failures {
             println!("{failure}");
+        }
+        if harness.is_some() {
+            println!(
+                "oracle node: {oracle_checked} checked, {oracle_matched} matched, {oracle_mismatched} mismatched, {oracle_both_failed} both-failed"
+            );
+            for failure in &oracle_failures {
+                println!("{failure}");
+            }
         }
     }
     if failed > 0 && fail_on_error {
         return 1;
     }
-    if oracle_checked != oracle_matched && fail_on_error {
+    if oracle_mismatched > 0 && fail_on_error {
         return 1;
     }
     if min_pass.is_some_and(|minimum| passed < minimum) {
         return 1;
     }
     0
+}
+
+#[allow(clippy::too_many_arguments)]
+fn print_test262_json(
+    selected: usize,
+    passed: usize,
+    failed: usize,
+    skipped: usize,
+    skip_reasons: &BTreeMap<String, usize>,
+    failures: &[String],
+    oracle_enabled: bool,
+    oracle_checked: usize,
+    oracle_matched: usize,
+    oracle_mismatched: usize,
+    oracle_both_failed: usize,
+    oracle_failures: &[String],
+) {
+    let skip_reasons = skip_reasons
+        .iter()
+        .map(|(reason, count)| format!("\"{}\":{count}", json_escape(reason)))
+        .collect::<Vec<_>>()
+        .join(",");
+    let failures = failures
+        .iter()
+        .map(|failure| format!("\"{}\"", json_escape(failure)))
+        .collect::<Vec<_>>()
+        .join(",");
+    let oracle_failures = oracle_failures
+        .iter()
+        .map(|failure| format!("\"{}\"", json_escape(failure)))
+        .collect::<Vec<_>>()
+        .join(",");
+    let oracle = if oracle_enabled {
+        format!(
+            "{{\"checked\":{oracle_checked},\"matched\":{oracle_matched},\"mismatched\":{oracle_mismatched},\"both_failed\":{oracle_both_failed},\"mismatches\":[{oracle_failures}]}}"
+        )
+    } else {
+        "null".to_owned()
+    };
+    println!(
+        "{{\"selected\":{selected},\"executed\":{},\"passed\":{passed},\"failed\":{failed},\"skipped\":{skipped},\"skip_reasons\":{{{skip_reasons}}},\"failures\":[{failures}],\"oracle\":{oracle}}}",
+        passed + failed
+    );
+}
+
+fn json_escape(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            ch if ch.is_control() => escaped.push_str(&format!("\\u{:04x}", ch as u32)),
+            ch => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 fn find_harness(root: &Path) -> Option<PathBuf> {

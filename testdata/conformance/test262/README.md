@@ -7,17 +7,21 @@ is needed.
 
 ## Full corpus
 
+The corpus is pinned for reproducible reports:
+
 ```sh
+TEST262_COMMIT=91c70759363c46557b694792bf34a2551a7af5ba
 curl -L --fail -o /tmp/test262.tar.gz \
-  https://codeload.github.com/tc39/test262/tar.gz/refs/heads/main
+  "https://codeload.github.com/tc39/test262/tar.gz/$TEST262_COMMIT"
 mkdir -p /tmp/test262
 tar -xzf /tmp/test262.tar.gz -C /tmp/test262 --strip-components=1
 
 cargo run -q -p kagura-cli -- test262 /tmp/test262
 ```
 
-On Windows, use `curl.exe` and `tar.exe` with a local output directory instead
-of `/tmp`.
+The Node oracle pins Node 22.14.0 in CI; install the same version locally for
+comparable oracle results. On Windows, use `curl.exe` and `tar.exe` with a local
+output directory instead of `/tmp`.
 
 Useful flags:
 
@@ -27,11 +31,25 @@ Useful flags:
 - `--min-pass N` exits non-zero when fewer than N cases pass.
 - `--node` runs every passing case through Node.js and compares the observable
   stdout and completion status.
+- `--node-all` also runs failing Kagura cases through Node and classifies
+  `kagura_fail_node_pass`, `both_failed`, and other disagreements.
+- `--json` emits a machine-readable report instead of the human summary.
 - `--harness DIR` points at the test262 `harness/` directory; by default it is
   discovered beside the corpus root.
 
 Each case has a bounded VM step budget, so a syntax feature that is not
 implemented cannot hang the report.
+
+## Machine-readable report
+
+`--json` emits one object with:
+
+- `selected`, `executed`, `passed`, `failed`, `skipped`
+- `skip_reasons` grouped by reason
+- `failures` (first 25)
+- `oracle`: `checked`, `matched`, `mismatched`, `both_failed`, and mismatches
+
+CI uploads this JSON as the `test262-report` artifact.
 
 ## What the test means
 
@@ -72,7 +90,8 @@ gross regressions without pretending the whole suite is green.
 
 ## Report baseline
 
-Local full-corpus run on 2026-10-30 against test262 `main`:
+Local full-corpus run on 2026-10-30 against pinned test262
+`91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
 54029 selected, 13080 executed, 1390 passed, 11690 failed, 40949 skipped

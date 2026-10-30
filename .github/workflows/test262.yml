@@ -20,14 +20,19 @@ on:
 jobs:
   full:
     runs-on: ubuntu-latest
+    env:
+      TEST262_COMMIT: 91c70759363c46557b694792bf34a2551a7af5ba
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
       - name: Download official test262
         run: |
           curl -L --fail --silent --show-error \
             -o /tmp/test262.tar.gz \
-            https://codeload.github.com/tc39/test262/tar.gz/refs/heads/main
+            "https://codeload.github.com/tc39/test262/tar.gz/${{ env.TEST262_COMMIT }}"
           mkdir -p /tmp/test262
           tar -xzf /tmp/test262.tar.gz -C /tmp/test262 --strip-components=1
       - name: Run full corpus
@@ -39,9 +44,9 @@ jobs:
           fi
           MIN_PASS="${{ github.event.inputs.min_pass }}"
           MIN_PASS="${MIN_PASS:-1200}"
-          cargo run -q -p kagura-cli -- test262 /tmp/test262 --node --min-pass "$MIN_PASS" "${ARGS[@]}" | tee /tmp/test262-report.txt
+          cargo run -q -p kagura-cli -- test262 /tmp/test262 --node --json --min-pass "$MIN_PASS" "${ARGS[@]}" | tee /tmp/test262-report.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test262-report
-          path: /tmp/test262-report.txt
+          path: /tmp/test262-report.json
