@@ -43,6 +43,14 @@ pub struct ClassMethod {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ClassField {
+    pub name: String,
+    pub value: Option<Expr>,
+    pub is_static: bool,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ForInit {
     Var(VarDecl),
     Expr(Expr),
@@ -77,6 +85,7 @@ pub enum Stmt {
     VarList(Vec<VarDecl>),
     Class {
         name: String,
+        fields: Vec<ClassField>,
         methods: Vec<ClassMethod>,
         span: Span,
     },

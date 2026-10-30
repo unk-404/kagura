@@ -1,4 +1,4 @@
-use kagura_ast::{ArrowBody, ClassMethod, Expr, FuncDecl, Param, Stmt};
+use kagura_ast::{ArrowBody, ClassField, ClassMethod, Expr, FuncDecl, Param, Stmt};
 use kagura_support::Span;
 
 use crate::error::ParseError;
@@ -140,6 +140,7 @@ impl Parser {
             ));
         }
         self.expect(&TokenKind::LBrace, "expected '{' after class name")?;
+        let mut fields = Vec::new();
         let mut methods = Vec::new();
         while !self.at(&TokenKind::RBrace) {
             let method_start = self.peek().span;
@@ -152,10 +153,26 @@ impl Parser {
                 self.advance();
             }
             let name_token = self.expect_ident("expected method name")?;
-            let method_name = match name_token.kind {
+            let member_name = match name_token.kind {
                 TokenKind::Ident(name) => name,
                 _ => unreachable!(),
             };
+            if !self.at(&TokenKind::LParen) {
+                let value = if self.eat(&TokenKind::Assign) {
+                    Some(self.parse_expr()?)
+                } else {
+                    None
+                };
+                let end = value.as_ref().map(Expr::span).unwrap_or(name_token.span);
+                self.expect(&TokenKind::Semi, "expected ';' after class field")?;
+                fields.push(ClassField {
+                    name: member_name,
+                    value,
+                    is_static,
+                    span: method_start.merge(end),
+                });
+                continue;
+            }
             let params = self.parse_params("expected '(' after method name")?;
             let body = self.parse_block()?;
             let end = body
@@ -163,7 +180,7 @@ impl Parser {
                 .map(Stmt::span)
                 .unwrap_or_else(|| name_token.span);
             methods.push(ClassMethod {
-                name: method_name,
+                name: member_name,
                 params,
                 body,
                 is_static,
@@ -173,6 +190,7 @@ impl Parser {
         let end = self.expect(&TokenKind::RBrace, "expected '}' after class body")?;
         Ok(Stmt::Class {
             name,
+            fields,
             methods,
             span: start.merge(end.span),
         })

@@ -964,6 +964,18 @@ impl<'a> Interpreter<'a> {
                     let object = pop(&mut stack, span)?;
                     try_op!(self.set_property(object, &key, value, span));
                 }
+                Op::SetPropNonEnum => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let key = match self.module.constants.get(index as usize) {
+                        Some(Const::String(key)) => key.clone(),
+                        _ => {
+                            return Err(RuntimeError::runtime("invalid property key", span));
+                        }
+                    };
+                    let value = pop(&mut stack, span)?;
+                    let object = pop(&mut stack, span)?;
+                    try_op!(self.set_non_enumerable_property(object, &key, value, span));
+                }
                 Op::SetPropValue => {
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let key = match self.module.constants.get(index as usize) {

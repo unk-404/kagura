@@ -1048,6 +1048,19 @@ fn runs_basic_class_declarations() {
 }
 
 #[test]
+fn runs_public_class_fields() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "class Counter { count = 0; step = 2; static total = 10; constructor(start) { this.count = start; } add() { this.count += this.step; return this.count; } } var c = new Counter(1); console.log(c.add(), c.count, Counter.total, Object.keys(Counter.prototype).length);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "3 3 10 0\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

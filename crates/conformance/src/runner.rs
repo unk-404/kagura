@@ -69,6 +69,8 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
         "object-rest",
         "destructuring-assignment",
         "class",
+        "class-fields-public",
+        "class-static-fields-public",
         "string-trimming",
         "Array.prototype.reduce",
         "Array.prototype.reduceRight",

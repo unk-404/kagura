@@ -319,9 +319,10 @@ impl<'a> FunctionCompiler<'a> {
             Stmt::Destructure(decl) => self.compile_destructure(decl),
             Stmt::Class {
                 name,
+                fields,
                 methods,
                 span,
-            } => self.compile_class(name, methods, *span),
+            } => self.compile_class(name, fields, methods, *span),
             Stmt::Func(decl) => {
                 if self.strict && matches!(decl.name.as_str(), "eval" | "arguments") {
                     return Err(CompileError::new(
@@ -1010,6 +1011,7 @@ impl<'a> FunctionCompiler<'a> {
     fn compile_class(
         &mut self,
         name: &str,
+        fields: &[kagura_ast::ClassField],
         methods: &[kagura_ast::ClassMethod],
         span: Span,
     ) -> Result<(), CompileError> {
@@ -1025,18 +1027,56 @@ impl<'a> FunctionCompiler<'a> {
                 .declare(name, false, span)
                 .ok_or_else(|| CompileError::new(format!("duplicate class '{name}'"), span))?,
         };
+        let instance_fields = fields
+            .iter()
+            .filter(|field| !field.is_static)
+            .map(|field| Stmt::Expr {
+                expr: Expr::Assign {
+                    target: AssignTarget::Member {
+                        object: Box::new(Expr::This { span: field.span }),
+                        property: field.name.clone(),
+                    },
+                    value: Box::new(
+                        field
+                            .value
+                            .clone()
+                            .unwrap_or(Expr::Undefined { span: field.span }),
+                    ),
+                    span: field.span,
+                },
+                span: field.span,
+            })
+            .collect::<Vec<_>>();
+        let constructor_body =
+            if let Some(constructor) = methods.iter().find(|method| method.name == "constructor") {
+                let mut body = instance_fields.clone();
+                body.extend(constructor.body.iter().cloned());
+                body
+            } else {
+                instance_fields
+            };
         if let Some(constructor) = methods.iter().find(|method| method.name == "constructor") {
             self.compile_closure(
                 name,
                 &constructor.params,
-                &constructor.body,
+                &constructor_body,
                 None,
                 constructor.span,
             )?;
         } else {
-            self.compile_closure(name, &[], &[], None, span)?;
+            self.compile_closure(name, &[], &constructor_body, None, span)?;
         }
         self.emit_u16(Op::StoreLocal, slot, span);
+        for field in fields.iter().filter(|field| field.is_static) {
+            self.emit_u16(Op::LoadLocal, slot, span);
+            if let Some(value) = &field.value {
+                self.compile_expr(value)?;
+            } else {
+                self.emit_const(Const::Undefined, field.span);
+            }
+            let key = self.add_const(Const::String(field.name.clone()));
+            self.emit_u32(Op::SetProp, key, field.span);
+        }
         for method in methods {
             if method.name == "constructor" {
                 continue;
@@ -1054,7 +1094,7 @@ impl<'a> FunctionCompiler<'a> {
                 method.span,
             )?;
             let key = self.add_const(Const::String(method.name.clone()));
-            self.emit_u32(Op::SetProp, key, method.span);
+            self.emit_u32(Op::SetPropNonEnum, key, method.span);
         }
         Ok(())
     }
