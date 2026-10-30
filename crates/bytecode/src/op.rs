@@ -38,6 +38,8 @@ pub enum Op {
     GetIndex = 34,
     SetIndexValue = 35,
     GcCheck = 36,
+    LoadHole = 37,
+    In = 38,
 }
 
 impl Op {
@@ -80,6 +82,8 @@ impl Op {
             34 => Self::GetIndex,
             35 => Self::SetIndexValue,
             36 => Self::GcCheck,
+            37 => Self::LoadHole,
+            38 => Self::In,
             _ => return None,
         })
     }

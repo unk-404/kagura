@@ -419,6 +419,7 @@ impl Parser {
                 TokenKind::Le => BinaryOp::Le,
                 TokenKind::Gt => BinaryOp::Gt,
                 TokenKind::Ge => BinaryOp::Ge,
+                TokenKind::In => BinaryOp::In,
                 _ => break,
             };
             self.advance();

@@ -10,6 +10,7 @@ const ARRAYS: &str = include_str!("../../../examples/arrays.ts");
 const ARRAYS_LENGTH: &str = include_str!("../../../examples/arrays_length.ts");
 const STRINGS: &str = include_str!("../../../examples/strings.ts");
 const ARRAYS_HOLES: &str = include_str!("../../../examples/arrays_holes.ts");
+const ARRAYS_IN: &str = include_str!("../../../examples/arrays_in.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -73,6 +74,14 @@ fn preserves_array_holes() {
     let mut runtime = Runtime::default();
     runtime.run(ARRAYS_HOLES, &mut host).unwrap();
     assert_eq!(host.output(), "3\nundefined\n1\n");
+}
+
+#[test]
+fn runs_in_operator() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARRAYS_IN, &mut host).unwrap();
+    assert_eq!(host.output(), "true\nfalse\ntrue\ntrue\ntrue\nfalse\n");
 }
 
 #[test]

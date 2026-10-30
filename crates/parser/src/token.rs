@@ -22,6 +22,7 @@ pub(crate) enum TokenKind {
     Type,
     Interface,
     As,
+    In,
     LParen,
     RParen,
     LBrace,

@@ -126,6 +126,9 @@ impl<'a> Interpreter<'a> {
                     };
                     push(&mut stack, value, span)?;
                 }
+                Op::LoadHole => {
+                    push(&mut stack, Value::hole(), span)?;
+                }
                 Op::LoadLocal => {
                     let slot = read_u16(&function.code, &mut pc, span)? as usize;
                     if slot >= locals.len() {
@@ -197,6 +200,12 @@ impl<'a> Interpreter<'a> {
                         }),
                         span,
                     )?;
+                }
+                Op::In => {
+                    let target = pop(&mut stack, span)?;
+                    let key = pop(&mut stack, span)?;
+                    let found = self.has_property(key, target, span)?;
+                    push(&mut stack, Value::boolean(found), span)?;
                 }
                 Op::Neg => {
                     let value = pop(&mut stack, span)?;
@@ -685,6 +694,47 @@ impl<'a> Interpreter<'a> {
                 .unwrap_or(false);
         }
         self.heap.strict_eq(left, right)
+    }
+
+    fn has_property(
+        &mut self,
+        key: Value,
+        target: Value,
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        if target.is_string() {
+            return Err(RuntimeError::type_error(
+                "right-hand side of 'in' is not an object",
+                span,
+            ));
+        }
+        let id = self.object_id(target, span)?;
+        let key = self.heap.to_js_string(key);
+        if self
+            .objects
+            .is_array(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            if key == "length" {
+                return Ok(true);
+            }
+            if let Ok(index) = key.parse::<u32>() {
+                return self
+                    .objects
+                    .array_has(id, index)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+            }
+        }
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let key = PropertyKey::from_string(key);
+        Ok(self
+            .shapes
+            .lookup(shape, &key)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            .is_some())
     }
 }
 

@@ -8,8 +8,8 @@ const OBJECTS_WRITE: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/objects_write.kbc");
 const OBJECTS_MANY: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/objects_many.kbc");
 const ARRAYS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/arrays.kbc");
-const ARRAYS_HOLES: &[u8] =
-    include_bytes!("../../../testdata/compat/bytecode/v1/arrays_holes.kbc");
+const ARRAYS_HOLES: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/arrays_holes.kbc");
+const ARRAYS_IN: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/arrays_in.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -67,6 +67,14 @@ fn executes_v1_array_holes_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(ARRAYS_HOLES, &mut host).unwrap();
     assert_eq!(host.output(), "3\nundefined\n1\n");
+}
+
+#[test]
+fn executes_v1_in_operator_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(ARRAYS_IN, &mut host).unwrap();
+    assert_eq!(host.output(), "true\nfalse\ntrue\ntrue\ntrue\nfalse\n");
 }
 
 #[test]

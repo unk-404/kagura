@@ -10,6 +10,7 @@ const SPECIAL_UNDEFINED: u32 = 0;
 const SPECIAL_NULL: u32 = 1;
 const SPECIAL_TRUE: u32 = 2;
 const SPECIAL_FALSE: u32 = 3;
+const SPECIAL_HOLE: u32 = 4;
 
 pub const SMI_MIN: i32 = -(1 << 28);
 pub const SMI_MAX: i32 = (1 << 28) - 1;
@@ -36,6 +37,7 @@ impl std::fmt::Debug for Value {
             Some(SPECIAL_NULL) => f.write_str("null"),
             Some(SPECIAL_TRUE) => f.write_str("true"),
             Some(SPECIAL_FALSE) => f.write_str("false"),
+            Some(SPECIAL_HOLE) => f.write_str("<hole>"),
             _ => f.write_str("<invalid>"),
         }
     }
@@ -78,6 +80,10 @@ impl Value {
     pub const fn boolean(value: bool) -> Self {
         let special = if value { SPECIAL_TRUE } else { SPECIAL_FALSE };
         Self((special << SHIFT) | TAG_SPECIAL)
+    }
+
+    pub const fn hole() -> Self {
+        Self((SPECIAL_HOLE << SHIFT) | TAG_SPECIAL)
     }
 
     pub const fn is_smi(self) -> bool {
@@ -129,6 +135,10 @@ impl Value {
 
     pub fn is_null(self) -> bool {
         self == Self::null()
+    }
+
+    pub fn is_hole(self) -> bool {
+        self == Self::hole()
     }
 
     pub fn as_boolean(self) -> Option<bool> {

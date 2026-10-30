@@ -29,6 +29,7 @@ pub enum BinaryOp {
     StrictEq,
     NotEq,
     StrictNotEq,
+    In,
     And,
     Or,
 }

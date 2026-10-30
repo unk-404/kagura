@@ -237,7 +237,31 @@ impl ObjectHeap {
         }
         let raw = read_u32(&self.arena, block + BLOCK_HEADER + index * 4)
             .ok_or(ObjectHeapError::InvalidArray)?;
-        Ok(Value::from_raw(raw))
+        let value = Value::from_raw(raw);
+        if value.is_hole() {
+            Ok(Value::undefined())
+        } else {
+            Ok(value)
+        }
+    }
+
+    pub fn array_has(&self, object: ObjectId, index: u32) -> Result<bool, ObjectHeapError> {
+        if !self.is_array(object)? {
+            return Err(ObjectHeapError::NotArray);
+        }
+        let block = read_u32(&self.arena, object.index() + ELEMENTS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        if block == NO_BLOCK {
+            return Ok(false);
+        }
+        let length = read_u32(&self.arena, block + BLOCK_LENGTH_OFFSET)
+            .ok_or(ObjectHeapError::InvalidArray)?;
+        if index >= length {
+            return Ok(false);
+        }
+        let raw = read_u32(&self.arena, block + BLOCK_HEADER + index * 4)
+            .ok_or(ObjectHeapError::InvalidArray)?;
+        Ok(!Value::from_raw(raw).is_hole())
     }
 
     pub fn array_set(

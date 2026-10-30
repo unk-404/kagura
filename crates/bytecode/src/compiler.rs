@@ -436,7 +436,7 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit(Op::Dup, *span);
                     match element {
                         Some(element) => self.compile_expr(element)?,
-                        None => self.emit_const(Const::Undefined, *span),
+                        None => self.emit(Op::LoadHole, *span),
                     }
                     self.emit(Op::ArrayPush, *span);
                 }
@@ -565,6 +565,7 @@ fn binary_op(op: BinaryOp) -> Op {
         BinaryOp::StrictEq => Op::StrictEq,
         BinaryOp::NotEq => Op::Ne,
         BinaryOp::StrictNotEq => Op::StrictNotEq,
+        BinaryOp::In => Op::In,
         BinaryOp::And | BinaryOp::Or => unreachable!(),
     }
 }
