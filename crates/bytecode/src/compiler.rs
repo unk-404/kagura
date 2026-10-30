@@ -35,7 +35,10 @@ impl Compiler {
             match stmt {
                 Stmt::Var(decl) => script.predeclare_or_error(
                     &decl.name,
-                    matches!(decl.kind, kagura_ast::VarKind::Let),
+                    matches!(
+                        decl.kind,
+                        kagura_ast::VarKind::Var | kagura_ast::VarKind::Let
+                    ),
                     decl.span,
                 )?,
                 Stmt::Func(decl) => {
@@ -393,7 +396,10 @@ impl<'a> FunctionCompiler<'a> {
                                 };
                                 let mut bindings = vec![Local {
                                     name: decl.name.clone(),
-                                    mutable: matches!(decl.kind, kagura_ast::VarKind::Let),
+                                    mutable: matches!(
+                                        decl.kind,
+                                        kagura_ast::VarKind::Var | kagura_ast::VarKind::Let
+                                    ),
                                     predeclared: false,
                                     active: true,
                                 }];
@@ -753,7 +759,10 @@ impl<'a> FunctionCompiler<'a> {
         } else {
             let Some(slot) = self.declare(
                 &decl.name,
-                matches!(decl.kind, kagura_ast::VarKind::Let),
+                matches!(
+                    decl.kind,
+                    kagura_ast::VarKind::Var | kagura_ast::VarKind::Let
+                ),
                 decl.span,
             ) else {
                 return Err(CompileError::new(
@@ -1003,6 +1012,84 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit(Op::SetIndexValue, *span);
                 }
             },
+            Expr::Update {
+                target,
+                prefix,
+                decrement,
+                span,
+            } => {
+                let op = if *decrement { Op::Sub } else { Op::Add };
+                match target {
+                    AssignTarget::Ident(name) => {
+                        let Some(resolved) = self.resolve(name) else {
+                            return Err(CompileError::new(
+                                format!("unknown variable '{name}'"),
+                                *span,
+                            ));
+                        };
+                        if !resolved.mutable() {
+                            return Err(CompileError::new(
+                                format!("update of constant '{name}'"),
+                                *span,
+                            ));
+                        }
+                        self.emit_load_resolved(resolved, *span);
+                        if *prefix {
+                            self.emit_const(Const::Number(1.0), *span);
+                            self.emit(op, *span);
+                            self.emit(Op::Dup, *span);
+                            self.emit_store_resolved(resolved, *span);
+                        } else {
+                            self.emit(Op::Dup, *span);
+                            self.emit_const(Const::Number(1.0), *span);
+                            self.emit(op, *span);
+                            self.emit_store_resolved(resolved, *span);
+                        }
+                    }
+                    AssignTarget::Member { object, property } => {
+                        self.compile_expr(object)?;
+                        self.emit(Op::Dup, *span);
+                        let key = self.add_const(Const::String(property.clone()));
+                        self.emit_u32(Op::GetProp, key, *span);
+                        if !*prefix {
+                            self.emit(Op::Dup, *span);
+                        }
+                        self.emit_const(Const::Number(1.0), *span);
+                        self.emit(op, *span);
+                        if *prefix {
+                            self.emit_u32(Op::SetPropValue, key, *span);
+                        } else {
+                            self.emit_u32(Op::SetPropValue, key, *span);
+                            self.emit(Op::Pop, *span);
+                        }
+                    }
+                    AssignTarget::Index { object, index } => {
+                        let object_slot = self.hidden_local(*span);
+                        let index_slot = self.hidden_local(*span);
+                        let value_slot = self.hidden_local(*span);
+                        self.compile_expr(object)?;
+                        self.emit_u16(Op::StoreLocal, object_slot, *span);
+                        self.compile_expr(index)?;
+                        self.emit_u16(Op::StoreLocal, index_slot, *span);
+                        self.emit_u16(Op::LoadLocal, object_slot, *span);
+                        self.emit_u16(Op::LoadLocal, index_slot, *span);
+                        self.emit(Op::GetIndex, *span);
+                        if !*prefix {
+                            self.emit(Op::Dup, *span);
+                        }
+                        self.emit_const(Const::Number(1.0), *span);
+                        self.emit(op, *span);
+                        self.emit_u16(Op::StoreLocal, value_slot, *span);
+                        self.emit_u16(Op::LoadLocal, object_slot, *span);
+                        self.emit_u16(Op::LoadLocal, index_slot, *span);
+                        self.emit_u16(Op::LoadLocal, value_slot, *span);
+                        self.emit(Op::SetIndexValue, *span);
+                        if !*prefix {
+                            self.emit(Op::Pop, *span);
+                        }
+                    }
+                }
+            }
             Expr::Conditional {
                 condition,
                 then_branch,
@@ -1179,6 +1266,34 @@ impl<'a> FunctionCompiler<'a> {
         true
     }
 
+    fn emit_load_resolved(&mut self, resolved: Resolved, span: Span) {
+        match resolved {
+            Resolved::Local { slot, .. } => self.emit_u16(Op::LoadLocal, slot, span),
+            Resolved::Capture { level, slot, .. } => {
+                self.emit_u16(Op::LoadCapture, level, span);
+                self.emit_u16_raw(slot, span);
+            }
+            Resolved::Iteration { depth, slot, .. } => {
+                self.emit_u16(Op::LoadIter, depth, span);
+                self.emit_u16_raw(slot, span);
+            }
+        }
+    }
+
+    fn emit_store_resolved(&mut self, resolved: Resolved, span: Span) {
+        match resolved {
+            Resolved::Local { slot, .. } => self.emit_u16(Op::StoreLocal, slot, span),
+            Resolved::Capture { level, slot, .. } => {
+                self.emit_u16(Op::StoreCapture, level, span);
+                self.emit_u16_raw(slot, span);
+            }
+            Resolved::Iteration { depth, slot, .. } => {
+                self.emit_u16(Op::StoreIter, depth, span);
+                self.emit_u16_raw(slot, span);
+            }
+        }
+    }
+
     fn declare(&mut self, name: &str, mutable: bool, _span: Span) -> Option<u16> {
         let base = *self.scopes.last().expect("scope");
         if self.locals[base..]
@@ -1348,6 +1463,7 @@ fn binary_op(op: BinaryOp) -> Op {
         BinaryOp::NotEq => Op::Ne,
         BinaryOp::StrictNotEq => Op::StrictNotEq,
         BinaryOp::In => Op::In,
+        BinaryOp::InstanceOf => Op::InstanceOf,
         BinaryOp::And | BinaryOp::Or => unreachable!(),
     }
 }

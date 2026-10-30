@@ -10,6 +10,7 @@ pub enum TypeAnn {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VarKind {
+    Var,
     Let,
     Const,
 }
@@ -30,6 +31,7 @@ pub enum BinaryOp {
     NotEq,
     StrictNotEq,
     In,
+    InstanceOf,
     And,
     Or,
 }

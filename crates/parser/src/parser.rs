@@ -39,11 +39,11 @@ impl Parser {
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
         let kind = self.peek().kind.clone();
         match kind {
-            TokenKind::Let | TokenKind::Const => {
-                let kind = if matches!(kind, TokenKind::Let) {
-                    VarKind::Let
-                } else {
-                    VarKind::Const
+            TokenKind::Var | TokenKind::Let | TokenKind::Const => {
+                let kind = match kind {
+                    TokenKind::Var => VarKind::Var,
+                    TokenKind::Let => VarKind::Let,
+                    _ => VarKind::Const,
                 };
                 Ok(Stmt::Var(self.parse_var_decl(kind, true)?))
             }
@@ -166,11 +166,14 @@ impl Parser {
     fn parse_for(&mut self) -> Result<Stmt, ParseError> {
         let start = self.advance().span;
         self.expect(&TokenKind::LParen, "expected '(' after for")?;
-        let init = if self.at(&TokenKind::Let) || self.at(&TokenKind::Const) {
-            let kind = if self.at(&TokenKind::Let) {
-                VarKind::Let
-            } else {
-                VarKind::Const
+        let init = if matches!(
+            self.peek().kind,
+            TokenKind::Var | TokenKind::Let | TokenKind::Const
+        ) {
+            let kind = match self.peek().kind {
+                TokenKind::Var => VarKind::Var,
+                TokenKind::Let => VarKind::Let,
+                _ => VarKind::Const,
             };
             let decl = self.parse_var_decl(kind, false)?;
             self.expect(&TokenKind::Semi, "expected ';' after for initializer")?;
@@ -375,6 +378,7 @@ impl Parser {
                 TokenKind::Gt => BinaryOp::Gt,
                 TokenKind::Ge => BinaryOp::Ge,
                 TokenKind::In => BinaryOp::In,
+                TokenKind::InstanceOf => BinaryOp::InstanceOf,
                 _ => break,
             };
             self.advance();
@@ -436,6 +440,25 @@ impl Parser {
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
         if self.at(&TokenKind::New) {
             return self.parse_new();
+        }
+        if matches!(self.peek().kind, TokenKind::Plus | TokenKind::Minus)
+            && self
+                .tokens
+                .get(self.pos + 1)
+                .is_some_and(|token| token.kind == self.peek().kind)
+        {
+            let decrement = self.peek().kind == TokenKind::Minus;
+            let start = self.advance().span;
+            self.advance();
+            let target = self.parse_postfix()?;
+            let span = start.merge(target.span());
+            let target = self.expr_to_target(target, span)?;
+            return Ok(Expr::Update {
+                target,
+                prefix: true,
+                decrement,
+                span,
+            });
         }
         let op = match self.peek().kind {
             TokenKind::Minus => Some(UnaryOp::Neg),
@@ -508,6 +531,24 @@ impl Parser {
                     span,
                 };
                 continue;
+            }
+            if matches!(self.peek().kind, TokenKind::Plus | TokenKind::Minus)
+                && self
+                    .tokens
+                    .get(self.pos + 1)
+                    .is_some_and(|token| token.kind == self.peek().kind)
+            {
+                let decrement = self.peek().kind == TokenKind::Minus;
+                self.advance();
+                let end = self.advance().span;
+                let span = expr.span().merge(end);
+                let target = self.expr_to_target(expr, span)?;
+                return Ok(Expr::Update {
+                    target,
+                    prefix: false,
+                    decrement,
+                    span,
+                });
             }
             break;
         }
@@ -744,6 +785,17 @@ impl Parser {
             ));
         }
         Ok(())
+    }
+
+    fn expr_to_target(&self, expr: Expr, span: Span) -> Result<AssignTarget, ParseError> {
+        match expr {
+            Expr::Ident { name, .. } => Ok(AssignTarget::Ident(name)),
+            Expr::Member {
+                object, property, ..
+            } => Ok(AssignTarget::Member { object, property }),
+            Expr::Index { object, index, .. } => Ok(AssignTarget::Index { object, index }),
+            _ => Err(ParseError::new("invalid update target", span)),
+        }
     }
 
     fn expect_ident(&mut self, message: &str) -> Result<Token, ParseError> {

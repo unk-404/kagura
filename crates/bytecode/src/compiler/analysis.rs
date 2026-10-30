@@ -127,6 +127,7 @@ fn expr_has_closure(expr: &Expr) -> bool {
                 || expr_has_closure(else_branch)
         }
         Expr::Assign { target, value, .. } => target_has_closure(target) || expr_has_closure(value),
+        Expr::Update { target, .. } => target_has_closure(target),
         Expr::Call { callee, args, .. } | Expr::New { callee, args, .. } => {
             expr_has_closure(callee) || args.iter().any(expr_has_closure)
         }

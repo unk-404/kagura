@@ -265,6 +265,12 @@ impl<'a> Interpreter<'a> {
                     let found = try_op!(self.has_property(key, target, span));
                     push(&mut stack, Value::boolean(found), span)?;
                 }
+                Op::InstanceOf => {
+                    let constructor = pop(&mut stack, span)?;
+                    let value = pop(&mut stack, span)?;
+                    let result = try_op!(self.instance_of(value, constructor, span));
+                    push(&mut stack, Value::boolean(result), span)?;
+                }
                 Op::TypeOf => {
                     let value = pop(&mut stack, span)?;
                     let type_name = if value.is_undefined() || value.is_hole() {
@@ -1040,6 +1046,16 @@ impl<'a> Interpreter<'a> {
                 self.heap.to_js_string(left),
                 self.heap.to_js_string(right)
             );
+            if text
+                .len()
+                .saturating_add(16)
+                .gt(&self.heap.capacity().saturating_sub(self.heap.used()))
+            {
+                return Err(RuntimeError::range(
+                    "string allocation limit exceeded",
+                    span,
+                ));
+            }
             return Ok(self.heap.string(&text));
         }
         let left = self.number(left, span)?;

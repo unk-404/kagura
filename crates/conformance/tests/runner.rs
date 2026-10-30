@@ -118,6 +118,16 @@ fn supports_compare_and_deep_assertions() {
 }
 
 #[test]
+fn supports_var_updates_and_instanceof() {
+    let case = TestCase {
+        path: "var-update.js".into(),
+        source: "var x = 1; x++; var error = new TypeError('x'); assert.sameValue(x, 2); assert.sameValue(error instanceof TypeError, true);".into(),
+        metadata: Metadata::default(),
+    };
+    assert_eq!(run_case(&case).outcome, Outcome::Pass);
+}
+
+#[test]
 fn runs_a_simple_case() {
     let case = TestCase {
         path: "simple.js".into(),
@@ -167,6 +177,19 @@ fn validates_negative_phase() {
         },
     };
     assert_eq!(run_case(&wrong_phase).outcome, Outcome::Fail);
+
+    let wrong_kind = TestCase {
+        path: "negative-wrong-kind.js".into(),
+        source: "let x = undefined; x.y;".into(),
+        metadata: Metadata {
+            negative: Some(Negative {
+                phase: "runtime".into(),
+                kind: "RangeError".into(),
+            }),
+            ..Metadata::default()
+        },
+    };
+    assert_eq!(run_case(&wrong_kind).outcome, Outcome::Fail);
 }
 
 #[test]

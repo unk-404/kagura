@@ -827,6 +827,73 @@ impl<'a> Interpreter<'a> {
         Ok(true)
     }
 
+    pub(super) fn instance_of(
+        &mut self,
+        value: Value,
+        constructor: Value,
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        let Some(value_id) = value.object_offset().map(ObjectId::new) else {
+            return Ok(false);
+        };
+        let constructor_id = self.object_id(constructor, span)?;
+        if !self
+            .objects
+            .is_function(constructor_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Err(RuntimeError::type_error(
+                "right-hand side of instanceof is not callable",
+                span,
+            ));
+        }
+        let name = self.get_property(constructor, "name", span)?;
+        let name = self.heap.as_str(name).unwrap_or_default().to_owned();
+        if name == "Object" {
+            return Ok(true);
+        }
+        if name == "Array" {
+            return self
+                .objects
+                .is_array(value_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+        }
+        if name == "Function" {
+            return self
+                .objects
+                .is_function(value_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+        }
+        if matches!(
+            name.as_str(),
+            "Error"
+                | "TypeError"
+                | "RangeError"
+                | "ReferenceError"
+                | "SyntaxError"
+                | "EvalError"
+                | "URIError"
+                | "Test262Error"
+        ) {
+            let actual = self.get_property(value, "name", span)?;
+            let actual = self.heap.as_str(actual).unwrap_or_default();
+            if name == "Error" {
+                return Ok(matches!(
+                    actual,
+                    "Error"
+                        | "TypeError"
+                        | "RangeError"
+                        | "ReferenceError"
+                        | "SyntaxError"
+                        | "EvalError"
+                        | "URIError"
+                ));
+            }
+            return Ok(actual == name);
+        }
+        Ok(false)
+    }
+
     fn json_stringify(&mut self, value: Value, span: Span) -> Result<Option<String>, RuntimeError> {
         if value.is_undefined() || value.is_hole() {
             return Ok(None);

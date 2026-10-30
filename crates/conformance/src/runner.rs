@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use kagura_interp::RuntimeErrorKind;
 use kagura_runtime::{RunError, Runtime};
 
 use crate::host::Test262Host;
@@ -122,13 +123,13 @@ pub fn run_case(case: &TestCase) -> CaseReport {
     };
 
     let mut host = Test262Host::default();
-    let mut runtime = Runtime::default();
+    let mut runtime = Runtime::new(4 << 20);
     runtime.set_step_limit(5_000);
     let result = runtime.run(&source, &mut host);
     let (outcome, message) = match (case.metadata.negative.as_ref(), result) {
         (None, Ok(_)) => (Outcome::Pass, String::new()),
         (Some(negative), Err(error)) => {
-            if phase_matches(&negative.phase, &error) {
+            if negative_matches(negative, &error) {
                 (
                     Outcome::Pass,
                     format!("expected {}:{}: {error}", negative.phase, negative.kind),
@@ -154,10 +155,23 @@ pub fn run_case(case: &TestCase) -> CaseReport {
     }
 }
 
-fn phase_matches(phase: &str, error: &RunError) -> bool {
-    match phase {
+fn negative_matches(negative: &crate::metadata::Negative, error: &RunError) -> bool {
+    match negative.phase.as_str() {
         "parse" | "early" => matches!(error, RunError::Parse(_) | RunError::Compile(_)),
-        "runtime" => matches!(error, RunError::Runtime(_)),
+        "runtime" => {
+            let RunError::Runtime(error) = error else {
+                return false;
+            };
+            match negative.kind.as_str() {
+                "TypeError" => error.kind == RuntimeErrorKind::Type,
+                "ReferenceError" => error.kind == RuntimeErrorKind::Reference,
+                "RangeError" => error.kind == RuntimeErrorKind::Range,
+                "Error" => error.kind == RuntimeErrorKind::Runtime,
+                // Test262Error and host-thrown objects surface as Runtime;
+                // they do not have a dedicated RuntimeErrorKind yet.
+                _ => error.kind == RuntimeErrorKind::Runtime,
+            }
+        }
         _ => false,
     }
 }

@@ -325,6 +325,7 @@ fn run_test262_inner(
     let mut oracle_kagura_pass_node_fail = 0usize;
     let mut oracle_failures = Vec::new();
     let mut failures = Vec::new();
+    let mut failure_categories: BTreeMap<String, usize> = BTreeMap::new();
     let mut skip_reasons: BTreeMap<String, usize> = BTreeMap::new();
     for case in cases.iter().take(selected) {
         if verbose {
@@ -378,6 +379,9 @@ fn run_test262_inner(
             Outcome::Pass => passed += 1,
             Outcome::Fail => {
                 failed += 1;
+                *failure_categories
+                    .entry(classify_test262_failure(&report.message))
+                    .or_default() += 1;
                 if failures.len() < 25 {
                     failures.push(format!("{}: {}", report.path.display(), report.message));
                 }
@@ -395,6 +399,7 @@ fn run_test262_inner(
             failed,
             skipped,
             &skip_reasons,
+            &failure_categories,
             &failures,
             harness.is_some(),
             oracle_checked,
@@ -412,6 +417,9 @@ fn run_test262_inner(
         );
         for (reason, count) in skip_reasons.iter().take(10) {
             println!("skip {count}: {reason}");
+        }
+        for (category, count) in failure_categories.iter().take(10) {
+            println!("failure {count}: {category}");
         }
         for failure in &failures {
             println!("{failure}");
@@ -444,6 +452,7 @@ fn print_test262_json(
     failed: usize,
     skipped: usize,
     skip_reasons: &BTreeMap<String, usize>,
+    failure_categories: &BTreeMap<String, usize>,
     failures: &[String],
     oracle_enabled: bool,
     oracle_checked: usize,
@@ -457,6 +466,11 @@ fn print_test262_json(
     let skip_reasons = skip_reasons
         .iter()
         .map(|(reason, count)| format!("\"{}\":{count}", json_escape(reason)))
+        .collect::<Vec<_>>()
+        .join(",");
+    let failure_categories = failure_categories
+        .iter()
+        .map(|(category, count)| format!("\"{}\":{count}", json_escape(category)))
         .collect::<Vec<_>>()
         .join(",");
     let failures = failures
@@ -477,9 +491,51 @@ fn print_test262_json(
         "null".to_owned()
     };
     println!(
-        "{{\"selected\":{selected},\"executed\":{},\"passed\":{passed},\"failed\":{failed},\"skipped\":{skipped},\"skip_reasons\":{{{skip_reasons}}},\"failures\":[{failures}],\"oracle\":{oracle}}}",
+        "{{\"selected\":{selected},\"executed\":{},\"passed\":{passed},\"failed\":{failed},\"skipped\":{skipped},\"skip_reasons\":{{{skip_reasons}}},\"failure_categories\":{{{failure_categories}}},\"failures\":[{failures}],\"oracle\":{oracle}}}",
         passed + failed
     );
+}
+
+fn classify_test262_failure(message: &str) -> String {
+    if message.contains("execution step limit") {
+        return "step limit".into();
+    }
+    if message.contains("unknown variable") {
+        return "unknown variable".into();
+    }
+    if message.contains("is not defined") {
+        return "undefined global".into();
+    }
+    if message.contains("is not a function") {
+        return "not callable".into();
+    }
+    if message.contains("is not a constructor") {
+        return "not a constructor".into();
+    }
+    if message.contains("is not supported") {
+        return "unsupported builtin".into();
+    }
+    if message.contains("expected ';'")
+        || message.contains("expected ')'")
+        || message.contains("expected ']'")
+        || message.contains("unexpected character")
+        || message.contains("unexpected token")
+        || message.contains("unterminated")
+        || message.contains("invalid assignment")
+    {
+        let detail = message.lines().next().unwrap_or("parse error");
+        return format!("parse: {detail}");
+    }
+    if message.starts_with("expected an error")
+        || message.contains("expected ")
+        || message.contains("but caught")
+    {
+        return "negative/assert mismatch".into();
+    }
+    if message.contains("not an object") {
+        return "type error".into();
+    }
+    "other".into()
 }
 
 fn json_escape(value: &str) -> String {

@@ -231,6 +231,7 @@ fn lex_string(source: &str, start: usize, quote: u8) -> Result<(Token, usize), P
 
 fn keyword_or_ident(text: &str) -> TokenKind {
     match text {
+        "var" => TokenKind::Var,
         "let" => TokenKind::Let,
         "const" => TokenKind::Const,
         "function" => TokenKind::Function,
@@ -254,6 +255,7 @@ fn keyword_or_ident(text: &str) -> TokenKind {
         "type" => TokenKind::Type,
         "interface" => TokenKind::Interface,
         "as" => TokenKind::As,
+        "instanceof" => TokenKind::InstanceOf,
         "in" => TokenKind::In,
         "typeof" => TokenKind::TypeOf,
         "void" => TokenKind::Void,

@@ -52,6 +52,12 @@ pub enum Expr {
         value: Box<Expr>,
         span: Span,
     },
+    Update {
+        target: AssignTarget,
+        prefix: bool,
+        decrement: bool,
+        span: Span,
+    },
     Call {
         callee: Box<Expr>,
         args: Vec<Expr>,
@@ -132,6 +138,7 @@ impl Expr {
             | Self::Binary { span, .. }
             | Self::Conditional { span, .. }
             | Self::Assign { span, .. }
+            | Self::Update { span, .. }
             | Self::Call { span, .. }
             | Self::New { span, .. }
             | Self::Member { span, .. }

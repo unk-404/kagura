@@ -72,6 +72,7 @@ The current P1 slice adds:
 
 - `new` with `Error`, `TypeError`, `RangeError`, `ReferenceError`,
   `SyntaxError`, `Test262Error`, `Object`, and `Array` targets
+- `var` declarations, prefix/postfix `++`/`--`, `instanceof`
 - constructor values for the error families, loaded as builtin globals
 - `assert.throws`, `assert.compareArray`, and `assert.deepEqual`
 - loading and executing extra test262 harness includes
@@ -115,17 +116,14 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18845 executed, 1991 passed, 16854 failed, 35184 skipped
-oracle node: 1991 checked, 1989 matched, 2 mismatched
+54029 selected, 18845 executed, 2811 passed, 16034 failed, 35184 skipped
+oracle node: 2811 checked, 2810 matched, 1 mismatched
 ```
 
-The two Node mismatches are tracked differential warnings, not hidden Kagura
-failures:
+The single Node mismatch is tracked as a differential warning, not hidden:
 
 - an Annex-B function-declaration test where Node 22 evaluates `f()` as `2`
-  while test262 asserts `1`;
-- `assign-to-global-undefined` where Node's vm context accepts the assignment
-  while test262 expects a strict-mode ReferenceError.
+  while test262 asserts `1`.
 
 The full report is informational while the engine is pre-0.0.1; the gated
 suite remains `cargo test --workspace`.
