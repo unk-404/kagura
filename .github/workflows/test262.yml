@@ -2,6 +2,18 @@ name: test262
 
 on:
   workflow_dispatch:
+    inputs:
+      limit:
+        description: Optional case limit (empty runs the full corpus)
+        type: string
+        required: false
+      min_pass:
+        description: Minimum number of passing cases
+        type: string
+        default: "1200"
+  push:
+    paths:
+      - ".github/workflows/test262.yml"
   schedule:
     - cron: "0 3 * * 1"
 
@@ -21,7 +33,13 @@ jobs:
       - name: Run full corpus
         run: |
           set -o pipefail
-          cargo run -q -p kagura-cli -- test262 /tmp/test262 --min-pass 1200 | tee /tmp/test262-report.txt
+          ARGS=()
+          if [[ -n "${{ inputs.limit }}" ]]; then
+            ARGS+=(--limit "${{ inputs.limit }}")
+          fi
+          MIN_PASS="${{ inputs.min_pass }}"
+          MIN_PASS="${MIN_PASS:-1200}"
+          cargo run -q -p kagura-cli -- test262 /tmp/test262 --min-pass "$MIN_PASS" "${ARGS[@]}" | tee /tmp/test262-report.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

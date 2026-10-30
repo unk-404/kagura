@@ -3,6 +3,16 @@ name: ci
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      test262:
+        description: Run the full test262 corpus
+        type: boolean
+        default: true
+      limit:
+        description: Optional test262 case limit (empty runs the full corpus)
+        type: string
+        required: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -64,6 +74,34 @@ jobs:
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUNNER: qemu-arm
+          QEMU_LD_PREFIX: /usr/arm-linux-gnueabihf
+
+  test262:
+    if: github.event_name == 'workflow_dispatch' && inputs.test262
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Download official test262
+        run: |
+          curl -L --fail --silent --show-error \
+            -o /tmp/test262.tar.gz \
+            https://codeload.github.com/tc39/test262/tar.gz/refs/heads/main
+          mkdir -p /tmp/test262
+          tar -xzf /tmp/test262.tar.gz -C /tmp/test262 --strip-components=1
+      - name: Run test262
+        run: |
+          set -o pipefail
+          ARGS=()
+          if [[ -n "${{ inputs.limit }}" ]]; then
+            ARGS+=(--limit "${{ inputs.limit }}")
+          fi
+          cargo run -q -p kagura-cli -- test262 /tmp/test262 --min-pass 1200 "${ARGS[@]}" | tee /tmp/test262-report.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test262-report
+          path: /tmp/test262-report.txt
 
   wasm-build-only:
     runs-on: ubuntu-latest

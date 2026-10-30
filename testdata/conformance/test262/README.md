@@ -16,6 +16,9 @@ tar -xzf /tmp/test262.tar.gz -C /tmp/test262 --strip-components=1
 cargo run -q -p kagura-cli -- test262 /tmp/test262
 ```
 
+On Windows, use `curl.exe` and `tar.exe` with a local output directory instead
+of `/tmp`.
+
 Useful flags:
 
 - `--limit N` runs only the first N discovered cases.
@@ -25,6 +28,17 @@ Useful flags:
 
 Each case has a bounded VM step budget, so a syntax feature that is not
 implemented cannot hang the report.
+
+## GitHub Actions
+
+- **Actions → ci → Run workflow**: enable `Run the full test262 corpus`; an
+  optional `limit` narrows the run.
+- **Actions → test262 → Run workflow**: dedicated full-corpus workflow with
+  `limit` and `min_pass` inputs.
+- Both workflows upload `test262-report.txt` as an artifact.
+
+The full-corpus job requires at least 1200 passing cases by default, to catch
+gross regressions without pretending the whole suite is green.
 
 ## Report baseline
 
