@@ -100,6 +100,69 @@ impl<'a> Interpreter<'a> {
                 .is_sealed(target, span)
                 .map(|sealed| Some(Value::boolean(sealed)));
         }
+        if path == "Object.hasOwn" {
+            let target = args
+                .first()
+                .copied()
+                .ok_or_else(|| RuntimeError::type_error("Object.hasOwn requires a target", span))?;
+            let key = self
+                .heap
+                .to_js_string(args.get(1).copied().unwrap_or_else(Value::undefined));
+            return self
+                .has_own_property(target, &key, span)
+                .map(|own| Some(Value::boolean(own)));
+        }
+        if path == "Array.of" {
+            let array = self
+                .objects
+                .allocate_array(self.shapes.root())
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            for value in args {
+                self.objects
+                    .array_push(array, *value)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            }
+            return Ok(Some(Value::object(array.index())));
+        }
+        if path == "Array.from" {
+            let array = self
+                .objects
+                .allocate_array(self.shapes.root())
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let source = args.first().copied().unwrap_or_else(Value::undefined);
+            if let Some(source_id) = source.object_offset().map(ObjectId::new) {
+                if self
+                    .objects
+                    .is_array(source_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                {
+                    let length = self
+                        .objects
+                        .array_length(source_id)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    for index in 0..length {
+                        let value = self
+                            .objects
+                            .array_get(source_id, index)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        self.objects
+                            .array_push(array, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                } else {
+                    let length = self.get_property(source, "length", span)?;
+                    let length = self.heap.as_number(length).unwrap_or(0.0);
+                    let length = length.max(0.0).min(u32::MAX as f64) as u32;
+                    for index in 0..length {
+                        let value = self.get_property(source, &index.to_string(), span)?;
+                        self.objects
+                            .array_push(array, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                }
+            }
+            return Ok(Some(Value::object(array.index())));
+        }
         if path == "Object.create" {
             let Some(prototype) = args.first().copied() else {
                 return Err(RuntimeError::type_error(
@@ -772,6 +835,37 @@ impl<'a> Interpreter<'a> {
         Ok(())
     }
 
+    fn has_own_property(
+        &mut self,
+        target: Value,
+        key: &str,
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        let object = self.object_id(target, span)?;
+        let is_array = self
+            .objects
+            .is_array(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if is_array && key == "length" {
+            return Ok(true);
+        }
+        if is_array && let Ok(index) = key.parse::<u32>() {
+            return self
+                .objects
+                .array_has(object, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+        }
+        let shape = self
+            .objects
+            .shape(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        Ok(self
+            .shapes
+            .lookup(shape, &PropertyKey::from_string(key))
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            .is_some())
+    }
+
     fn assign_property(
         &mut self,
         target: Value,
@@ -1108,30 +1202,9 @@ impl<'a> Interpreter<'a> {
             let key = self
                 .heap
                 .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
-            let is_array = self
-                .objects
-                .is_array(object_id)
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            if is_array && key == "length" {
-                return Ok(Some(Value::boolean(true)));
-            }
-            if is_array && let Ok(index) = key.parse::<u32>() {
-                let own = self
-                    .objects
-                    .array_has(object_id, index)
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                return Ok(Some(Value::boolean(own)));
-            }
-            let shape = self
-                .objects
-                .shape(object_id)
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            let own = self
-                .shapes
-                .lookup(shape, &PropertyKey::from_string(&key))
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-                .is_some();
-            return Ok(Some(Value::boolean(own)));
+            return self
+                .has_own_property(object, &key, span)
+                .map(|own| Some(Value::boolean(own)));
         }
         if !self
             .objects
