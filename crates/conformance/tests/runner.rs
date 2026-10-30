@@ -89,6 +89,48 @@ fn runs_a_simple_case() {
 }
 
 #[test]
+fn validates_negative_phase() {
+    let parse_case = TestCase {
+        path: "negative-parse.js".into(),
+        source: "if (true) let x;".into(),
+        metadata: Metadata {
+            negative: Some(Negative {
+                phase: "parse".into(),
+                kind: "SyntaxError".into(),
+            }),
+            ..Metadata::default()
+        },
+    };
+    assert_eq!(run_case(&parse_case).outcome, Outcome::Pass);
+
+    let runtime_case = TestCase {
+        path: "negative-runtime.js".into(),
+        source: "let x = undefined; x.y;".into(),
+        metadata: Metadata {
+            negative: Some(Negative {
+                phase: "runtime".into(),
+                kind: "TypeError".into(),
+            }),
+            ..Metadata::default()
+        },
+    };
+    assert_eq!(run_case(&runtime_case).outcome, Outcome::Pass);
+
+    let wrong_phase = TestCase {
+        path: "negative-wrong-phase.js".into(),
+        source: "$DONOTEVALUATE();".into(),
+        metadata: Metadata {
+            negative: Some(Negative {
+                phase: "parse".into(),
+                kind: "SyntaxError".into(),
+            }),
+            ..Metadata::default()
+        },
+    };
+    assert_eq!(run_case(&wrong_phase).outcome, Outcome::Fail);
+}
+
+#[test]
 fn classifies_runtime_failure() {
     let case = TestCase {
         path: "bad.js".into(),

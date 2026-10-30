@@ -179,9 +179,9 @@ impl Parser {
         self.expect(&TokenKind::LParen, "expected '(' after if")?;
         let cond = self.parse_expr()?;
         self.expect(&TokenKind::RParen, "expected ')' after if condition")?;
-        let then_branch = Box::new(self.parse_stmt()?);
+        let then_branch = Box::new(self.parse_sub_stmt()?);
         let else_branch = if self.eat(&TokenKind::Else) {
-            Some(Box::new(self.parse_stmt()?))
+            Some(Box::new(self.parse_sub_stmt()?))
         } else {
             None
         };
@@ -202,7 +202,7 @@ impl Parser {
         self.expect(&TokenKind::LParen, "expected '(' after while")?;
         let cond = self.parse_expr()?;
         self.expect(&TokenKind::RParen, "expected ')' after while condition")?;
-        let body = Box::new(self.parse_stmt()?);
+        let body = Box::new(self.parse_sub_stmt()?);
         let end = body.span();
         Ok(Stmt::While {
             cond,
@@ -243,7 +243,7 @@ impl Parser {
             Some(self.parse_expr()?)
         };
         self.expect(&TokenKind::RParen, "expected ')' after for clauses")?;
-        let body = Box::new(self.parse_stmt()?);
+        let body = Box::new(self.parse_sub_stmt()?);
         let end = body.span();
         Ok(Stmt::For {
             init,
@@ -252,6 +252,16 @@ impl Parser {
             body,
             span: start.merge(end),
         })
+    }
+
+    fn parse_sub_stmt(&mut self) -> Result<Stmt, ParseError> {
+        if matches!(self.peek().kind, TokenKind::Let | TokenKind::Const) {
+            return Err(ParseError::new(
+                "lexical declaration is not allowed in single-statement position",
+                self.peek().span,
+            ));
+        }
+        self.parse_stmt()
     }
 
     fn parse_return(&mut self) -> Result<Stmt, ParseError> {

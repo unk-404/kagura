@@ -59,6 +59,12 @@ fn parses_array_literal_and_index_assignment() {
 }
 
 #[test]
+fn rejects_lexical_declaration_in_statement_position() {
+    let error = parse("if (true) let x;").unwrap_err();
+    assert!(error.message.contains("single-statement position"));
+}
+
+#[test]
 fn rejects_unterminated_string() {
     let error = parse("let value = \"oops;").unwrap_err();
     assert!(error.message.contains("unterminated string"));

@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use kagura_runtime::Runtime;
+use kagura_runtime::{RunError, Runtime};
 
 use crate::host::Test262Host;
 use crate::metadata::{Metadata, parse_metadata};
@@ -78,10 +78,22 @@ pub fn run_case(case: &TestCase) -> CaseReport {
     let result = runtime.run(&case.source, &mut host);
     let (outcome, message) = match (case.metadata.negative.as_ref(), result) {
         (None, Ok(_)) => (Outcome::Pass, String::new()),
-        (Some(negative), Err(error)) => (
-            Outcome::Pass,
-            format!("expected {}:{}: {error}", negative.phase, negative.kind),
-        ),
+        (Some(negative), Err(error)) => {
+            if phase_matches(&negative.phase, &error) {
+                (
+                    Outcome::Pass,
+                    format!("expected {}:{}: {error}", negative.phase, negative.kind),
+                )
+            } else {
+                (
+                    Outcome::Fail,
+                    format!(
+                        "expected {}:{} but got a different error phase: {error}",
+                        negative.phase, negative.kind
+                    ),
+                )
+            }
+        }
         (Some(_), Ok(_)) => (Outcome::Fail, "expected an error".into()),
         (None, Err(error)) => (Outcome::Fail, error.to_string()),
     };
@@ -89,6 +101,14 @@ pub fn run_case(case: &TestCase) -> CaseReport {
         path: case.path.clone(),
         outcome,
         message,
+    }
+}
+
+fn phase_matches(phase: &str, error: &RunError) -> bool {
+    match phase {
+        "parse" | "early" => matches!(error, RunError::Parse(_) | RunError::Compile(_)),
+        "runtime" => matches!(error, RunError::Runtime(_)),
+        _ => false,
     }
 }
 
