@@ -1665,6 +1665,7 @@ fn is_builtin_global(name: &str) -> bool {
             | "Number"
             | "String"
             | "Boolean"
+            | "Function"
             | "NaN"
             | "Infinity"
     )

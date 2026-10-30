@@ -359,6 +359,44 @@ impl Parser {
         } else {
             left
         };
+        if let Some(op) = match self.peek().kind {
+            TokenKind::PlusEq => Some(BinaryOp::Add),
+            TokenKind::MinusEq => Some(BinaryOp::Sub),
+            TokenKind::StarEq => Some(BinaryOp::Mul),
+            TokenKind::SlashEq => Some(BinaryOp::Div),
+            TokenKind::PercentEq => Some(BinaryOp::Mod),
+            _ => None,
+        } {
+            self.advance();
+            let right = self.parse_expr()?;
+            let span = left.span().merge(right.span());
+            let value = Expr::Binary {
+                op,
+                left: Box::new(left.clone()),
+                right: Box::new(right),
+                span,
+            };
+            return match left {
+                Expr::Ident { name, .. } => Ok(Expr::Assign {
+                    target: AssignTarget::Ident(name),
+                    value: Box::new(value),
+                    span,
+                }),
+                Expr::Member {
+                    object, property, ..
+                } => Ok(Expr::Assign {
+                    target: AssignTarget::Member { object, property },
+                    value: Box::new(value),
+                    span,
+                }),
+                Expr::Index { object, index, .. } => Ok(Expr::Assign {
+                    target: AssignTarget::Index { object, index },
+                    value: Box::new(value),
+                    span,
+                }),
+                _ => Err(ParseError::new("invalid assignment target", span)),
+            };
+        }
         if self.eat(&TokenKind::Assign) {
             let value = self.parse_expr()?;
             let span = left.span().merge(value.span());

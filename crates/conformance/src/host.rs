@@ -16,6 +16,9 @@ impl Default for Test262Host {
         bindings.bind("assert.sameValue", same_value);
         bindings.bind("assert.notSameValue", not_same_value);
         bindings.bind("assert.fail", fail);
+        bindings.bind("__kaguraAssertSameValue", same_value);
+        bindings.bind("__kaguraAssertNotSameValue", not_same_value);
+        bindings.bind("__kaguraAssertFail", fail);
         bindings.bind("$DONOTEVALUATE", do_not_evaluate);
         let console_output = output.clone();
         bindings.bind("console.log", move |call| {

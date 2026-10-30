@@ -1700,6 +1700,48 @@ impl<'a> Interpreter<'a> {
         if name == "Infinity" {
             return Ok(self.heap.number(f64::INFINITY));
         }
+        if name == "Function" {
+            let prototype = self
+                .objects
+                .allocate_function(
+                    self.shapes.function_shape(),
+                    u32::MAX,
+                    Value::undefined(),
+                    Value::undefined(),
+                )
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let prototype = Value::object(prototype.index());
+            for method in ["call", "apply", "bind", "toString"] {
+                let function = self
+                    .objects
+                    .allocate_function(
+                        self.shapes.function_shape(),
+                        u32::MAX,
+                        Value::undefined(),
+                        Value::undefined(),
+                    )
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let function = Value::object(function.index());
+                let name_value = self.heap.string(method);
+                self.set_property(function, "name", name_value, span)?;
+                self.set_non_enumerable_property(prototype, method, function, span)?;
+            }
+            let object = self
+                .objects
+                .allocate_function(
+                    self.shapes.function_shape(),
+                    u32::MAX,
+                    Value::undefined(),
+                    Value::undefined(),
+                )
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let object = Value::object(object.index());
+            let name_value = self.heap.string("Function");
+            self.set_property(object, "name", name_value, span)?;
+            self.set_property(object, "prototype", prototype, span)?;
+            self.set_non_enumerable_property(prototype, "constructor", object, span)?;
+            return Ok(object);
+        }
         if name == "Number" {
             let object = self
                 .objects

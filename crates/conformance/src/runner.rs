@@ -205,7 +205,22 @@ fn negative_matches(negative: &crate::metadata::Negative, error: &RunError) -> b
 
 fn source_with_includes(case: &TestCase) -> Result<String, String> {
     let harness = harness_dir_for(&case.path);
-    let mut source = String::new();
+    let mut source = if case
+        .metadata
+        .includes
+        .iter()
+        .any(|include| include == "propertyHelper.js")
+    {
+        String::from(
+            "var assert = {\n\
+             sameValue: function (actual, expected, message) { return __kaguraAssertSameValue(actual, expected, message); },\n\
+             notSameValue: function (actual, expected, message) { return __kaguraAssertNotSameValue(actual, expected, message); },\n\
+             fail: function (message) { return __kaguraAssertFail(message); }\n\
+             };\n",
+        )
+    } else {
+        String::new()
+    };
     for include in &case.metadata.includes {
         if matches!(include.as_str(), "assert.js" | "sta.js") {
             continue;

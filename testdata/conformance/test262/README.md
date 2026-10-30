@@ -75,6 +75,7 @@ The current P1 slice adds:
   `SyntaxError`, `Test262Error`, `Object`, and `Array` targets
 - `JSON.parse` backed by `serde_json`; `JSON.stringify` uses the existing
   object/array serializer
+- test262 `assert` object shim for includes such as `propertyHelper.js`
 - `String.fromCharCode`, `String.fromCodePoint`, and Boolean primitive
   `toString`/`valueOf`
 - Number prototype formatting (`toString` radix, `toFixed`, `toExponential`,
@@ -146,8 +147,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18912 executed, 3811 passed, 15101 failed, 35117 skipped
-oracle node: 3811 checked, 3810 matched, 1 mismatched
+54029 selected, 18912 executed, 3895 passed, 15017 failed, 35117 skipped
+oracle node: 3895 checked, 3894 matched, 1 mismatched
 ```
 
 The single Node mismatch is tracked as a differential warning, not hidden:
