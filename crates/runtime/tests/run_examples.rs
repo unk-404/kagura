@@ -1205,6 +1205,22 @@ fn creates_implicit_global_in_sloppy_mode() {
 }
 
 #[test]
+fn global_assignment_leaves_no_operand_residue() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var count = 0; function update() { implicitGlobal = 3; implicitGlobal++; } update(); count = implicitGlobal; console.log(count);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "4\n");
+    let stats = runtime.safepoint_stats();
+    assert!(stats.count > 0);
+    assert_eq!(stats.max_operand_depth, 0);
+}
+
+#[test]
 fn coerces_non_numbers_in_arithmetic_and_comparison() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
