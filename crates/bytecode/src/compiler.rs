@@ -228,6 +228,102 @@ impl<'a> FunctionCompiler<'a> {
         compiler
     }
 
+    fn hoist_function_scope(&mut self, body: &[Stmt]) {
+        for stmt in body {
+            self.hoist_stmt(stmt);
+        }
+    }
+
+    fn hoist_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Var(decl) if matches!(decl.kind, kagura_ast::VarKind::Var) => {
+                self.predeclare(&decl.name, true, decl.span);
+            }
+            Stmt::VarList(decls) => {
+                for decl in decls {
+                    if matches!(decl.kind, kagura_ast::VarKind::Var) {
+                        self.predeclare(&decl.name, true, decl.span);
+                    }
+                }
+            }
+            Stmt::Func(decl) => {
+                self.predeclare(&decl.name, true, decl.span);
+            }
+            Stmt::Block(body) => {
+                for stmt in body {
+                    self.hoist_stmt(stmt);
+                }
+            }
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.hoist_stmt(then_branch);
+                if let Some(else_branch) = else_branch {
+                    self.hoist_stmt(else_branch);
+                }
+            }
+            Stmt::While { body, .. } => self.hoist_stmt(body),
+            Stmt::For { init, body, .. } => {
+                if let Some(ForInit::Var(decl)) = init
+                    && matches!(decl.kind, kagura_ast::VarKind::Var)
+                {
+                    self.predeclare(&decl.name, true, decl.span);
+                }
+                self.hoist_stmt(body);
+            }
+            Stmt::ForIn {
+                declaration, body, ..
+            } => {
+                if let Some(decl) = declaration
+                    && matches!(decl.kind, kagura_ast::VarKind::Var)
+                {
+                    self.predeclare(&decl.name, true, decl.span);
+                }
+                self.hoist_stmt(body);
+            }
+            Stmt::ForOf {
+                declaration, body, ..
+            } => {
+                if let Some(decl) = declaration
+                    && matches!(decl.kind, kagura_ast::VarKind::Var)
+                {
+                    self.predeclare(&decl.name, true, decl.span);
+                }
+                self.hoist_stmt(body);
+            }
+            Stmt::Switch { cases, .. } => {
+                for case in cases {
+                    for stmt in &case.body {
+                        self.hoist_stmt(stmt);
+                    }
+                }
+            }
+            Stmt::Try {
+                block,
+                catch_block,
+                finally_block,
+                ..
+            } => {
+                for stmt in block {
+                    self.hoist_stmt(stmt);
+                }
+                if let Some(block) = catch_block {
+                    for stmt in block {
+                        self.hoist_stmt(stmt);
+                    }
+                }
+                if let Some(block) = finally_block {
+                    for stmt in block {
+                        self.hoist_stmt(stmt);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn compile_arguments(&mut self, span: Span) -> Result<(), CompileError> {
         if let Some(slot) = self.arguments_slot {
             self.emit(Op::Arguments, span);
@@ -331,11 +427,16 @@ impl<'a> FunctionCompiler<'a> {
                         decl.span,
                     ));
                 }
-                let Some(slot) = self.declare(&decl.name, true, decl.span) else {
-                    return Err(CompileError::new(
-                        format!("duplicate declaration '{}'", decl.name),
-                        decl.span,
-                    ));
+                let slot = if let Some(Resolved::Local { slot, .. }) = self.resolve(&decl.name) {
+                    slot
+                } else {
+                    let Some(slot) = self.declare(&decl.name, true, decl.span) else {
+                        return Err(CompileError::new(
+                            format!("duplicate declaration '{}'", decl.name),
+                            decl.span,
+                        ));
+                    };
+                    slot
                 };
                 self.compile_closure(&decl.name, &decl.params, &decl.body, None, decl.span)?;
                 self.emit_u16(Op::StoreLocal, slot, decl.span);
@@ -1350,6 +1451,7 @@ impl<'a> FunctionCompiler<'a> {
             self.functions,
         );
         compiler.outer = outer;
+        compiler.hoist_function_scope(body);
         if let Some(self_name) = self_name
             && let Some(slot) = compiler.declare(self_name, false, span)
         {

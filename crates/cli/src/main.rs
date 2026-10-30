@@ -34,6 +34,8 @@ enum Command {
         trace: bool,
         #[arg(long, default_value_t = 1 << 20)]
         heap_size: usize,
+        #[arg(long, default_value_t = 1_000_000)]
+        step_limit: u64,
     },
     Build {
         file: PathBuf,
@@ -80,7 +82,15 @@ fn main() {
             print_bytecode,
             trace,
             heap_size,
-        } => run_file(file, print_ast, print_bytecode, trace, heap_size),
+            step_limit,
+        } => run_file(
+            file,
+            print_ast,
+            print_bytecode,
+            trace,
+            heap_size,
+            step_limit,
+        ),
         Command::Build { file, output } => build_file(file, output),
         Command::RunBytecode { file, trace } => run_bytecode(file, trace),
         Command::Typescript { path } => run_typescript(path),
@@ -135,6 +145,7 @@ fn run_file(
     print_bytecode: bool,
     trace: bool,
     heap_size: usize,
+    step_limit: u64,
 ) -> i32 {
     let source = match std::fs::read_to_string(&file) {
         Ok(source) => source,
@@ -175,6 +186,7 @@ fn run_file(
     }
 
     let mut runtime = Runtime::new(heap_size);
+    runtime.set_step_limit(step_limit);
     let mut host = stdout_bindings();
     match runtime.run(&source, &mut host) {
         Ok(_) => 0,

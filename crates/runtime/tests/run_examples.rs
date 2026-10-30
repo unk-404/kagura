@@ -1126,6 +1126,19 @@ fn runs_bitwise_operators_and_asi() {
 }
 
 #[test]
+fn hoists_function_scope_vars_before_nested_functions() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "function outer() { function inner() { return size; } var size = 7; return inner(); } console.log(outer());",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "7\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

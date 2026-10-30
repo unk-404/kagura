@@ -17,6 +17,8 @@ const engine = arg("engine", "node");
 const file = arg("file");
 const entry = arg("entry", "runRichards");
 const iterations = Number(arg("iterations", "1"));
+const heapSize = arg("heap-size", "8388608");
+const stepLimit = arg("step-limit", "1000000000");
 if (!file) {
   console.error("usage: node tools/jetstream-direct-smoke.mjs --file FILE --entry FN [--iterations N] [--engine node|kagura]");
   process.exit(2);
@@ -32,7 +34,7 @@ fs.writeFileSync(script, source + wrapper);
 
 const command =
   engine === "kagura"
-    ? [path.resolve("target/release/kagura.exe"), ["run", script]]
+    ? [path.resolve("target/release/kagura.exe"), ["run", "--heap-size", heapSize, "--step-limit", stepLimit, script]]
     : ["node", [script]];
 const started = performance.now();
 const result = spawnSync(command[0], command[1], { encoding: "utf8" });

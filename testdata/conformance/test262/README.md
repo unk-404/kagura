@@ -82,6 +82,7 @@ The current P1 slice adds:
 - array/object destructuring declarations (`var [a,b]`, `var {x,y}`),
   including nested, renamed, default-valued, array rest, object rest,
   destructuring parameters, and destructuring assignment expressions
+- function-scope `var`/function hoisting before nested closures are compiled
 - test262 `_FIXTURE.js` helper files are excluded from selection instead of
   being counted as tests
 - bitwise operators, hexadecimal literals, and ASI for expression/return/
@@ -179,14 +180,12 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-53733 selected, 22267 executed, 5274 passed, 16993 failed, 31466 skipped
-oracle node: 5274 checked, 5269 matched, 5 mismatched
+53733 selected, 22267 executed, 5297 passed, 16970 failed, 31466 skipped
+oracle node: 5297 checked, 5293 matched, 4 mismatched
 ```
 
-The five Node mismatches are tracked as differential warnings, not hidden:
+The four Node mismatches are tracked as differential warnings, not hidden:
 
-- Annex-B function-declaration case where Node 22 evaluates `f()` as `2`
-  while test262 asserts `1`;
 - two `eval-code/direct` cases where the Node harness reports failure while
   Kagura completes;
 - `assign-to-global-undefined`, where the Node vm context accepts an
