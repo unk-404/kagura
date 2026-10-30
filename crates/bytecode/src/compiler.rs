@@ -1587,6 +1587,17 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit(Op::CallThis, *span);
                 self.emit_u8_raw(args.len(), *span);
             }
+            Expr::SuperMember { property, span } => {
+                self.compile_expr(&Expr::This { span: *span })?;
+                let class_key = self.add_const(Const::String("__kaguraClass".into()));
+                self.emit_u32(Op::GetProp, class_key, *span);
+                let super_key = self.add_const(Const::String("__kaguraSuper".into()));
+                self.emit_u32(Op::GetProp, super_key, *span);
+                let prototype_key = self.add_const(Const::String("prototype".into()));
+                self.emit_u32(Op::GetProp, prototype_key, *span);
+                let key = self.add_const(Const::String(property.clone()));
+                self.emit_u32(Op::GetProp, key, *span);
+            }
             Expr::Update {
                 target,
                 prefix,
@@ -1686,6 +1697,14 @@ impl<'a> FunctionCompiler<'a> {
                 self.patch_jump(end_jump, self.code.len());
             }
             Expr::Call { callee, args, span } => {
+                if let Expr::SuperMember { .. } = callee.as_ref() {
+                    self.compile_expr(callee)?;
+                    self.compile_expr(&Expr::This { span: *span })?;
+                    self.compile_args(args)?;
+                    self.emit(Op::CallThis, *span);
+                    self.emit_u8_raw(args.len(), *span);
+                    return Ok(());
+                }
                 if let Expr::Ident { name, .. } = callee.as_ref() {
                     if self.resolve(name).is_some() {
                         self.compile_expr(callee)?;

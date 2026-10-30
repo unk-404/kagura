@@ -61,6 +61,10 @@ pub enum Expr {
         args: Vec<Expr>,
         span: Span,
     },
+    SuperMember {
+        property: String,
+        span: Span,
+    },
     Update {
         target: AssignTarget,
         prefix: bool,
@@ -151,6 +155,7 @@ impl Expr {
             | Self::Assign { span, .. }
             | Self::DestructureAssign { span, .. }
             | Self::SuperCall { span, .. }
+            | Self::SuperMember { span, .. }
             | Self::Update { span, .. }
             | Self::Call { span, .. }
             | Self::New { span, .. }

@@ -1087,6 +1087,19 @@ fn supports_explicit_super_calls() {
 }
 
 #[test]
+fn supports_super_method_calls() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "class A { constructor(x) { this.x = x; } value() { return this.x; } } class B extends A { constructor(x, y) { super(x); this.y = y; } total() { return super.value() + this.y; } } var b = new B(4, 5); console.log(b.total());",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "9\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

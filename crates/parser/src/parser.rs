@@ -1099,6 +1099,13 @@ impl Parser {
             }
             TokenKind::Super => {
                 let start = self.advance().span;
+                if self.eat(&TokenKind::Dot) {
+                    let (property, property_span) = self.expect_property_name()?;
+                    return Ok(Expr::SuperMember {
+                        property,
+                        span: start.merge(property_span),
+                    });
+                }
                 self.expect(&TokenKind::LParen, "expected '(' after super")?;
                 let mut args = Vec::new();
                 if !self.at(&TokenKind::RParen) {

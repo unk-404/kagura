@@ -80,8 +80,8 @@ The current P1 slice adds:
   destructuring parameters, and destructuring assignment expressions
 - basic class declarations: constructor, non-enumerable prototype methods,
   static methods, public instance/static fields, `extends`, default derived
-  constructors, and explicit `super(...)` calls; `super.method()`, private
-  names, and accessors are not implemented yet
+  constructors, explicit `super(...)` calls, and `super.method()` calls;
+  static `super` lookup, private names, and accessors are not implemented yet
 - function `prototype` objects, constructor-created instance prototype chains,
   and general `instanceof` prototype-chain checks
 - `for...of` over arrays and strings by index (the iterator protocol itself is
@@ -169,8 +169,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 22410 executed, 5024 passed, 17386 failed, 31619 skipped
-oracle node: 5024 checked, 5019 matched, 5 mismatched
+54029 selected, 22410 executed, 5028 passed, 17382 failed, 31619 skipped
+oracle node: 5028 checked, 5023 matched, 5 mismatched
 ```
 
 The five Node mismatches are tracked as differential warnings, not hidden:
