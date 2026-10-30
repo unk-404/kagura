@@ -30,6 +30,7 @@ pub(crate) enum TokenKind {
     New,
     Undefined,
     This,
+    Super,
     Type,
     Interface,
     As,

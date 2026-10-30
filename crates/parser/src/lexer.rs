@@ -267,6 +267,7 @@ fn keyword_or_ident(text: &str) -> TokenKind {
         "new" => TokenKind::New,
         "undefined" => TokenKind::Undefined,
         "this" => TokenKind::This,
+        "super" => TokenKind::Super,
         "type" => TokenKind::Type,
         "interface" => TokenKind::Interface,
         "as" => TokenKind::As,

@@ -57,6 +57,10 @@ pub enum Expr {
         value: Box<Expr>,
         span: Span,
     },
+    SuperCall {
+        args: Vec<Expr>,
+        span: Span,
+    },
     Update {
         target: AssignTarget,
         prefix: bool,
@@ -146,6 +150,7 @@ impl Expr {
             | Self::Conditional { span, .. }
             | Self::Assign { span, .. }
             | Self::DestructureAssign { span, .. }
+            | Self::SuperCall { span, .. }
             | Self::Update { span, .. }
             | Self::Call { span, .. }
             | Self::New { span, .. }

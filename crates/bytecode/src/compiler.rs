@@ -1083,6 +1083,10 @@ impl<'a> FunctionCompiler<'a> {
             self.emit_u16(Op::LoadLocal, slot, span);
             self.emit_u16(Op::LoadLocal, super_slot, span);
             self.emit(Op::SetPrototype, span);
+            self.emit_u16(Op::LoadLocal, slot, span);
+            self.emit_u16(Op::LoadLocal, super_slot, span);
+            let super_key = self.add_const(Const::String("__kaguraSuper".into()));
+            self.emit_u32(Op::SetProp, super_key, span);
             Some(super_slot)
         } else {
             None
@@ -1571,6 +1575,17 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit_u16(Op::StoreLocal, source, *span);
                 self.bind_pattern(pattern, source, kagura_ast::VarKind::Var, *span, true)?;
                 self.emit_u16(Op::LoadLocal, source, *span);
+            }
+            Expr::SuperCall { args, span } => {
+                self.compile_expr(&Expr::This { span: *span })?;
+                let class_key = self.add_const(Const::String("__kaguraClass".into()));
+                self.emit_u32(Op::GetProp, class_key, *span);
+                let super_key = self.add_const(Const::String("__kaguraSuper".into()));
+                self.emit_u32(Op::GetProp, super_key, *span);
+                self.compile_expr(&Expr::This { span: *span })?;
+                self.compile_args(args)?;
+                self.emit(Op::CallThis, *span);
+                self.emit_u8_raw(args.len(), *span);
             }
             Expr::Update {
                 target,

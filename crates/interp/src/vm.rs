@@ -478,6 +478,46 @@ impl<'a> Interpreter<'a> {
                     let value = try_op!(self.construct(callee, &args, span, &roots));
                     push(&mut stack, value, span)?;
                 }
+                Op::CallThis => {
+                    let argc = read_u8(&function.code, &mut pc, span)? as usize;
+                    let mut args = Vec::with_capacity(argc);
+                    for _ in 0..argc {
+                        args.push(pop(&mut stack, span)?);
+                    }
+                    args.reverse();
+                    let receiver = pop(&mut stack, span)?;
+                    let callee = pop(&mut stack, span)?;
+                    let mut roots =
+                        Vec::with_capacity(caller_roots.len() + locals.len() + stack.len() + 3);
+                    roots.extend_from_slice(caller_roots);
+                    for (value, is_defined) in locals.iter().zip(defined.iter()) {
+                        if *is_defined {
+                            roots.push(*value);
+                        }
+                    }
+                    roots.extend_from_slice(&stack);
+                    roots.push(callee);
+                    roots.push(receiver);
+                    roots.extend_from_slice(&args);
+                    if let Some(env) = env {
+                        roots.push(Value::object(env.index()));
+                    }
+                    if let Some(closure_env) = closure_env {
+                        roots.push(Value::object(closure_env.index()));
+                    }
+                    if let Some(capture_env) = capture_env {
+                        roots.push(Value::object(capture_env.index()));
+                    }
+                    let value = match self.call_with_this(callee, receiver, &args, &roots, span) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            let catch_pc = self.catch_error(&mut handlers, &mut stack, error)?;
+                            pc = catch_pc;
+                            continue;
+                        }
+                    };
+                    push(&mut stack, value, span)?;
+                }
                 Op::CallName => {
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let argc = read_u8(&function.code, &mut pc, span)? as usize;

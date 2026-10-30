@@ -1074,6 +1074,19 @@ fn supports_default_derived_class_constructors() {
 }
 
 #[test]
+fn supports_explicit_super_calls() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "class A { constructor(x) { this.x = x; } value() { return this.x; } } class B extends A { constructor(x, y) { super(x); this.y = y; } sum() { return this.value() + this.y; } } var b = new B(4, 5); console.log(b.sum(), b.x, b.y, b instanceof A);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "9 4 5 true\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

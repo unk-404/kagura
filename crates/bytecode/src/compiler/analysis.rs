@@ -160,6 +160,7 @@ fn expr_has_closure(expr: &Expr) -> bool {
             .iter()
             .any(|property| expr_has_closure(&property.value)),
         Expr::Array { elements, .. } => elements.iter().flatten().any(expr_has_closure),
+        Expr::SuperCall { args, .. } => args.iter().any(expr_has_closure),
         Expr::Number { .. }
         | Expr::String { .. }
         | Expr::Boolean { .. }

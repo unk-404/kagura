@@ -1097,6 +1097,24 @@ impl Parser {
                     span: token.span,
                 })
             }
+            TokenKind::Super => {
+                let start = self.advance().span;
+                self.expect(&TokenKind::LParen, "expected '(' after super")?;
+                let mut args = Vec::new();
+                if !self.at(&TokenKind::RParen) {
+                    loop {
+                        args.push(self.parse_expr()?);
+                        if !self.eat(&TokenKind::Comma) {
+                            break;
+                        }
+                    }
+                }
+                let end = self.expect(&TokenKind::RParen, "expected ')' after super arguments")?;
+                Ok(Expr::SuperCall {
+                    args,
+                    span: start.merge(end.span),
+                })
+            }
             TokenKind::Function => self.parse_function_expr(),
             TokenKind::LParen => {
                 if let Some(arrow) = self.try_parse_parenthesized_arrow()? {

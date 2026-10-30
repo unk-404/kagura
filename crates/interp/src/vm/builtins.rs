@@ -1349,6 +1349,9 @@ impl<'a> Interpreter<'a> {
         let mut all_roots = roots.to_vec();
         all_roots.push(object);
         all_roots.push(prototype);
+        let class_key = self.heap.string("__kaguraClass");
+        self.set_non_enumerable_property(object, "__kaguraClass", callee, span)?;
+        let _ = class_key;
         let default_super = self.get_property(callee, "__kaguraDefaultCtor", span)?;
         if !default_super.is_undefined() {
             let super_id = self.object_id(default_super, span)?;
