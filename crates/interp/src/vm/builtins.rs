@@ -18,6 +18,12 @@ impl<'a> Interpreter<'a> {
         args: &[Value],
         span: Span,
     ) -> Result<Option<Value>, RuntimeError> {
+        if path == "NaN" || path == "Infinity" {
+            return Err(RuntimeError::type_error(
+                format!("{path} is not callable"),
+                span,
+            ));
+        }
         if path == "Object" {
             let value = args.first().copied().unwrap_or_else(Value::undefined);
             if value.is_undefined() || value.is_null() {
@@ -1633,6 +1639,12 @@ impl<'a> Interpreter<'a> {
                 self.set_property(object, key, value, span)?;
             }
             return Ok(object);
+        }
+        if name == "NaN" {
+            return Ok(self.heap.number(f64::NAN));
+        }
+        if name == "Infinity" {
+            return Ok(self.heap.number(f64::INFINITY));
         }
         if name == "Object" || name == "Array" {
             if name == "Array" && self.object_prototype.is_none() {

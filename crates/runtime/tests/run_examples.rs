@@ -814,6 +814,19 @@ fn runs_extra_array_methods() {
 }
 
 #[test]
+fn exposes_nan_and_infinity_globals() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(NaN !== NaN, Infinity > 1e308, typeof NaN, isFinite(Infinity));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "true true number false\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
