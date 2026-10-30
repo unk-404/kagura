@@ -67,3 +67,18 @@ fn keeps_returned_roots_alive() {
     assert_eq!(stats.freed_objects, 0);
     assert_eq!(stats.live_bytes_after, 48);
 }
+
+#[test]
+fn stresses_one_million_allocations_with_reclamation() {
+    let shapes = ShapeTable::new();
+    let mut heap = ObjectHeap::new(1 << 20);
+    for index in 0..1_000_000 {
+        let _object = heap.allocate(shapes.root()).unwrap();
+        if index % 1024 == 0 {
+            heap.collect(&[]);
+        }
+    }
+    let stats = heap.collect(&[]);
+    assert_eq!(stats.live_bytes_after, 0);
+    assert!(heap.used() <= heap.capacity());
+}
