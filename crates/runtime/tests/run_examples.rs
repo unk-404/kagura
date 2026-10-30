@@ -47,6 +47,7 @@ const METHOD_SHADOWING: &str = include_str!("../../../examples/method_shadowing.
 const ARROW_THIS: &str = include_str!("../../../examples/arrow_this.ts");
 const DEFAULT_PARAMS: &str = include_str!("../../../examples/default_params.ts");
 const REST_PARAMS: &str = include_str!("../../../examples/rest_params.ts");
+const ARGUMENTS: &str = include_str!("../../../examples/arguments.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -486,6 +487,14 @@ fn collects_rest_parameters() {
     let mut runtime = Runtime::default();
     runtime.run(REST_PARAMS, &mut host).unwrap();
     assert_eq!(host.output(), "1-2-3\n\n2\n");
+}
+
+#[test]
+fn exposes_arguments_object() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARGUMENTS, &mut host).unwrap();
+    assert_eq!(host.output(), "2:a\n3\ntrue\n0\n");
 }
 
 #[test]

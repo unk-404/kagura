@@ -56,6 +56,7 @@ pub enum Op {
     CallMethod = 52,
     LoadThis = 53,
     Rest = 54,
+    Arguments = 55,
 }
 
 impl Op {
@@ -116,6 +117,7 @@ impl Op {
             52 => Self::CallMethod,
             53 => Self::LoadThis,
             54 => Self::Rest,
+            55 => Self::Arguments,
             _ => return None,
         })
     }

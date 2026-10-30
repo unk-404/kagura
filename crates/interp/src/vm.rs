@@ -155,6 +155,18 @@ impl<'a> Interpreter<'a> {
                     }
                     push(&mut stack, Value::object(array.index()), span)?;
                 }
+                Op::Arguments => {
+                    let array = self
+                        .objects
+                        .allocate_array(self.shapes.root())
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    for value in frame.args {
+                        self.objects
+                            .array_push(array, *value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                    push(&mut stack, Value::object(array.index()), span)?;
+                }
                 Op::LoadLocal => {
                     let slot = read_u16(&function.code, &mut pc, span)? as usize;
                     if slot >= locals.len() {

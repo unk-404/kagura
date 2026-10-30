@@ -134,6 +134,7 @@ struct FunctionCompiler<'a> {
     gc_safe: bool,
     uses_env: bool,
     self_slot: Option<u16>,
+    arguments_slot: Option<u16>,
     iterations: Vec<IterationScope>,
     outer: Vec<Vec<Local>>,
     constants: &'a mut Vec<Const>,
@@ -160,6 +161,7 @@ impl<'a> FunctionCompiler<'a> {
             gc_safe,
             uses_env: body_has_closure(body) || params_have_closure(params),
             self_slot: None,
+            arguments_slot: None,
             iterations: Vec::new(),
             outer: Vec::new(),
             constants,
@@ -170,7 +172,18 @@ impl<'a> FunctionCompiler<'a> {
                 .declare(&param.name, true, param.span)
                 .expect("parameters are unique");
         }
+        if !matches!(name, "<arrow>" | "<script>") {
+            compiler.arguments_slot = compiler.declare("arguments", true, Span::empty(0));
+        }
         compiler
+    }
+
+    fn compile_arguments(&mut self, span: Span) -> Result<(), CompileError> {
+        if let Some(slot) = self.arguments_slot {
+            self.emit(Op::Arguments, span);
+            self.emit_u16(Op::StoreLocal, slot, span);
+        }
+        Ok(())
     }
 
     fn compile_param_defaults(&mut self, params: &[Param]) -> Result<(), CompileError> {
@@ -581,6 +594,7 @@ impl<'a> FunctionCompiler<'a> {
         {
             compiler.self_slot = Some(slot);
         }
+        compiler.compile_arguments(span)?;
         compiler.compile_param_defaults(params)?;
         compiler.compile_rest_param(params)?;
         for stmt in body {

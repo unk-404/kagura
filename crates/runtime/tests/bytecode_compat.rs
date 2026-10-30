@@ -47,6 +47,7 @@ const ARROW_THIS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/a
 const DEFAULT_PARAMS: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/default_params.kbc");
 const REST_PARAMS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/rest_params.kbc");
+const ARGUMENTS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/arguments.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -311,4 +312,12 @@ fn executes_v1_rest_param_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(REST_PARAMS, &mut host).unwrap();
     assert_eq!(host.output(), "1-2-3\n\n2\n");
+}
+
+#[test]
+fn executes_v1_arguments_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(ARGUMENTS, &mut host).unwrap();
+    assert_eq!(host.output(), "2:a\n3\ntrue\n0\n");
 }
