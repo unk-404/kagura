@@ -71,6 +71,7 @@ const NEW_ERRORS: &str = include_str!("../../../examples/new_errors.ts");
 const NEW_CONSTRUCTOR: &str = include_str!("../../../examples/new_constructor.ts");
 const GLOBALS_MATH: &str = include_str!("../../../examples/globals_math.ts");
 const FOR_IN: &str = include_str!("../../../examples/for_in.ts");
+const JSON_PARSE: &str = include_str!("../../../examples/json_parse.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -703,6 +704,17 @@ fn runs_for_in_loops() {
     let mut runtime = Runtime::default();
     runtime.run(FOR_IN, &mut host).unwrap();
     assert_eq!(host.output(), "a 1\nb 2\n");
+}
+
+#[test]
+fn runs_json_parse_from_serde() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(JSON_PARSE, &mut host).unwrap();
+    assert_eq!(
+        host.output(),
+        "1 null x 2\n{\"a\":1,\"b\":[true,null,\"x\"],\"c\":{\"d\":2}}\n3\nhello\n"
+    );
 }
 
 #[test]

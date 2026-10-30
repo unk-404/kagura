@@ -63,6 +63,8 @@ enum Command {
         #[arg(long)]
         json: bool,
         #[arg(long)]
+        filter: Option<String>,
+        #[arg(long)]
         harness: Option<PathBuf>,
     },
 }
@@ -88,6 +90,7 @@ fn main() {
             node,
             node_all,
             json,
+            filter,
             harness,
         } => run_test262(
             path,
@@ -98,6 +101,7 @@ fn main() {
             node,
             node_all,
             json,
+            filter,
             harness,
         ),
     };
@@ -248,6 +252,7 @@ fn run_test262(
     node: bool,
     node_all: bool,
     json: bool,
+    filter: Option<String>,
     harness: Option<PathBuf>,
 ) -> i32 {
     let worker = std::thread::Builder::new()
@@ -263,6 +268,7 @@ fn run_test262(
                 node,
                 node_all,
                 json,
+                filter,
                 harness,
             )
         });
@@ -285,6 +291,7 @@ fn run_test262_inner(
     node: bool,
     node_all: bool,
     json: bool,
+    filter: Option<String>,
     harness: Option<PathBuf>,
 ) -> i32 {
     let oracle_enabled = node || node_all;
@@ -294,6 +301,20 @@ fn run_test262_inner(
             eprintln!("kagura: cannot read {}: {error}", path.display());
             return 2;
         }
+    };
+    let cases = if let Some(filter) = filter {
+        let filter = filter.replace('\\', "/");
+        cases
+            .into_iter()
+            .filter(|case| {
+                case.path
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .contains(&filter)
+            })
+            .collect()
+    } else {
+        cases
     };
     let selected = limit.map_or(cases.len(), |limit| limit.min(cases.len()));
     let harness = if oracle_enabled {

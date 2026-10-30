@@ -8,6 +8,8 @@ use crate::error::{RuntimeError, RuntimeErrorKind};
 
 use super::Interpreter;
 
+mod json;
+
 impl<'a> Interpreter<'a> {
     pub(super) fn call_global(
         &mut self,
@@ -292,10 +294,56 @@ impl<'a> Interpreter<'a> {
             };
         }
         if path == "JSON.parse" {
-            return Err(RuntimeError::runtime(
-                "JSON.parse is not supported yet",
-                span,
-            ));
+            let text = self
+                .heap
+                .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+            return self.json_parse_native(&text, span).map(Some);
+        }
+        if path == "JSON" {
+            return Err(RuntimeError::type_error("JSON is not callable", span));
+        }
+        if path == "Object.prototype.toString.call" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            let tag = if value.is_undefined() || value.is_hole() {
+                "Undefined"
+            } else if value.is_null() {
+                "Null"
+            } else if value.as_boolean().is_some() {
+                "Boolean"
+            } else if value.is_number() {
+                "Number"
+            } else if value.is_string() {
+                "String"
+            } else if let Some(offset) = value.object_offset() {
+                let id = ObjectId::new(offset);
+                if self
+                    .objects
+                    .is_array(id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                {
+                    "Array"
+                } else if self
+                    .objects
+                    .is_function(id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                {
+                    "Function"
+                } else {
+                    "Object"
+                }
+            } else {
+                "Object"
+            };
+            return Ok(Some(self.heap.string(&format!("[object {tag}]"))));
+        }
+        if path == "Object.prototype.hasOwnProperty.call" {
+            let target = args.first().copied().unwrap_or_else(Value::undefined);
+            let key = self
+                .heap
+                .to_js_string(args.get(1).copied().unwrap_or_else(Value::undefined));
+            return self
+                .has_own_property(target, &key, span)
+                .map(|own| Some(Value::boolean(own)));
         }
         if path == "Object.create" {
             let Some(prototype) = args.first().copied() else {
@@ -1497,6 +1545,7 @@ impl<'a> Interpreter<'a> {
             }
         }
         Ok(match error.kind {
+            RuntimeErrorKind::Syntax => "SyntaxError",
             RuntimeErrorKind::Type => "TypeError",
             RuntimeErrorKind::Reference => "ReferenceError",
             RuntimeErrorKind::Range => "RangeError",

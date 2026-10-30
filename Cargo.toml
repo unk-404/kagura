@@ -8,5 +8,6 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
+serde_json = { version = "1", default-features = false, features = ["std", "preserve_order"] }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 thiserror = { version = "2", default-features = false, features = ["std"] }

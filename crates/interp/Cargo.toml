@@ -12,6 +12,7 @@ kagura-value = { version = "0.1.0", path = "../value" }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 kagura-object = { version = "0.1.0", path = "../object" }
+serde_json = { workspace = true }
 
 [features]
 debug = []

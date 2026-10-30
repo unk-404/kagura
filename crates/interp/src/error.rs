@@ -5,6 +5,7 @@ use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeErrorKind {
+    Syntax,
     Type,
     Reference,
     Range,
@@ -43,6 +44,10 @@ impl RuntimeError {
         Self::new(RuntimeErrorKind::Type, message, span)
     }
 
+    pub fn syntax_error(message: impl Into<String>, span: Span) -> Self {
+        Self::new(RuntimeErrorKind::Syntax, message, span)
+    }
+
     pub fn reference(message: impl Into<String>, span: Span) -> Self {
         Self::new(RuntimeErrorKind::Reference, message, span)
     }
@@ -57,6 +62,7 @@ impl RuntimeError {
 
     pub fn diagnostic(&self) -> Diagnostic {
         let kind = match self.kind {
+            RuntimeErrorKind::Syntax => DiagnosticKind::Syntax,
             RuntimeErrorKind::Type => DiagnosticKind::Type,
             RuntimeErrorKind::Reference => DiagnosticKind::Reference,
             RuntimeErrorKind::Range => DiagnosticKind::Range,

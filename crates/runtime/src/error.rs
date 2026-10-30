@@ -25,6 +25,7 @@ impl RunError {
             Self::Decode(error) => Diagnostic::syntax(error.to_string(), Span::default()),
             Self::Runtime(error) => {
                 let kind = match error.kind {
+                    RuntimeErrorKind::Syntax => DiagnosticKind::Syntax,
                     RuntimeErrorKind::Type => DiagnosticKind::Type,
                     RuntimeErrorKind::Reference => DiagnosticKind::Reference,
                     RuntimeErrorKind::Range => DiagnosticKind::Range,

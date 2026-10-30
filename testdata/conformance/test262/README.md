@@ -34,6 +34,7 @@ Useful flags:
 - `--node-all` also runs failing Kagura cases through Node and classifies
   `kagura_fail_node_pass`, `both_failed`, and other disagreements.
 - `--json` emits a machine-readable report instead of the human summary.
+- `--filter SUBSTRING` selects discovered cases whose path contains SUBSTRING.
 - `--harness DIR` points at the test262 `harness/` directory; by default it is
   discovered beside the corpus root.
 
@@ -72,6 +73,10 @@ The current P1 slice adds:
 
 - `new` with `Error`, `TypeError`, `RangeError`, `ReferenceError`,
   `SyntaxError`, `Test262Error`, `Object`, and `Array` targets
+- `JSON.parse` backed by `serde_json`; `JSON.stringify` uses the existing
+  object/array serializer
+- `Object.prototype.toString.call` and `Object.prototype.hasOwnProperty.call`
+- `--filter` selects a path substring before applying `--limit`
 - `var` declarations, prefix/postfix `++`/`--`, `instanceof`, `for...in`, `switch`
 - object computed access (`object[key]`) for string keys
 - constructor values for the error families, loaded as builtin globals
@@ -117,8 +122,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18845 executed, 2891 passed, 15954 failed, 35184 skipped
-oracle node: 2891 checked, 2890 matched, 1 mismatched
+54029 selected, 18845 executed, 2934 passed, 15911 failed, 35184 skipped
+oracle node: 2934 checked, 2933 matched, 1 mismatched
 ```
 
 The single Node mismatch is tracked as a differential warning, not hidden:

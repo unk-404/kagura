@@ -163,6 +163,7 @@ fn negative_matches(negative: &crate::metadata::Negative, error: &RunError) -> b
                 return false;
             };
             match negative.kind.as_str() {
+                "SyntaxError" => error.kind == RuntimeErrorKind::Syntax,
                 "TypeError" => error.kind == RuntimeErrorKind::Type,
                 "ReferenceError" => error.kind == RuntimeErrorKind::Reference,
                 "RangeError" => error.kind == RuntimeErrorKind::Range,
