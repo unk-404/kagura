@@ -1,4 +1,7 @@
 use kagura_bytecode::{Const, Module, Op};
+use kagura_object::{
+    ObjectHeap, ObjectId, PropertyAttributes, PropertyKey, PropertyLocation, ShapeTable,
+};
 use kagura_support::Span;
 use kagura_value::{Heap, Value};
 use tracing::instrument;
@@ -12,16 +15,26 @@ const MAX_STACK: usize = 4096;
 pub struct Interpreter<'a> {
     module: &'a Module,
     heap: &'a mut Heap,
+    objects: &'a mut ObjectHeap,
+    shapes: &'a mut ShapeTable,
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     depth: usize,
 }
 
 impl<'a> Interpreter<'a> {
-    pub fn new(module: &'a Module, heap: &'a mut Heap, host: &'a mut dyn Host) -> Self {
+    pub fn new(
+        module: &'a Module,
+        heap: &'a mut Heap,
+        objects: &'a mut ObjectHeap,
+        shapes: &'a mut ShapeTable,
+        host: &'a mut dyn Host,
+    ) -> Self {
         Self {
             module,
             heap,
+            objects,
+            shapes,
             host,
             host_cache: vec![None; module.constants.len()],
             depth: 0,
@@ -271,6 +284,39 @@ impl<'a> Interpreter<'a> {
                     let value = self.invoke_host(id, &args, span)?;
                     push(&mut stack, value, span)?;
                 }
+                Op::NewObject => {
+                    let shape = self.shapes.root();
+                    let object = self
+                        .objects
+                        .allocate(shape)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    push(&mut stack, Value::object(object.index()), span)?;
+                }
+                Op::GetProp => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let key = match self.module.constants.get(index as usize) {
+                        Some(Const::String(key)) => key.clone(),
+                        _ => {
+                            return Err(RuntimeError::runtime("invalid property key", span));
+                        }
+                    };
+                    let object = pop(&mut stack, span)?;
+                    let value = self.get_property(object, &key, span)?;
+                    push(&mut stack, value, span)?;
+                }
+                Op::SetProp => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let key = match self.module.constants.get(index as usize) {
+                        Some(Const::String(key)) => key.clone(),
+                        _ => {
+                            return Err(RuntimeError::runtime("invalid property key", span));
+                        }
+                    };
+                    let value = pop(&mut stack, span)?;
+                    let object = pop(&mut stack, span)?;
+                    self.set_property(object, &key, value, span)?;
+                    push(&mut stack, object, span)?;
+                }
                 Op::Pop => {
                     pop(&mut stack, span)?;
                 }
@@ -330,6 +376,90 @@ impl<'a> Interpreter<'a> {
         self.host
             .invoke(id, &mut call)
             .map_err(|error| RuntimeError::runtime(error.message, span))
+    }
+
+    fn object_id(&self, value: Value, span: Span) -> Result<ObjectId, RuntimeError> {
+        value
+            .object_offset()
+            .map(ObjectId::new)
+            .ok_or_else(|| RuntimeError::type_error("value is not an object", span))
+    }
+
+    fn get_property(
+        &mut self,
+        object: Value,
+        key: &str,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let id = self.object_id(object, span)?;
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let key = PropertyKey::from_string(key);
+        let location = self
+            .shapes
+            .lookup(shape, &key)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            .map(|descriptor| descriptor.location);
+        match location {
+            Some(PropertyLocation::InObject(slot)) => self
+                .objects
+                .get_slot(id, slot)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+            Some(PropertyLocation::PropertyArray(_)) => Err(RuntimeError::runtime(
+                "property arrays are not implemented yet",
+                span,
+            )),
+            None => Ok(Value::undefined()),
+        }
+    }
+
+    fn set_property(
+        &mut self,
+        object: Value,
+        key: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let id = self.object_id(object, span)?;
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let key = PropertyKey::from_string(key);
+        let existing = self
+            .shapes
+            .lookup(shape, &key)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            .map(|descriptor| descriptor.location);
+        let location = match existing {
+            Some(location) => location,
+            None => {
+                let new_shape = self
+                    .shapes
+                    .add_property(shape, key.clone(), PropertyAttributes::data())
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                self.objects
+                    .set_shape(id, new_shape)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                self.shapes
+                    .lookup(new_shape, &key)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    .expect("new shape has descriptor")
+                    .location
+            }
+        };
+        match location {
+            PropertyLocation::InObject(slot) => self
+                .objects
+                .set_slot(id, slot, value)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+            PropertyLocation::PropertyArray(_) => Err(RuntimeError::runtime(
+                "property arrays are not implemented yet",
+                span,
+            )),
+        }
     }
 
     fn add(&mut self, left: Value, right: Value, span: Span) -> Result<Value, RuntimeError> {

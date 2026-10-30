@@ -53,6 +53,16 @@ impl ObjectHeap {
         Ok(ShapeId::new(raw))
     }
 
+    pub fn set_shape(&mut self, object: ObjectId, shape: ShapeId) -> Result<(), ObjectHeapError> {
+        if !self
+            .arena
+            .write_bytes(object.index(), &shape.index().to_le_bytes())
+        {
+            return Err(ObjectHeapError::InvalidObject);
+        }
+        Ok(())
+    }
+
     pub fn get_slot(&self, object: ObjectId, slot: u16) -> Result<Value, ObjectHeapError> {
         if slot >= MAX_IN_OBJECT_SLOTS {
             return Err(ObjectHeapError::InvalidSlot);

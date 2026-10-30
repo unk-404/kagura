@@ -16,6 +16,15 @@ fn parses_interface_without_runtime_semantics() {
 }
 
 #[test]
+fn parses_object_literal() {
+    let program = parse("let point = { x: 1, y: 2 };").unwrap();
+    let kagura_ast::Stmt::Var(decl) = &program.body[0] else {
+        panic!("expected var declaration");
+    };
+    assert!(matches!(decl.init, Some(kagura_ast::Expr::Object { .. })));
+}
+
+#[test]
 fn rejects_unterminated_string() {
     let error = parse("let value = \"oops;").unwrap_err();
     assert!(error.message.contains("unterminated string"));

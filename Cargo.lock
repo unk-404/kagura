@@ -287,6 +287,7 @@ version = "0.1.0"
 dependencies = [
  "kagura-bytecode",
  "kagura-diagnostics",
+ "kagura-object",
  "kagura-support",
  "kagura-value",
  "thiserror",
@@ -331,6 +332,7 @@ dependencies = [
  "kagura-diagnostics",
  "kagura-interp",
  "kagura-kmem",
+ "kagura-object",
  "kagura-parser",
  "kagura-support",
  "kagura-target",

@@ -11,6 +11,7 @@ kagura-support = { version = "0.1.0", path = "../support" }
 kagura-value = { version = "0.1.0", path = "../value" }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+kagura-object = { version = "0.1.0", path = "../object" }
 
 [features]
 debug = []

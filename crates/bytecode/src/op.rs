@@ -29,6 +29,9 @@ pub enum Op {
     Return = 25,
     Dup = 26,
     CallHost = 27,
+    NewObject = 28,
+    GetProp = 29,
+    SetProp = 30,
 }
 
 impl Op {
@@ -62,6 +65,9 @@ impl Op {
             25 => Self::Return,
             26 => Self::Dup,
             27 => Self::CallHost,
+            28 => Self::NewObject,
+            29 => Self::GetProp,
+            30 => Self::SetProp,
             _ => return None,
         })
     }

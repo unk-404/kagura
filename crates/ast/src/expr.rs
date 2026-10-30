@@ -52,11 +52,22 @@ pub enum Expr {
         property: String,
         span: Span,
     },
+    Object {
+        properties: Vec<ObjectProperty>,
+        span: Span,
+    },
     As {
         expr: Box<Expr>,
         ty: TypeAnn,
         span: Span,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ObjectProperty {
+    pub key: String,
+    pub value: Expr,
+    pub span: Span,
 }
 
 impl Expr {
@@ -73,6 +84,7 @@ impl Expr {
             | Self::Assign { span, .. }
             | Self::Call { span, .. }
             | Self::Member { span, .. }
+            | Self::Object { span, .. }
             | Self::As { span, .. } => *span,
         }
     }

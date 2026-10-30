@@ -16,6 +16,7 @@ kagura-target = { version = "0.1.0", path = "../target" }
 kagura-value = { version = "0.1.0", path = "../value" }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+kagura-object = { version = "0.1.0", path = "../object" }
 
 [features]
 debug = ["kagura-interp/debug"]

@@ -3,6 +3,7 @@ use kagura_testkit::CaptureHost;
 
 const HELLO: &str = include_str!("../../../examples/hello.ts");
 const FIB: &str = include_str!("../../../examples/fib.ts");
+const OBJECTS: &str = include_str!("../../../examples/objects.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -18,6 +19,14 @@ fn runs_fib() {
     let mut runtime = Runtime::default();
     runtime.run(FIB, &mut host).unwrap();
     assert_eq!(host.output(), "sum=88\n");
+}
+
+#[test]
+fn runs_object_literals() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(OBJECTS, &mut host).unwrap();
+    assert_eq!(host.output(), "3\n");
 }
 
 #[test]

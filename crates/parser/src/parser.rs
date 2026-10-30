@@ -1,5 +1,6 @@
 use kagura_ast::{
-    BinaryOp, Expr, ForInit, FuncDecl, Param, Program, Stmt, TypeAnn, UnaryOp, VarDecl, VarKind,
+    BinaryOp, Expr, ForInit, FuncDecl, ObjectProperty, Param, Program, Stmt, TypeAnn, UnaryOp,
+    VarDecl, VarKind,
 };
 use kagura_support::Span;
 use tracing::instrument;
@@ -572,8 +573,42 @@ impl Parser {
                     other => other,
                 })
             }
+            TokenKind::LBrace => self.parse_object_literal(),
             _ => Err(ParseError::new("expected expression", token.span)),
         }
+    }
+
+    fn parse_object_literal(&mut self) -> Result<Expr, ParseError> {
+        let start = self.advance().span;
+        let mut properties = Vec::new();
+        if !self.at(&TokenKind::RBrace) {
+            loop {
+                let key_token = self.peek().clone();
+                let key = match key_token.kind {
+                    TokenKind::Ident(key) | TokenKind::Str(key) => key,
+                    TokenKind::Number(value) => format!("{value}"),
+                    _ => {
+                        return Err(ParseError::new(
+                            "expected object property name",
+                            key_token.span,
+                        ));
+                    }
+                };
+                self.advance();
+                self.expect(&TokenKind::Colon, "expected ':' after object property")?;
+                let value = self.parse_expr()?;
+                let span = key_token.span.merge(value.span());
+                properties.push(ObjectProperty { key, value, span });
+                if !self.eat(&TokenKind::Comma) || self.at(&TokenKind::RBrace) {
+                    break;
+                }
+            }
+        }
+        let end = self.expect(&TokenKind::RBrace, "expected '}' after object literal")?;
+        Ok(Expr::Object {
+            properties,
+            span: start.merge(end.span),
+        })
     }
 
     fn parse_type(&mut self) -> Result<TypeAnn, ParseError> {

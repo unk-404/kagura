@@ -387,11 +387,23 @@ impl<'a> FunctionCompiler<'a> {
                     ));
                 }
             }
-            Expr::Member { span, .. } => {
-                return Err(CompileError::new(
-                    "member access is not supported here",
-                    *span,
-                ));
+            Expr::Member {
+                object,
+                property,
+                span,
+            } => {
+                self.compile_expr(object)?;
+                let index = self.add_const(Const::String(property.clone()));
+                self.emit_u32(Op::GetProp, index, *span);
+            }
+            Expr::Object { properties, span } => {
+                self.emit(Op::NewObject, *span);
+                for property in properties {
+                    self.emit(Op::Dup, *span);
+                    self.compile_expr(&property.value)?;
+                    let index = self.add_const(Const::String(property.key.clone()));
+                    self.emit_u32(Op::SetProp, index, property.span);
+                }
             }
             Expr::As { expr, .. } => self.compile_expr(expr)?,
         }
