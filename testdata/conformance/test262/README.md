@@ -69,6 +69,10 @@ with Node, but it cannot turn a skipped feature into a pass.
 
 ## P1 support
 
+P1 integration is complete; see `.agents/24-p1-exit.md` for the exit report.
+Semantic conformance is not complete and the counts below are still a
+pre-0.0.1 baseline.
+
 The current P1 slice adds:
 
 - `new` with `Error`, `TypeError`, `RangeError`, `ReferenceError`,
