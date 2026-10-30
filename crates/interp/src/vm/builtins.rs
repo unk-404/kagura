@@ -1,4 +1,4 @@
-﻿use kagura_object::{ObjectId, PropertyKey, own_property_keys};
+use kagura_object::{ObjectId, PropertyKey, own_property_keys};
 use kagura_support::Span;
 use kagura_value::Value;
 
@@ -346,10 +346,20 @@ impl<'a> Interpreter<'a> {
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 let mut found = None;
                 for index in from..length {
-                    let value = self
+                    let has = self
                         .objects
-                        .array_get(object_id, index)
+                        .array_has(object_id, index)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if !has && key == "indexOf" {
+                        continue;
+                    }
+                    let value = if has {
+                        self.objects
+                            .array_get(object_id, index)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    } else {
+                        Value::undefined()
+                    };
                     if self.heap.strict_eq(value, needle) {
                         found = Some(index);
                         break;
@@ -384,10 +394,17 @@ impl<'a> Interpreter<'a> {
                     .allocate_array(self.shapes.root())
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 for index in start..end {
-                    let value = self
+                    let has = self
                         .objects
-                        .array_get(object_id, index as u32)
+                        .array_has(object_id, index as u32)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let value = if has {
+                        self.objects
+                            .array_get(object_id, index as u32)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    } else {
+                        Value::hole()
+                    };
                     self.objects
                         .array_push(array, value)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
@@ -414,6 +431,20 @@ impl<'a> Interpreter<'a> {
                     roots.push(Value::object(result.index()));
                 }
                 for index in 0..length {
+                    let has = self
+                        .objects
+                        .array_has(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if !has {
+                        if key == "map"
+                            && let Some(result) = result
+                        {
+                            self.objects
+                                .array_push(result, Value::hole())
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        }
+                        continue;
+                    }
                     let value = self
                         .objects
                         .array_get(object_id, index)
@@ -451,6 +482,13 @@ impl<'a> Interpreter<'a> {
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 let roots = roots.to_vec();
                 for index in 0..length {
+                    let has = self
+                        .objects
+                        .array_has(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if !has {
+                        continue;
+                    }
                     let value = self
                         .objects
                         .array_get(object_id, index)
@@ -482,20 +520,40 @@ impl<'a> Interpreter<'a> {
                 let mut index = 0;
                 let mut accumulator = if let Some(initial) = args.get(1) {
                     *initial
-                } else if length > 0 {
-                    index = 1;
-                    self.objects
-                        .array_get(object_id, 0)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
                 } else {
-                    return Err(RuntimeError::type_error(
-                        "reduce of empty array with no initial value",
-                        span,
-                    ));
+                    let mut first = None;
+                    while index < length {
+                        if self
+                            .objects
+                            .array_has(object_id, index)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                        {
+                            first = Some(index);
+                            break;
+                        }
+                        index += 1;
+                    }
+                    let Some(first) = first else {
+                        return Err(RuntimeError::type_error(
+                            "reduce of empty array with no initial value",
+                            span,
+                        ));
+                    };
+                    index = first + 1;
+                    self.objects
+                        .array_get(object_id, first)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
                 };
                 let mut roots = roots.to_vec();
                 roots.push(accumulator);
                 for current in index..length {
+                    if !self
+                        .objects
+                        .array_has(object_id, current)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        continue;
+                    }
                     let value = self
                         .objects
                         .array_get(object_id, current)

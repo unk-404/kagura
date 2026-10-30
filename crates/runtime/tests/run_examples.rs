@@ -40,6 +40,7 @@ const BUILTINS_CHAIN: &str = include_str!("../../../examples/builtins_chain.ts")
 const BUILTINS_CALLBACKS_MORE: &str = include_str!("../../../examples/builtins_callbacks_more.ts");
 const OBJECT_BUILTINS: &str = include_str!("../../../examples/object_builtins.ts");
 const PROTOTYPE_CHAIN: &str = include_str!("../../../examples/prototype_chain.ts");
+const BUILTINS_HOLES: &str = include_str!("../../../examples/builtins_holes.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -423,6 +424,14 @@ fn follows_object_prototype_chain() {
     let mut runtime = Runtime::default();
     runtime.run(PROTOTYPE_CHAIN, &mut host).unwrap();
     assert_eq!(host.output(), "1\n2\ntrue\ntrue\n3\n");
+}
+
+#[test]
+fn runs_hole_aware_array_callbacks() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(BUILTINS_HOLES, &mut host).unwrap();
+    assert_eq!(host.output(), "2,,6\n1,3\n2\nfalse\n-1\ntrue\n4\n");
 }
 
 #[test]
