@@ -187,9 +187,7 @@ impl<'a> FunctionCompiler<'a> {
             functions,
         };
         for param in params {
-            compiler
-                .declare(&param.name, true, param.span)
-                .expect("parameters are unique");
+            let _ = compiler.declare(&param.name, true, param.span);
         }
         if !matches!(name, "<arrow>" | "<script>") {
             compiler.arguments_slot = compiler.declare("arguments", true, Span::empty(0));
@@ -955,9 +953,15 @@ impl<'a> FunctionCompiler<'a> {
                 span,
             } => match target {
                 AssignTarget::Ident(name) => {
-                    let resolved = self.resolve(name).ok_or_else(|| {
-                        CompileError::new(format!("unknown variable '{name}'"), *span)
-                    })?;
+                    let resolved = self.resolve(name);
+                    if resolved.is_none() {
+                        self.compile_expr(value)?;
+                        self.emit(Op::Pop, *span);
+                        let index = self.add_const(Const::String(name.clone()));
+                        self.emit_u32(Op::ThrowReference, index, *span);
+                        return Ok(());
+                    }
+                    let resolved = resolved.expect("resolved assignment");
                     if !resolved.mutable() {
                         return Err(CompileError::new(
                             format!("assignment to constant '{name}'"),
@@ -1048,7 +1052,9 @@ impl<'a> FunctionCompiler<'a> {
                 }
             }
             Expr::New { callee, args, span } => {
-                if let Expr::Ident { name, .. } = callee.as_ref() {
+                if let Expr::Ident { name, .. } = callee.as_ref()
+                    && self.resolve(name).is_none()
+                {
                     self.compile_args(args)?;
                     let index = self.add_const(Const::String(name.clone()));
                     self.emit_u32(Op::NewName, index, *span);

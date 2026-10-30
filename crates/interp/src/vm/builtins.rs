@@ -730,6 +730,55 @@ impl<'a> Interpreter<'a> {
         Ok(true)
     }
 
+    pub(super) fn construct(
+        &mut self,
+        callee: Value,
+        args: &[Value],
+        span: Span,
+        roots: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        let callee_id = self.object_id(callee, span)?;
+        if !self
+            .objects
+            .is_function(callee_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Err(RuntimeError::type_error("value is not a constructor", span));
+        }
+        let (function_index, _) = self
+            .objects
+            .function_data(callee_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if function_index == u32::MAX {
+            let name = self.get_property(callee, "name", span)?;
+            let name = self
+                .heap
+                .as_str(name)
+                .ok_or_else(|| RuntimeError::type_error("invalid constructor", span))?
+                .to_owned();
+            return self.new_name(&name, args, span);
+        }
+        let object = self
+            .objects
+            .allocate(self.shapes.root())
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let object = Value::object(object.index());
+        let mut all_roots = roots.to_vec();
+        all_roots.push(object);
+        match self.call(
+            function_index as usize,
+            args,
+            &all_roots,
+            None,
+            None,
+            Some(object),
+        ) {
+            Ok(value) if value.object_offset().is_some() => Ok(value),
+            Ok(_) => Ok(object),
+            Err(error) => Err(error),
+        }
+    }
+
     pub(super) fn new_name(
         &mut self,
         name: &str,

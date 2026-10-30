@@ -77,7 +77,7 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
     if metadata
         .flags
         .iter()
-        .any(|flag| matches!(flag.as_str(), "module" | "async" | "onlyStrict" | "raw"))
+        .any(|flag| matches!(flag.as_str(), "module" | "async" | "raw"))
     {
         return Some("unsupported test262 flag");
     }
@@ -177,6 +177,9 @@ fn source_with_includes(case: &TestCase) -> Result<String, String> {
             .map_err(|error| format!("cannot read include '{}': {error}", path.display()))?;
         source.push_str(&text);
         source.push('\n');
+    }
+    if case.metadata.flags.iter().any(|flag| flag == "onlyStrict") {
+        source.push_str("\"use strict\";\n");
     }
     source.push_str(&case.source);
     Ok(source)

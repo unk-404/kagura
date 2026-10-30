@@ -76,6 +76,9 @@ The current P1 slice adds:
 - `assert.throws`, `assert.compareArray`, and `assert.deepEqual`
 - loading and executing extra test262 harness includes
 - conditional expressions (`cond ? then : else`)
+- `onlyStrict` execution via a prepended `"use strict"` directive
+- user-function `new` construction and generic `new` on resolved values
+- undeclared assignments throw a runtime `ReferenceError`
 - a supported-feature whitelist instead of skipping every non-empty feature list
 
 These changes do not mean the skipped features are implemented; they just stop
@@ -110,13 +113,17 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18431 executed, 1727 passed, 16704 failed, 35598 skipped
-oracle node: 1727 checked, 1726 matched, 1 mismatched
+54029 selected, 18845 executed, 1903 passed, 16942 failed, 35184 skipped
+oracle node: 1903 checked, 1901 matched, 2 mismatched
 ```
 
-The single Node mismatch is an Annex-B function-declaration test where Node 22
-evaluates `f()` as `2` while the test asserts `1`; Kagura follows the test
-assertion. It is reported as a differential warning, not hidden.
+The two Node mismatches are tracked differential warnings, not hidden Kagura
+failures:
+
+- an Annex-B function-declaration test where Node 22 evaluates `f()` as `2`
+  while test262 asserts `1`;
+- `assign-to-global-undefined` where Node's vm context accepts the assignment
+  while test262 expects a strict-mode ReferenceError.
 
 The full report is informational while the engine is pre-0.0.1; the gated
 suite remains `cargo test --workspace`.

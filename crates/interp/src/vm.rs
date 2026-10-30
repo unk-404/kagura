@@ -365,6 +365,17 @@ impl<'a> Interpreter<'a> {
                     let value = try_op!(self.load_builtin(&name, span));
                     push(&mut stack, value, span)?;
                 }
+                Op::ThrowReference => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let name = match self.module.constants.get(index as usize) {
+                        Some(Const::String(name)) => name.clone(),
+                        _ => return Err(RuntimeError::runtime("invalid identifier", span)),
+                    };
+                    return Err(RuntimeError::reference(
+                        format!("{name} is not defined"),
+                        span,
+                    ));
+                }
                 Op::NewName => {
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let argc = read_u8(&function.code, &mut pc, span)? as usize;
@@ -382,14 +393,28 @@ impl<'a> Interpreter<'a> {
                 }
                 Op::NewValue => {
                     let argc = read_u8(&function.code, &mut pc, span)? as usize;
+                    let mut args = Vec::with_capacity(argc);
                     for _ in 0..argc {
-                        pop(&mut stack, span)?;
+                        args.push(pop(&mut stack, span)?);
                     }
-                    pop(&mut stack, span)?;
-                    return Err(RuntimeError::type_error(
-                        "constructing a non-identifier target is not supported yet",
-                        span,
-                    ));
+                    args.reverse();
+                    let callee = pop(&mut stack, span)?;
+                    let mut roots =
+                        Vec::with_capacity(caller_roots.len() + locals.len() + stack.len() + 3);
+                    roots.extend_from_slice(caller_roots);
+                    for (value, is_defined) in locals.iter().zip(defined.iter()) {
+                        if *is_defined {
+                            roots.push(*value);
+                        }
+                    }
+                    roots.extend_from_slice(&stack);
+                    roots.push(callee);
+                    roots.extend_from_slice(&args);
+                    if let Some(env) = env {
+                        roots.push(Value::object(env.index()));
+                    }
+                    let value = try_op!(self.construct(callee, &args, span, &roots));
+                    push(&mut stack, value, span)?;
                 }
                 Op::CallName => {
                     let index = read_u32(&function.code, &mut pc, span)?;

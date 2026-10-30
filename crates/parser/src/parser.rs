@@ -435,20 +435,7 @@ impl Parser {
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
         if self.at(&TokenKind::New) {
-            let start = self.advance().span;
-            let callee = self.parse_postfix()?;
-            let (callee, args, end) = match callee {
-                Expr::Call { callee, args, span } => (callee, args, span),
-                other => {
-                    let span = other.span();
-                    (Box::new(other), Vec::new(), span)
-                }
-            };
-            return Ok(Expr::New {
-                callee,
-                args,
-                span: start.merge(end),
-            });
+            return self.parse_new();
         }
         let op = match self.peek().kind {
             TokenKind::Minus => Some(UnaryOp::Neg),
@@ -473,7 +460,11 @@ impl Parser {
     }
 
     fn parse_postfix(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_primary()?;
+        let expr = self.parse_primary()?;
+        self.parse_suffix(expr)
+    }
+
+    fn parse_suffix(&mut self, mut expr: Expr) -> Result<Expr, ParseError> {
         loop {
             if self.eat(&TokenKind::LParen) {
                 let mut args = Vec::new();
@@ -521,6 +512,64 @@ impl Parser {
             break;
         }
         Ok(expr)
+    }
+
+    fn parse_new(&mut self) -> Result<Expr, ParseError> {
+        let start = self.advance().span;
+        let mut callee = self.parse_primary()?;
+        loop {
+            if self.eat(&TokenKind::Dot) {
+                let property = self.expect_ident("expected property name")?;
+                let span = callee.span().merge(property.span);
+                callee = Expr::Member {
+                    object: Box::new(callee),
+                    property: match property.kind {
+                        TokenKind::Ident(name) => name,
+                        _ => unreachable!(),
+                    },
+                    span,
+                };
+                continue;
+            }
+            if self.eat(&TokenKind::LBracket) {
+                let index = self.parse_expr()?;
+                let end = self.expect(&TokenKind::RBracket, "expected ']' after index")?;
+                let span = callee.span().merge(end.span);
+                callee = Expr::Index {
+                    object: Box::new(callee),
+                    index: Box::new(index),
+                    span,
+                };
+                continue;
+            }
+            break;
+        }
+        let mut args = Vec::new();
+        if self.eat(&TokenKind::LParen) {
+            if !self.at(&TokenKind::RParen) {
+                loop {
+                    args.push(self.parse_expr()?);
+                    if !self.eat(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+            let end = self.expect(&TokenKind::RParen, "expected ')' after arguments")?;
+            let span = start.merge(end.span);
+            let expr = Expr::New {
+                callee: Box::new(callee),
+                args,
+                span,
+            };
+            return self.parse_suffix(expr);
+        }
+        let span = start.merge(callee.span());
+        let expr = Expr::New {
+            callee: Box::new(callee),
+            args,
+            span,
+        };
+        self.parse_suffix(expr)
     }
 
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {

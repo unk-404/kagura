@@ -62,6 +62,7 @@ pub enum Op {
     NewName = 58,
     NewValue = 59,
     LoadBuiltin = 60,
+    ThrowReference = 61,
 }
 
 impl Op {
@@ -128,6 +129,7 @@ impl Op {
             58 => Self::NewName,
             59 => Self::NewValue,
             60 => Self::LoadBuiltin,
+            61 => Self::ThrowReference,
             _ => return None,
         })
     }

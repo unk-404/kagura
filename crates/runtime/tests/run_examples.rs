@@ -68,6 +68,7 @@ const OWN_PROPERTIES: &str = include_str!("../../../examples/own_properties.ts")
 const EXTENSIBILITY: &str = include_str!("../../../examples/extensibility.ts");
 const STRING_REPLACE: &str = include_str!("../../../examples/string_replace.ts");
 const NEW_ERRORS: &str = include_str!("../../../examples/new_errors.ts");
+const NEW_CONSTRUCTOR: &str = include_str!("../../../examples/new_constructor.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -676,6 +677,14 @@ fn constructs_error_objects() {
         host.output(),
         "Error boom\nTypeError bad\nTypeError thrown\n"
     );
+}
+
+#[test]
+fn constructs_user_objects() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(NEW_CONSTRUCTOR, &mut host).unwrap();
+    assert_eq!(host.output(), "5\n2\n");
 }
 
 #[test]
