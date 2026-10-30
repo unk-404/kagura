@@ -54,6 +54,7 @@ const OBJECT_ASSIGN: &str = include_str!("../../../examples/object_assign.ts");
 const FINALLY_LOOPS: &str = include_str!("../../../examples/finally_loops.ts");
 const BUILTIN_EXTRAS: &str = include_str!("../../../examples/builtin_extras.ts");
 const ARRAY_SORT: &str = include_str!("../../../examples/array_sort.ts");
+const FUNCTION_CALL_APPLY: &str = include_str!("../../../examples/function_call_apply.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -544,6 +545,14 @@ fn sorts_arrays_with_and_without_comparator() {
     let mut runtime = Runtime::default();
     runtime.run(ARRAY_SORT, &mut host).unwrap();
     assert_eq!(host.output(), "a,b,c\n1,2,3,10\n1,10,2\n1,3,\n");
+}
+
+#[test]
+fn calls_functions_with_call_and_apply() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(FUNCTION_CALL_APPLY, &mut host).unwrap();
+    assert_eq!(host.output(), "13\n17\n10\ntrue\n");
 }
 
 #[test]

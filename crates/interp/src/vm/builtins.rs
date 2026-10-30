@@ -571,6 +571,49 @@ impl<'a> Interpreter<'a> {
         let Ok(object_id) = self.object_id(object, span) else {
             return Ok(None);
         };
+        let is_function = self
+            .objects
+            .is_function(object_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if is_function && (key == "call" || key == "apply") {
+            let receiver = args.first().copied().unwrap_or_else(Value::undefined);
+            let rest = if key == "call" {
+                args.get(1..).unwrap_or_default().to_vec()
+            } else {
+                let values = args.get(1).copied().unwrap_or_else(Value::undefined);
+                if values.is_undefined() {
+                    Vec::new()
+                } else {
+                    let array = self.object_id(values, span)?;
+                    if !self
+                        .objects
+                        .is_array(array)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        return Err(RuntimeError::type_error(
+                            "apply expects an array-like argument list",
+                            span,
+                        ));
+                    }
+                    let length = self
+                        .objects
+                        .array_length(array)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let mut values = Vec::with_capacity(length as usize);
+                    for index in 0..length {
+                        values.push(
+                            self.objects
+                                .array_get(array, index)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+                        );
+                    }
+                    values
+                }
+            };
+            return self
+                .invoke_method(object, &rest, roots, receiver, span)
+                .map(Some);
+        }
         if key == "hasOwnProperty" {
             let key = self
                 .heap

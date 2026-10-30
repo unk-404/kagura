@@ -59,6 +59,8 @@ const FINALLY_LOOPS: &[u8] =
 const BUILTIN_EXTRAS: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/builtin_extras.kbc");
 const ARRAY_SORT: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/array_sort.kbc");
+const FUNCTION_CALL_APPLY: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/function_call_apply.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -385,4 +387,14 @@ fn executes_v1_array_sort_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(ARRAY_SORT, &mut host).unwrap();
     assert_eq!(host.output(), "a,b,c\n1,2,3,10\n1,10,2\n1,3,\n");
+}
+
+#[test]
+fn executes_v1_call_apply_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run_bytecode(FUNCTION_CALL_APPLY, &mut host)
+        .unwrap();
+    assert_eq!(host.output(), "13\n17\n10\ntrue\n");
 }
