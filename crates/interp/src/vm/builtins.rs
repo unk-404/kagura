@@ -112,6 +112,9 @@ impl<'a> Interpreter<'a> {
         ) {
             return self.new_name(path, args, span).map(Some);
         }
+        if path == "perform" || path == "performance.now" {
+            return Ok(Some(self.heap.number(date::now_millis())));
+        }
         if path == "Date.now" {
             return Ok(Some(self.heap.number(date::now_millis())));
         }

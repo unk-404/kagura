@@ -85,6 +85,7 @@ The current P1 slice adds:
 - bitwise compound assignment operators and proper `ToInt32` wrapping for
   bitwise/shift operands
 - `do...while` and a deterministic seeded `Math.random()`
+- `performance.now()` as a builtin global for benchmark timing
 - compound assignment evaluates its target and `ToPropertyKey` exactly once
 - bare `assert(condition)` host binding in addition to `assert.sameValue`
 - object-key `ToPropertyKey` conversion through `toString`/`valueOf`

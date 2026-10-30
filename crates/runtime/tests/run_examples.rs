@@ -1301,3 +1301,13 @@ fn stops_infinite_loops_at_the_step_limit() {
     let error = runtime.run("while (true) {}", &mut host).unwrap_err();
     assert!(error.to_string().contains("step limit"));
 }
+
+#[test]
+fn provides_performance_now() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run("console.log(performance.now() > 0);", &mut host)
+        .unwrap();
+    assert_eq!(host.output(), "true\n");
+}

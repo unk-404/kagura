@@ -2343,6 +2343,7 @@ fn is_builtin_global(name: &str) -> bool {
             | "NaN"
             | "Infinity"
             | "globalThis"
+            | "performance"
     )
 }
 
