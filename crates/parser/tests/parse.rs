@@ -65,6 +65,23 @@ fn rejects_lexical_declaration_in_statement_position() {
 }
 
 #[test]
+fn parses_throw_and_try_catch() {
+    let program = parse("try { throw 1; } catch (error) { 2; } finally { 3; }").unwrap();
+    let kagura_ast::Stmt::Try {
+        catch_param,
+        catch_block,
+        finally_block,
+        ..
+    } = &program.body[0]
+    else {
+        panic!("expected try statement");
+    };
+    assert_eq!(catch_param.as_deref(), Some("error"));
+    assert!(catch_block.is_some());
+    assert!(finally_block.is_some());
+}
+
+#[test]
 fn parses_function_expressions_and_arrows() {
     let program =
         parse("let f = function (a) { return a; }; let g = (a, b) => a + b; let h = x => x;")

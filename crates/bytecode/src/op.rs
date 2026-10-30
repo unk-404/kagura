@@ -50,6 +50,9 @@ pub enum Op {
     IterationEnd = 46,
     LoadIter = 47,
     StoreIter = 48,
+    Throw = 49,
+    TryBegin = 50,
+    TryEnd = 51,
 }
 
 impl Op {
@@ -104,6 +107,9 @@ impl Op {
             46 => Self::IterationEnd,
             47 => Self::LoadIter,
             48 => Self::StoreIter,
+            49 => Self::Throw,
+            50 => Self::TryBegin,
+            51 => Self::TryEnd,
             _ => return None,
         })
     }

@@ -49,6 +49,8 @@ impl Parser {
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),
             TokenKind::Return => self.parse_return(),
+            TokenKind::Throw => self.parse_throw(),
+            TokenKind::Try => self.parse_try(),
             TokenKind::Break => {
                 let token = self.advance();
                 self.expect(&TokenKind::Semi, "expected ';' after break")?;
@@ -349,6 +351,50 @@ impl Parser {
             ));
         }
         self.parse_stmt()
+    }
+
+    fn parse_throw(&mut self) -> Result<Stmt, ParseError> {
+        let start = self.advance().span;
+        let value = self.parse_expr()?;
+        self.expect(&TokenKind::Semi, "expected ';' after throw")?;
+        let span = start.merge(value.span());
+        Ok(Stmt::Throw { value, span })
+    }
+
+    fn parse_try(&mut self) -> Result<Stmt, ParseError> {
+        let start = self.advance().span;
+        let block = self.parse_block()?;
+        let mut catch_param = None;
+        let mut catch_block = None;
+        if self.eat(&TokenKind::Catch) {
+            if self.eat(&TokenKind::LParen) {
+                let token = self.expect_ident("expected catch parameter")?;
+                let TokenKind::Ident(name) = token.kind else {
+                    unreachable!()
+                };
+                catch_param = Some(name);
+                self.expect(&TokenKind::RParen, "expected ')' after catch parameter")?;
+            }
+            catch_block = Some(self.parse_block()?);
+        }
+        let finally_block = if self.eat(&TokenKind::Finally) {
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+        if catch_block.is_none() {
+            return Err(ParseError::new(
+                "try requires a catch or finally block",
+                start,
+            ));
+        }
+        Ok(Stmt::Try {
+            block,
+            catch_param,
+            catch_block,
+            finally_block,
+            span: start,
+        })
     }
 
     fn parse_return(&mut self) -> Result<Stmt, ParseError> {

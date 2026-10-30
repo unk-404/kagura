@@ -21,6 +21,8 @@ const LOOP_CLOSURES: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/loop_closures.kbc");
 const LOOP_CLOSURES_NESTED: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/loop_closures_nested.kbc");
+const TRY_CATCH: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/try_catch.kbc");
+const TRY_FINALLY: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/try_finally.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -147,6 +149,22 @@ fn executes_v1_nested_loop_closure_bytecode() {
         .run_bytecode(LOOP_CLOSURES_NESTED, &mut host)
         .unwrap();
     assert_eq!(host.output(), "0\n1\n10\n11\n");
+}
+
+#[test]
+fn executes_v1_try_catch_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(TRY_CATCH, &mut host).unwrap();
+    assert_eq!(host.output(), "42\nafter\n");
+}
+
+#[test]
+fn executes_v1_try_finally_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(TRY_FINALLY, &mut host).unwrap();
+    assert_eq!(host.output(), "boom\nfinally\nafter\n");
 }
 
 #[test]

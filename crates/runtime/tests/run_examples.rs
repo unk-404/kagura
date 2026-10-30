@@ -30,6 +30,9 @@ const LOOP_CLOSURES_NESTED: &str = include_str!("../../../examples/loop_closures
 const LOOP_CLOSURES_CONTROL: &str = include_str!("../../../examples/loop_closures_control.ts");
 const LOOP_CLOSURES_GC: &str = include_str!("../../../examples/loop_closures_gc.ts");
 const LOOP_BODY_CLOSURES: &str = include_str!("../../../examples/loop_body_closures.ts");
+const TRY_CATCH: &str = include_str!("../../../examples/try_catch.ts");
+const TRY_FINALLY: &str = include_str!("../../../examples/try_finally.ts");
+const TRY_NESTED: &str = include_str!("../../../examples/try_nested.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -267,6 +270,37 @@ fn captures_body_let_bindings_per_iteration() {
     let mut runtime = Runtime::default();
     runtime.run(LOOP_BODY_CLOSURES, &mut host).unwrap();
     assert_eq!(host.output(), "0\n1\n2\n");
+}
+
+#[test]
+fn runs_throw_and_catch() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(TRY_CATCH, &mut host).unwrap();
+    assert_eq!(host.output(), "42\nafter\n");
+}
+
+#[test]
+fn runs_finally_after_catch() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(TRY_FINALLY, &mut host).unwrap();
+    assert_eq!(host.output(), "boom\nfinally\nafter\n");
+}
+
+#[test]
+fn runs_nested_try_catch() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(TRY_NESTED, &mut host).unwrap();
+    assert_eq!(host.output(), "2\n");
+}
+
+#[test]
+fn uncaught_throw_fails_execution() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    assert!(runtime.run("throw 1;", &mut host).is_err());
 }
 
 #[test]

@@ -25,6 +25,11 @@ struct IterationFrame {
     env: ObjectId,
 }
 
+struct TryHandler {
+    catch_pc: usize,
+    stack_depth: usize,
+}
+
 pub struct Interpreter<'a> {
     module: &'a Module,
     heap: &'a mut Heap,
@@ -152,6 +157,7 @@ impl<'a> Interpreter<'a> {
         let self_value = frame.self_value;
         let mut capture_env = env;
         let mut iteration_frames: Vec<IterationFrame> = Vec::new();
+        let mut handlers: Vec<TryHandler> = Vec::new();
         let mut stack: Vec<Value> = Vec::new();
         let mut pc = 0usize;
         loop {
@@ -410,6 +416,29 @@ impl<'a> Interpreter<'a> {
                     }
                     let value = self.call_name(&name, index as usize, &args, span, &roots)?;
                     push(&mut stack, value, span)?;
+                }
+                Op::TryBegin => {
+                    let catch_pc = read_u32(&function.code, &mut pc, span)? as usize;
+                    handlers.push(TryHandler {
+                        catch_pc,
+                        stack_depth: stack.len(),
+                    });
+                }
+                Op::TryEnd => {
+                    handlers.pop();
+                }
+                Op::Throw => {
+                    let value = pop(&mut stack, span)?;
+                    if let Some(handler) = handlers.pop() {
+                        stack.truncate(handler.stack_depth);
+                        push(&mut stack, value, span)?;
+                        pc = handler.catch_pc;
+                    } else {
+                        return Err(RuntimeError::runtime(
+                            format!("uncaught exception: {}", self.heap.to_js_string(value)),
+                            span,
+                        ));
+                    }
                 }
                 Op::IterationBegin => {
                     let count = read_u8(&function.code, &mut pc, span)? as usize;

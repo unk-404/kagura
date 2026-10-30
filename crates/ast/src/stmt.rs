@@ -59,6 +59,17 @@ pub enum Stmt {
         value: Option<Expr>,
         span: Span,
     },
+    Throw {
+        value: Expr,
+        span: Span,
+    },
+    Try {
+        block: Vec<Stmt>,
+        catch_param: Option<String>,
+        catch_block: Option<Vec<Stmt>>,
+        finally_block: Option<Vec<Stmt>>,
+        span: Span,
+    },
     Break {
         span: Span,
     },
@@ -95,6 +106,8 @@ impl Stmt {
             | Self::While { span, .. }
             | Self::For { span, .. }
             | Self::Return { span, .. }
+            | Self::Throw { span, .. }
+            | Self::Try { span, .. }
             | Self::Break { span }
             | Self::Continue { span }
             | Self::Expr { span, .. }

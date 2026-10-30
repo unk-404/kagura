@@ -348,6 +348,47 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit(Op::Return, *span);
                 Ok(())
             }
+            Stmt::Throw { value, span } => {
+                self.compile_expr(value)?;
+                self.emit(Op::Throw, *span);
+                Ok(())
+            }
+            Stmt::Try {
+                block,
+                catch_param,
+                catch_block,
+                finally_block,
+                span,
+            } => {
+                let catch_patch = self.emit_jump(Op::TryBegin, *span);
+                self.compile_block_body(block)?;
+                self.emit(Op::TryEnd, *span);
+                let end_patch = self.emit_jump(Op::Jump, *span);
+                let catch_pc = self.code.len();
+                self.patch_jump(catch_patch, catch_pc);
+                if let Some(catch_block) = catch_block {
+                    let base = self.locals.len();
+                    self.scopes.push(base);
+                    let slot = catch_param
+                        .as_ref()
+                        .and_then(|param| self.declare(param, true, *span));
+                    if let Some(slot) = slot {
+                        self.emit_u16(Op::StoreLocal, slot, *span);
+                    } else {
+                        self.emit(Op::Pop, *span);
+                    }
+                    for stmt in catch_block {
+                        self.compile_stmt(stmt)?;
+                    }
+                    self.scopes.pop();
+                }
+                let finally_pc = self.code.len();
+                self.patch_jump(end_patch, finally_pc);
+                if let Some(finally_block) = finally_block {
+                    self.compile_block_body(finally_block)?;
+                }
+                Ok(())
+            }
             Stmt::Break { span } => {
                 if self.loops.is_empty() {
                     return Err(CompileError::new("break outside loop", *span));
@@ -379,6 +420,16 @@ impl<'a> FunctionCompiler<'a> {
             }
             Stmt::TypeAlias { .. } | Stmt::Interface { .. } | Stmt::Empty { .. } => Ok(()),
         }
+    }
+
+    fn compile_block_body(&mut self, body: &[Stmt]) -> Result<(), CompileError> {
+        let base = self.locals.len();
+        self.scopes.push(base);
+        for stmt in body {
+            self.compile_stmt(stmt)?;
+        }
+        self.scopes.pop();
+        Ok(())
     }
 
     fn compile_var(&mut self, decl: &VarDecl) -> Result<(), CompileError> {
@@ -954,6 +1005,21 @@ fn stmt_has_closure(stmt: &Stmt) -> bool {
                 || stmt_has_closure(body)
         }
         Stmt::Return { value, .. } => value.as_ref().is_some_and(expr_has_closure),
+        Stmt::Throw { value, .. } => expr_has_closure(value),
+        Stmt::Try {
+            block,
+            catch_block,
+            finally_block,
+            ..
+        } => {
+            body_has_closure(block)
+                || catch_block
+                    .as_ref()
+                    .is_some_and(|body| body_has_closure(body))
+                || finally_block
+                    .as_ref()
+                    .is_some_and(|body| body_has_closure(body))
+        }
         Stmt::Expr { expr, .. } => expr_has_closure(expr),
         Stmt::Break { .. }
         | Stmt::Continue { .. }
