@@ -1639,6 +1639,95 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit(binary_op(*op), *span);
                 }
             }
+            Expr::CompoundAssign {
+                target,
+                op,
+                value,
+                span,
+            } => {
+                let op = binary_op(*op);
+                match target {
+                    AssignTarget::Ident(name) => {
+                        if self.strict && matches!(name.as_str(), "eval" | "arguments") {
+                            return Err(CompileError::new(
+                                format!("assignment to '{name}' in strict mode"),
+                                *span,
+                            ));
+                        }
+                        if let Some(resolved) = self.resolve(name) {
+                            if !resolved.mutable() {
+                                return Err(CompileError::new(
+                                    format!("assignment to constant '{name}'"),
+                                    *span,
+                                ));
+                            }
+                            self.emit_load_resolved(resolved, *span);
+                            self.compile_expr(value)?;
+                            self.emit(op, *span);
+                            self.emit(Op::Dup, *span);
+                            self.emit_store_resolved(resolved, *span);
+                        } else {
+                            if self.strict {
+                                return Err(CompileError::new(
+                                    format!("assignment to undeclared '{name}' in strict mode"),
+                                    *span,
+                                ));
+                            }
+                            let index = self.add_const(Const::String(name.clone()));
+                            self.emit_u32(Op::LoadGlobal, index, *span);
+                            self.compile_expr(value)?;
+                            self.emit(op, *span);
+                            self.emit(Op::Dup, *span);
+                            self.emit_u32(Op::StoreGlobal, index, *span);
+                        }
+                    }
+                    AssignTarget::Member { object, property } => {
+                        let object_slot = self.hidden_local(*span);
+                        let value_slot = self.hidden_local(*span);
+                        let result_slot = self.hidden_local(*span);
+                        self.compile_expr(object)?;
+                        self.emit_u16(Op::StoreLocal, object_slot, *span);
+                        self.compile_expr(value)?;
+                        self.emit_u16(Op::StoreLocal, value_slot, *span);
+                        let key = self.add_const(Const::String(property.clone()));
+                        self.emit_u16(Op::LoadLocal, object_slot, *span);
+                        self.emit_u32(Op::GetProp, key, *span);
+                        self.emit_u16(Op::LoadLocal, value_slot, *span);
+                        self.emit(op, *span);
+                        self.emit_u16(Op::StoreLocal, result_slot, *span);
+                        self.emit_u16(Op::LoadLocal, object_slot, *span);
+                        self.emit_u16(Op::LoadLocal, result_slot, *span);
+                        self.emit_u32(Op::SetPropValue, key, *span);
+                        self.emit(Op::Pop, *span);
+                        self.emit_u16(Op::LoadLocal, result_slot, *span);
+                    }
+                    AssignTarget::Index { object, index } => {
+                        let object_slot = self.hidden_local(*span);
+                        let key_slot = self.hidden_local(*span);
+                        let value_slot = self.hidden_local(*span);
+                        let result_slot = self.hidden_local(*span);
+                        self.compile_expr(object)?;
+                        self.emit_u16(Op::StoreLocal, object_slot, *span);
+                        self.compile_expr(index)?;
+                        self.emit(Op::ToPropertyKey, *span);
+                        self.emit_u16(Op::StoreLocal, key_slot, *span);
+                        self.compile_expr(value)?;
+                        self.emit_u16(Op::StoreLocal, value_slot, *span);
+                        self.emit_u16(Op::LoadLocal, object_slot, *span);
+                        self.emit_u16(Op::LoadLocal, key_slot, *span);
+                        self.emit(Op::GetIndex, *span);
+                        self.emit_u16(Op::LoadLocal, value_slot, *span);
+                        self.emit(op, *span);
+                        self.emit_u16(Op::StoreLocal, result_slot, *span);
+                        self.emit_u16(Op::LoadLocal, object_slot, *span);
+                        self.emit_u16(Op::LoadLocal, key_slot, *span);
+                        self.emit_u16(Op::LoadLocal, result_slot, *span);
+                        self.emit(Op::SetIndexValue, *span);
+                        self.emit(Op::Pop, *span);
+                        self.emit_u16(Op::LoadLocal, result_slot, *span);
+                    }
+                }
+            }
             Expr::Assign {
                 target,
                 value,

@@ -223,3 +223,13 @@ fn classifies_runtime_failure() {
     };
     assert_eq!(run_case(&case).outcome, Outcome::Fail);
 }
+
+#[test]
+fn provides_bare_assert_helper() {
+    let case = TestCase {
+        path: "assert-helper.js".into(),
+        source: "assert(true);".into(),
+        metadata: Metadata::default(),
+    };
+    assert_eq!(run_case(&case).outcome, Outcome::Pass);
+}

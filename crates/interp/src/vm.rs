@@ -455,6 +455,11 @@ impl<'a> Interpreter<'a> {
                         .array_set(env, slot as u32, value)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 }
+                Op::ToPropertyKey => {
+                    let value = pop(&mut stack, span)?;
+                    let key = try_op!(self.property_key(value, span));
+                    push(&mut stack, self.heap.string(&key), span)?;
+                }
                 Op::LoadGlobal => {
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let name = match self.module.constants.get(index as usize) {

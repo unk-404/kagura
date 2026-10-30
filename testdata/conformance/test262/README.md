@@ -85,6 +85,8 @@ The current P1 slice adds:
 - bitwise compound assignment operators and proper `ToInt32` wrapping for
   bitwise/shift operands
 - `do...while` and a deterministic seeded `Math.random()`
+- compound assignment evaluates its target and `ToPropertyKey` exactly once
+- bare `assert(condition)` host binding in addition to `assert.sameValue`
 - object-key `ToPropertyKey` conversion through `toString`/`valueOf`
 - sloppy-mode implicit global creation and global name opcodes
 - `ToNumber`-based arithmetic/comparison coercion (including `NaN` ordering)
@@ -188,21 +190,22 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-53733 selected, 22267 executed, 5823 passed, 16444 failed, 31466 skipped
-oracle node: 5823 checked, 5819 matched, 4 mismatched
+53733 selected, 22267 executed, 6614 passed, 15653 failed, 31466 skipped
+oracle node: 6614 checked, 6599 matched, 15 mismatched
 ```
 
-The four Node mismatches are tracked as differential warnings, not hidden:
+The fifteen Node mismatches are tracked as differential warnings, not hidden:
 
+- eleven `compound-assignment` cases where Node 22's V8 calls
+  `ToPropertyKey` twice and fails the test262 once-only assertion;
 - two `eval-code/direct` cases where the Node harness reports failure while
   Kagura completes;
 - two staging cases (`set-property-non-extensible`, `regress-633741`).
 
-They are counted as mismatches, not as passes. The test262 pass count dropped
-from 5838 to 5823 when object-key `ToPropertyKey` was implemented: the
-compound-assignment and increment/decrement cases that previously passed
-vacuously now fail because Kagura evaluates the target key twice. That is a
-real remaining semantic gap, not a regression hidden as a pass.
+They are counted as mismatches, not as passes. Compound assignment and
+increment/decrement now evaluate their target once, including a single
+`ToPropertyKey` conversion, which is why the previously vacuous failures
+became real passes.
 
 The full report is informational while the engine is pre-0.0.1; the gated
 suite remains `cargo test --workspace`.

@@ -84,6 +84,7 @@ pub enum Op {
     BitNot = 80,
     LoadGlobal = 81,
     StoreGlobal = 82,
+    ToPropertyKey = 83,
 }
 
 impl Op {
@@ -172,6 +173,7 @@ impl Op {
             80 => Self::BitNot,
             81 => Self::LoadGlobal,
             82 => Self::StoreGlobal,
+            83 => Self::ToPropertyKey,
             _ => return None,
         })
     }

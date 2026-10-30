@@ -52,6 +52,12 @@ pub enum Expr {
         value: Box<Expr>,
         span: Span,
     },
+    CompoundAssign {
+        target: AssignTarget,
+        op: BinaryOp,
+        value: Box<Expr>,
+        span: Span,
+    },
     DestructureAssign {
         pattern: Box<crate::Pattern>,
         value: Box<Expr>,
@@ -157,6 +163,7 @@ impl Expr {
             | Self::Binary { span, .. }
             | Self::Conditional { span, .. }
             | Self::Assign { span, .. }
+            | Self::CompoundAssign { span, .. }
             | Self::DestructureAssign { span, .. }
             | Self::SuperCall { span, .. }
             | Self::SuperMember { span, .. }

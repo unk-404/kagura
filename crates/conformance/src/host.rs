@@ -13,6 +13,7 @@ impl Default for Test262Host {
     fn default() -> Self {
         let mut bindings = Bindings::new();
         let output = Rc::new(RefCell::new(String::new()));
+        bindings.bind("assert", assert_condition);
         bindings.bind("assert.sameValue", same_value);
         bindings.bind("assert.notSameValue", not_same_value);
         bindings.bind("assert.fail", fail);
@@ -44,6 +45,24 @@ impl Host for Test262Host {
     fn invoke(&mut self, id: HostFunctionId, call: &mut HostCall<'_>) -> Result<Value, HostError> {
         self.bindings.invoke(id, call)
     }
+}
+
+fn assert_condition(call: &mut HostCall<'_>) -> Result<Value, HostError> {
+    let condition = call
+        .args()
+        .first()
+        .copied()
+        .unwrap_or_else(Value::undefined);
+    if !call.heap().truthy(condition) {
+        let message = call
+            .args()
+            .get(1)
+            .map(|value| call.heap().to_js_string(*value))
+            .filter(|message| !message.is_empty())
+            .unwrap_or_else(|| "assert failed".into());
+        return Err(HostError::new(message));
+    }
+    Ok(Value::undefined())
 }
 
 fn same_value(call: &mut HostCall<'_>) -> Result<Value, HostError> {

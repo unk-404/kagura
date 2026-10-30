@@ -629,32 +629,20 @@ impl Parser {
             self.advance();
             let right = self.parse_expr()?;
             let span = left.span().merge(right.span());
-            let value = Expr::Binary {
-                op,
-                left: Box::new(left.clone()),
-                right: Box::new(right),
-                span,
-            };
-            return match left {
-                Expr::Ident { name, .. } => Ok(Expr::Assign {
-                    target: AssignTarget::Ident(name),
-                    value: Box::new(value),
-                    span,
-                }),
+            let target = match left {
+                Expr::Ident { name, .. } => AssignTarget::Ident(name),
                 Expr::Member {
                     object, property, ..
-                } => Ok(Expr::Assign {
-                    target: AssignTarget::Member { object, property },
-                    value: Box::new(value),
-                    span,
-                }),
-                Expr::Index { object, index, .. } => Ok(Expr::Assign {
-                    target: AssignTarget::Index { object, index },
-                    value: Box::new(value),
-                    span,
-                }),
-                _ => Err(ParseError::new("invalid assignment target", span)),
+                } => AssignTarget::Member { object, property },
+                Expr::Index { object, index, .. } => AssignTarget::Index { object, index },
+                _ => return Err(ParseError::new("invalid assignment target", span)),
             };
+            return Ok(Expr::CompoundAssign {
+                target,
+                op,
+                value: Box::new(right),
+                span,
+            });
         }
         if self.eat(&TokenKind::Assign) {
             let value = self.parse_expr()?;
