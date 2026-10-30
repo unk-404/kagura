@@ -15,15 +15,67 @@ const MAX_CALL_DEPTH: usize = 256;
 const MAX_STACK: usize = 4096;
 const GC_THRESHOLD: u32 = 32 * 1024;
 
+#[derive(Clone, Copy, Debug)]
+struct PropertyCacheEntry {
+    shape: ShapeId,
+    location: PropertyLocation,
+    writable: bool,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 enum PropertyFeedback {
     #[default]
     Empty,
-    OwnData {
-        shape: ShapeId,
-        location: PropertyLocation,
-        writable: bool,
+    Monomorphic(PropertyCacheEntry),
+    Polymorphic {
+        entries: [Option<PropertyCacheEntry>; 4],
+        len: u8,
     },
+    Megamorphic,
+}
+
+impl PropertyFeedback {
+    fn lookup(self, shape: ShapeId) -> Option<PropertyCacheEntry> {
+        match self {
+            Self::Empty | Self::Megamorphic => None,
+            Self::Monomorphic(entry) => (entry.shape == shape).then_some(entry),
+            Self::Polymorphic { entries, len } => entries[..len as usize]
+                .iter()
+                .flatten()
+                .find(|entry| entry.shape == shape)
+                .copied(),
+        }
+    }
+
+    fn record(&mut self, entry: PropertyCacheEntry) {
+        match self {
+            Self::Empty => *self = Self::Monomorphic(entry),
+            Self::Monomorphic(current) => {
+                if current.shape == entry.shape {
+                    *current = entry;
+                } else {
+                    let mut entries = [None; 4];
+                    entries[0] = Some(*current);
+                    entries[1] = Some(entry);
+                    *self = Self::Polymorphic { entries, len: 2 };
+                }
+            }
+            Self::Polymorphic { entries, len } => {
+                if let Some(slot) = entries[..*len as usize]
+                    .iter_mut()
+                    .find(|slot| slot.is_some_and(|cached| cached.shape == entry.shape))
+                {
+                    *slot = Some(entry);
+                } else if *len < 4 {
+                    entries[*len as usize] = Some(entry);
+                    *len += 1;
+                } else {
+                    *self = Self::Megamorphic;
+                }
+            }
+            Self::Megamorphic => {}
+        }
+    }
 }
 
 /// Snapshot of the interpreter frame at a GC safepoint.

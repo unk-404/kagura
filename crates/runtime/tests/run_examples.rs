@@ -1407,6 +1407,35 @@ fn property_inline_cache_is_per_call_site() {
 }
 
 #[test]
+fn property_inline_cache_is_polymorphic() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var objects = [{ a: 1 }, { b: 0, a: 2 }, { b: 1, a: 3 }, { b: 2, c: 0, a: 4 }]; var total = 0; for (var i = 0; i < 100; i++) { for (var j = 0; j < 4; j++) { total += objects[j].a; } } console.log(total);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "1000\n");
+    let (hits, misses) = runtime.property_ic_stats();
+    assert!(misses >= 4);
+    assert!(hits > 300);
+}
+
+#[test]
+fn property_inline_cache_falls_back_when_megamorphic() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var objects = [{ a: 1 }, { b: 0, a: 2 }, { b: 1, a: 3 }, { b: 2, c: 0, a: 4 }, { b: 3, d: 0, a: 5 }]; var total = 0; for (var i = 0; i < 100; i++) { for (var j = 0; j < 5; j++) { total += objects[j].a; } } console.log(total);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "1500\n");
+}
+
+#[test]
 fn property_inline_cache_hits_and_stays_correct() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

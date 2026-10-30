@@ -4,7 +4,7 @@ use kagura_value::Value;
 
 use crate::error::RuntimeError;
 
-use super::{Interpreter, PropertyFeedback};
+use super::{Interpreter, PropertyCacheEntry};
 
 impl<'a> Interpreter<'a> {
     pub(super) fn get_own_data_property(
@@ -55,19 +55,15 @@ impl<'a> Interpreter<'a> {
             .objects
             .shape(id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(PropertyFeedback::OwnData {
-            shape: cached_shape,
-            location,
-            ..
-        }) = self
+        if let Some(entry) = self
             .property_feedback
             .get(function_index)
             .and_then(|sites| sites.get(site as usize))
             .copied()
-            && cached_shape == shape
+            .and_then(|feedback| feedback.lookup(shape))
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
-            return self.load_property_location(id, location, span);
+            return self.load_property_location(id, entry.location, span);
         }
         self.property_ic_misses = self.property_ic_misses.saturating_add(1);
         let value = self.get_property(object, key, span)?;
@@ -79,15 +75,13 @@ impl<'a> Interpreter<'a> {
             .property_feedback
             .get_mut(function_index)
             .and_then(|sites| sites.get_mut(site as usize))
+            && let Some(descriptor) = descriptor
         {
-            *slot = match descriptor {
-                Some(descriptor) => PropertyFeedback::OwnData {
-                    shape,
-                    location: descriptor.location,
-                    writable: descriptor.attributes.writable,
-                },
-                None => PropertyFeedback::Empty,
-            };
+            slot.record(PropertyCacheEntry {
+                shape,
+                location: descriptor.location,
+                writable: descriptor.attributes.writable,
+            });
         }
         Ok(value)
     }
@@ -108,15 +102,14 @@ impl<'a> Interpreter<'a> {
             .objects
             .shape(id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(PropertyFeedback::OwnData {
-            shape: cached_shape,
-            location,
-            ..
-        }) = self.feedback.get(feedback_index as usize).copied()
-            && cached_shape == shape
+        if let Some(entry) = self
+            .feedback
+            .get(feedback_index as usize)
+            .copied()
+            .and_then(|feedback| feedback.lookup(shape))
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
-            return self.load_property_location(id, location, span);
+            return self.load_property_location(id, entry.location, span);
         }
         self.property_ic_misses = self.property_ic_misses.saturating_add(1);
         let value = self.get_property(object, key, span)?;
@@ -124,15 +117,14 @@ impl<'a> Interpreter<'a> {
             .shapes
             .lookup(shape, &PropertyKey::from_string(key))
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(slot) = self.feedback.get_mut(feedback_index as usize) {
-            *slot = match descriptor {
-                Some(descriptor) => PropertyFeedback::OwnData {
-                    shape,
-                    location: descriptor.location,
-                    writable: descriptor.attributes.writable,
-                },
-                None => PropertyFeedback::Empty,
-            };
+        if let Some(slot) = self.feedback.get_mut(feedback_index as usize)
+            && let Some(descriptor) = descriptor
+        {
+            slot.record(PropertyCacheEntry {
+                shape,
+                location: descriptor.location,
+                writable: descriptor.attributes.writable,
+            });
         }
         Ok(value)
     }
@@ -162,15 +154,15 @@ impl<'a> Interpreter<'a> {
             .objects
             .shape(id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(PropertyFeedback::OwnData {
-            shape: cached_shape,
-            location,
-            writable: true,
-        }) = self.feedback.get(feedback_index as usize).copied()
-            && cached_shape == shape
+        if let Some(entry) = self
+            .feedback
+            .get(feedback_index as usize)
+            .copied()
+            .and_then(|feedback| feedback.lookup(shape))
+            .filter(|entry| entry.writable)
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
-            return self.store_property_location(id, location, value, span);
+            return self.store_property_location(id, entry.location, value, span);
         }
         self.property_ic_misses = self.property_ic_misses.saturating_add(1);
         self.set_property(object, key, value, span)?;
@@ -182,15 +174,15 @@ impl<'a> Interpreter<'a> {
             .shapes
             .lookup(shape, &PropertyKey::from_string(key))
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(slot) = self.feedback.get_mut(feedback_index as usize) {
-            *slot = match descriptor {
-                Some(descriptor) if descriptor.attributes.writable => PropertyFeedback::OwnData {
-                    shape,
-                    location: descriptor.location,
-                    writable: true,
-                },
-                _ => PropertyFeedback::Empty,
-            };
+        if let Some(slot) = self.feedback.get_mut(feedback_index as usize)
+            && let Some(descriptor) = descriptor
+            && descriptor.attributes.writable
+        {
+            slot.record(PropertyCacheEntry {
+                shape,
+                location: descriptor.location,
+                writable: true,
+            });
         }
         Ok(())
     }
@@ -221,19 +213,16 @@ impl<'a> Interpreter<'a> {
             .objects
             .shape(id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(PropertyFeedback::OwnData {
-            shape: cached_shape,
-            location,
-            writable: true,
-        }) = self
+        if let Some(entry) = self
             .property_feedback
             .get(function_index)
             .and_then(|sites| sites.get(site as usize))
             .copied()
-            && cached_shape == shape
+            .and_then(|feedback| feedback.lookup(shape))
+            .filter(|entry| entry.writable)
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
-            return self.store_property_location(id, location, value, span);
+            return self.store_property_location(id, entry.location, value, span);
         }
         self.property_ic_misses = self.property_ic_misses.saturating_add(1);
         self.set_property(object, key, value, span)?;
@@ -249,15 +238,14 @@ impl<'a> Interpreter<'a> {
             .property_feedback
             .get_mut(function_index)
             .and_then(|sites| sites.get_mut(site as usize))
+            && let Some(descriptor) = descriptor
+            && descriptor.attributes.writable
         {
-            *slot = match descriptor {
-                Some(descriptor) if descriptor.attributes.writable => PropertyFeedback::OwnData {
-                    shape,
-                    location: descriptor.location,
-                    writable: true,
-                },
-                _ => PropertyFeedback::Empty,
-            };
+            slot.record(PropertyCacheEntry {
+                shape,
+                location: descriptor.location,
+                writable: true,
+            });
         }
         Ok(())
     }
