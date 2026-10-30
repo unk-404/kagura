@@ -13,6 +13,21 @@ impl<'a> Interpreter<'a> {
         args: &[Value],
         span: Span,
     ) -> Result<Option<Value>, RuntimeError> {
+        if path == "Array.isArray" {
+            let array = args.first().copied().is_some_and(|value| {
+                value.object_offset().is_some_and(|offset| {
+                    self.objects
+                        .is_array(ObjectId::new(offset))
+                        .unwrap_or(false)
+                })
+            });
+            return Ok(Some(Value::boolean(array)));
+        }
+        if path == "Object.is" {
+            let left = args.first().copied().unwrap_or_else(Value::undefined);
+            let right = args.get(1).copied().unwrap_or_else(Value::undefined);
+            return Ok(Some(Value::boolean(self.same_value(left, right))));
+        }
         if path == "Object.create" {
             let Some(prototype) = args.first().copied() else {
                 return Err(RuntimeError::type_error(
@@ -220,6 +235,26 @@ impl<'a> Interpreter<'a> {
         )
     }
 
+    fn same_value(&self, left: Value, right: Value) -> bool {
+        if left.is_number() || right.is_number() {
+            let (Some(left), Some(right)) = (self.heap.as_number(left), self.heap.as_number(right))
+            else {
+                return false;
+            };
+            if left.is_nan() && right.is_nan() {
+                return true;
+            }
+            if left == 0.0 && right == 0.0 {
+                return left.is_sign_negative() == right.is_sign_negative();
+            }
+            return left == right;
+        }
+        if let (Some(left), Some(right)) = (left.as_boolean(), right.as_boolean()) {
+            return left == right;
+        }
+        self.heap.strict_eq(left, right)
+    }
+
     fn callee_receiver(
         &self,
         callee: Value,
@@ -347,6 +382,35 @@ impl<'a> Interpreter<'a> {
         let Ok(object_id) = self.object_id(object, span) else {
             return Ok(None);
         };
+        if key == "hasOwnProperty" {
+            let key = self
+                .heap
+                .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+            let is_array = self
+                .objects
+                .is_array(object_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if is_array && key == "length" {
+                return Ok(Some(Value::boolean(true)));
+            }
+            if is_array && let Ok(index) = key.parse::<u32>() {
+                let own = self
+                    .objects
+                    .array_has(object_id, index)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                return Ok(Some(Value::boolean(own)));
+            }
+            let shape = self
+                .objects
+                .shape(object_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let own = self
+                .shapes
+                .lookup(shape, &PropertyKey::from_string(&key))
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .is_some();
+            return Ok(Some(Value::boolean(own)));
+        }
         if !self
             .objects
             .is_array(object_id)
