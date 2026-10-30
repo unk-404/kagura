@@ -94,6 +94,13 @@ pub enum Stmt {
         body: Box<Stmt>,
         span: Span,
     },
+    ForOf {
+        declaration: Option<VarDecl>,
+        target: Option<crate::expr::AssignTarget>,
+        iterable: Expr,
+        body: Box<Stmt>,
+        span: Span,
+    },
     Switch {
         discriminant: Expr,
         cases: Vec<SwitchCase>,
@@ -155,6 +162,7 @@ impl Stmt {
             | Self::While { span, .. }
             | Self::For { span, .. }
             | Self::ForIn { span, .. }
+            | Self::ForOf { span, .. }
             | Self::Switch { span, .. }
             | Self::Return { span, .. }
             | Self::Throw { span, .. }

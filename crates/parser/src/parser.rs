@@ -235,7 +235,7 @@ impl Parser {
         } else {
             None
         };
-        if matches!(kind, VarKind::Const) && init.is_none() {
+        if matches!(kind, VarKind::Const) && init.is_none() && expect_semi {
             return Err(ParseError::new(
                 "const declaration requires an initializer",
                 name_token.span,
@@ -327,6 +327,20 @@ impl Parser {
                     span,
                 });
             }
+            if self.at_of() {
+                self.advance();
+                let iterable = self.parse_expr()?;
+                self.expect(&TokenKind::RParen, "expected ')' after for-of iterable")?;
+                let body = Box::new(self.parse_sub_stmt()?);
+                let span = start.merge(body.span());
+                return Ok(Stmt::ForOf {
+                    declaration: Some(declaration),
+                    target: None,
+                    iterable,
+                    body,
+                    span,
+                });
+            }
             self.expect(&TokenKind::Semi, "expected ';' after for initializer")?;
             return self.parse_for_tail(start, Some(ForInit::Var(declaration)));
         }
@@ -335,6 +349,21 @@ impl Parser {
             return self.parse_for_tail(start, None);
         }
         let expr = self.parse_expr()?;
+        if self.at_of() {
+            self.advance();
+            let target = self.expr_to_target(expr, start)?;
+            let iterable = self.parse_expr()?;
+            self.expect(&TokenKind::RParen, "expected ')' after for-of iterable")?;
+            let body = Box::new(self.parse_sub_stmt()?);
+            let span = start.merge(body.span());
+            return Ok(Stmt::ForOf {
+                declaration: None,
+                target: Some(target),
+                iterable,
+                body,
+                span,
+            });
+        }
         if let Expr::Binary {
             op: BinaryOp::In,
             left,
@@ -689,6 +718,10 @@ impl Parser {
                 other.span(),
             )),
         }
+    }
+
+    fn at_of(&self) -> bool {
+        matches!(&self.peek().kind, TokenKind::Ident(name) if name == "of")
     }
 
     fn parse_or(&mut self) -> Result<Expr, ParseError> {

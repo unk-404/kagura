@@ -1009,6 +1009,19 @@ fn supports_destructuring_assignment_and_multiple_declarators() {
 }
 
 #[test]
+fn runs_for_of_over_arrays_and_strings() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var total = 0; for (var x of [1, 2, 3]) total += x; var out = ''; for (const ch of 'abc') out += ch; console.log(total, out);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "6 abc\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

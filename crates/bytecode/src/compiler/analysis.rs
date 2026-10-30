@@ -91,18 +91,12 @@ fn stmt_has_closure(stmt: &Stmt) -> bool {
                 || stmt_has_closure(body)
         }
         Stmt::ForIn {
-            declaration,
+            declaration: _,
             object,
             body,
             ..
-        } => {
-            declaration
-                .as_ref()
-                .and_then(|decl| decl.init.as_ref())
-                .is_some_and(expr_has_closure)
-                || expr_has_closure(object)
-                || stmt_has_closure(body)
-        }
+        } => expr_has_closure(object) || stmt_has_closure(body),
+        Stmt::ForOf { iterable, body, .. } => expr_has_closure(iterable) || stmt_has_closure(body),
         Stmt::Switch {
             discriminant,
             cases,
