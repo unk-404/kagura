@@ -72,6 +72,9 @@ impl Heap {
         if let Some(text) = self.as_str(value) {
             return text.to_owned();
         }
+        if value.is_object() {
+            return "[object Object]".into();
+        }
         match value.special() {
             Some(0) => "undefined".into(),
             Some(1) => "null".into(),
@@ -90,6 +93,9 @@ impl Heap {
         }
         if let Some(text) = self.as_str(value) {
             return !text.is_empty();
+        }
+        if value.is_object() {
+            return true;
         }
         value.as_boolean().unwrap_or(false)
     }

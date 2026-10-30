@@ -5,5 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+kagura-kmem = { version = "0.1.0", path = "../kmem" }
 kagura-support = { version = "0.1.0", path = "../support" }
+kagura-value = { version = "0.1.0", path = "../value" }
 thiserror = { workspace = true }

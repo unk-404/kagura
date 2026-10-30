@@ -1,17 +1,18 @@
-const TAG_MASK: u32 = 0b11;
-const TAG_SMI: u32 = 0b00;
-const TAG_STRING: u32 = 0b01;
-const TAG_NUMBER: u32 = 0b10;
-const TAG_SPECIAL: u32 = 0b11;
+const TAG_MASK: u32 = 0b111;
+const TAG_SMI: u32 = 0b000;
+const TAG_STRING: u32 = 0b001;
+const TAG_NUMBER: u32 = 0b010;
+const TAG_OBJECT: u32 = 0b011;
+const TAG_SPECIAL: u32 = 0b100;
 
-const SPECIAL_SHIFT: u32 = 2;
+const SHIFT: u32 = 3;
 const SPECIAL_UNDEFINED: u32 = 0;
 const SPECIAL_NULL: u32 = 1;
 const SPECIAL_TRUE: u32 = 2;
 const SPECIAL_FALSE: u32 = 3;
 
-pub const SMI_MIN: i32 = -(1 << 29);
-pub const SMI_MAX: i32 = (1 << 29) - 1;
+pub const SMI_MIN: i32 = -(1 << 28);
+pub const SMI_MAX: i32 = (1 << 28) - 1;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Value(u32);
@@ -22,46 +23,61 @@ impl std::fmt::Debug for Value {
             return write!(f, "smi({value})");
         }
         if self.is_string() {
-            return write!(f, "string(ref {})", self.0 >> 2);
+            return write!(f, "string(ref {})", self.0 >> SHIFT);
         }
         if self.is_heap_number() {
-            return write!(f, "number(ref {})", self.0 >> 2);
+            return write!(f, "number(ref {})", self.0 >> SHIFT);
+        }
+        if self.is_object() {
+            return write!(f, "object(ref {})", self.0 >> SHIFT);
         }
         match self.special() {
-            Some(0) => f.write_str("undefined"),
-            Some(1) => f.write_str("null"),
-            Some(2) => f.write_str("true"),
-            Some(3) => f.write_str("false"),
+            Some(SPECIAL_UNDEFINED) => f.write_str("undefined"),
+            Some(SPECIAL_NULL) => f.write_str("null"),
+            Some(SPECIAL_TRUE) => f.write_str("true"),
+            Some(SPECIAL_FALSE) => f.write_str("false"),
             _ => f.write_str("<invalid>"),
         }
     }
 }
 
 impl Value {
+    pub const fn raw(self) -> u32 {
+        self.0
+    }
+
+    pub const fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+
     pub const fn smi(value: i32) -> Self {
         debug_assert!(value >= SMI_MIN && value <= SMI_MAX);
-        Self(((value as u32) << 2) & !TAG_MASK)
+        Self(((value as u32) << SHIFT) & !TAG_MASK)
     }
 
     pub const fn string(offset: u32) -> Self {
-        Self((offset << 2) | TAG_STRING)
+        Self((offset << SHIFT) | TAG_STRING)
     }
 
     pub const fn number(offset: u32) -> Self {
-        Self((offset << 2) | TAG_NUMBER)
+        Self((offset << SHIFT) | TAG_NUMBER)
+    }
+
+    pub const fn object(offset: u32) -> Self {
+        Self((offset << SHIFT) | TAG_OBJECT)
     }
 
     pub const fn undefined() -> Self {
-        Self((SPECIAL_UNDEFINED << SPECIAL_SHIFT) | TAG_SPECIAL)
+        Self((SPECIAL_UNDEFINED << SHIFT) | TAG_SPECIAL)
     }
 
     pub const fn null() -> Self {
-        Self((SPECIAL_NULL << SPECIAL_SHIFT) | TAG_SPECIAL)
+        Self((SPECIAL_NULL << SHIFT) | TAG_SPECIAL)
     }
 
     pub const fn boolean(value: bool) -> Self {
         let special = if value { SPECIAL_TRUE } else { SPECIAL_FALSE };
-        Self((special << SPECIAL_SHIFT) | TAG_SPECIAL)
+        Self((special << SHIFT) | TAG_SPECIAL)
     }
 
     pub const fn is_smi(self) -> bool {
@@ -76,6 +92,10 @@ impl Value {
         self.0 & TAG_MASK == TAG_NUMBER
     }
 
+    pub const fn is_object(self) -> bool {
+        self.0 & TAG_MASK == TAG_OBJECT
+    }
+
     pub const fn is_number(self) -> bool {
         self.is_smi() || self.is_heap_number()
     }
@@ -85,18 +105,22 @@ impl Value {
     }
 
     pub fn as_smi(self) -> Option<i32> {
-        self.is_smi().then_some((self.0 as i32) >> 2)
+        self.is_smi().then_some((self.0 as i32) >> SHIFT)
     }
 
     pub fn heap_offset(self) -> Option<u32> {
         match self.0 & TAG_MASK {
-            TAG_STRING | TAG_NUMBER => Some(self.0 >> 2),
+            TAG_STRING | TAG_NUMBER => Some(self.0 >> SHIFT),
             _ => None,
         }
     }
 
+    pub fn object_offset(self) -> Option<u32> {
+        self.is_object().then_some(self.0 >> SHIFT)
+    }
+
     pub fn special(self) -> Option<u32> {
-        self.is_special().then_some(self.0 >> SPECIAL_SHIFT)
+        self.is_special().then_some(self.0 >> SHIFT)
     }
 
     pub fn is_undefined(self) -> bool {

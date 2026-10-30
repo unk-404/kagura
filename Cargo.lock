@@ -305,7 +305,9 @@ dependencies = [
 name = "kagura-object"
 version = "0.1.0"
 dependencies = [
+ "kagura-kmem",
  "kagura-support",
+ "kagura-value",
  "thiserror",
 ]
 
