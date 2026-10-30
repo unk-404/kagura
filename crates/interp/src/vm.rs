@@ -171,14 +171,14 @@ impl<'a> Interpreter<'a> {
                 Op::Add => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;
-                    let value = self.add(left, right, span)?;
+                    let value = try_op!(self.add(left, right, span));
                     push(&mut stack, value, span)?;
                 }
                 Op::Sub | Op::Mul | Op::Div | Op::Mod => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;
-                    let left = self.number(left, span)?;
-                    let right = self.number(right, span)?;
+                    let left = try_op!(self.number(left, span));
+                    let right = try_op!(self.number(right, span));
                     let value = match op {
                         Op::Sub => left - right,
                         Op::Mul => left * right,
@@ -191,7 +191,7 @@ impl<'a> Interpreter<'a> {
                 Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;
-                    let value = self.compare(op, left, right, span)?;
+                    let value = try_op!(self.compare(op, left, right, span));
                     push(&mut stack, Value::boolean(value), span)?;
                 }
                 Op::Eq | Op::Ne => {
@@ -221,7 +221,7 @@ impl<'a> Interpreter<'a> {
                 Op::In => {
                     let target = pop(&mut stack, span)?;
                     let key = pop(&mut stack, span)?;
-                    let found = self.has_property(key, target, span)?;
+                    let found = try_op!(self.has_property(key, target, span));
                     push(&mut stack, Value::boolean(found), span)?;
                 }
                 Op::TypeOf => {
@@ -252,7 +252,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Op::Neg => {
                     let value = pop(&mut stack, span)?;
-                    let number = self.number(value, span)?;
+                    let number = try_op!(self.number(value, span));
                     push(&mut stack, self.heap.number(-number), span)?;
                 }
                 Op::Not => {
@@ -560,9 +560,12 @@ impl<'a> Interpreter<'a> {
                     }
                     roots.push(object);
                     roots.extend_from_slice(&args);
-                    let value = self
-                        .call_builtin(object, &key, &args, span, &roots)?
-                        .ok_or_else(|| RuntimeError::type_error("method is not supported", span))?;
+                    let value = try_op!(
+                        self.call_builtin(object, &key, &args, span, &roots)
+                            .and_then(|value| value.ok_or_else(|| {
+                                RuntimeError::type_error("method is not supported", span)
+                            }))
+                    );
                     push(&mut stack, value, span)?;
                 }
                 Op::CallHost => {
@@ -680,16 +683,18 @@ impl<'a> Interpreter<'a> {
                 Op::ArrayPush => {
                     let value = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
-                    let id = self.object_id(object, span)?;
-                    self.objects
-                        .array_push(id, value)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let id = try_op!(self.object_id(object, span));
+                    try_op!(
+                        self.objects
+                            .array_push(id, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                    );
                     push(&mut stack, object, span)?;
                 }
                 Op::GetIndex => {
                     let index = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
-                    let index = self.index_value(index, span)?;
+                    let index = try_op!(self.index_value(index, span));
                     if let Some(text) = self.heap.as_str(object) {
                         let value = text
                             .encode_utf16()
@@ -700,22 +705,25 @@ impl<'a> Interpreter<'a> {
                         push(&mut stack, value, span)?;
                         continue;
                     }
-                    let id = self.object_id(object, span)?;
-                    let value = self
-                        .objects
-                        .array_get(id, index)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let id = try_op!(self.object_id(object, span));
+                    let value = try_op!(
+                        self.objects
+                            .array_get(id, index)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                    );
                     push(&mut stack, value, span)?;
                 }
                 Op::SetIndexValue => {
                     let value = pop(&mut stack, span)?;
                     let index = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
-                    let id = self.object_id(object, span)?;
-                    let index = self.index_value(index, span)?;
-                    self.objects
-                        .array_set(id, index, value)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let id = try_op!(self.object_id(object, span));
+                    let index = try_op!(self.index_value(index, span));
+                    try_op!(
+                        self.objects
+                            .array_set(id, index, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                    );
                     push(&mut stack, value, span)?;
                 }
                 Op::GcCheck => {

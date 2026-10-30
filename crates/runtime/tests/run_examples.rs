@@ -344,6 +344,19 @@ fn catches_runtime_error_in_same_frame() {
 }
 
 #[test]
+fn catches_index_runtime_error() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "try { let value = undefined; value[0]; } catch (error) { console.log(\"index\"); }",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "index\n");
+}
+
+#[test]
 fn catches_throw_from_called_function() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
