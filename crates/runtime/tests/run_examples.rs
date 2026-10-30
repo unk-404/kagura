@@ -728,3 +728,12 @@ fn reports_syntax_errors() {
     let error = runtime.run("let value: number = ;", &mut host).unwrap_err();
     assert!(error.to_string().contains("expected expression"));
 }
+
+#[test]
+fn stops_infinite_loops_at_the_step_limit() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.set_step_limit(100);
+    let error = runtime.run("while (true) {}", &mut host).unwrap_err();
+    assert!(error.to_string().contains("step limit"));
+}

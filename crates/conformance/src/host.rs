@@ -1,4 +1,4 @@
-use kagura_bindgen::{Bindings, Host, HostCall, HostError, HostFunctionId};
+﻿use kagura_bindgen::{Bindings, Host, HostCall, HostError, HostFunctionId};
 use kagura_value::Value;
 
 pub struct Test262Host {
@@ -37,7 +37,7 @@ fn same_value(call: &mut HostCall<'_>) -> Result<Value, HostError> {
         .get(1)
         .copied()
         .ok_or_else(|| HostError::new("assert.sameValue requires two arguments"))?;
-    if !call.heap().strict_eq(actual, expected) {
+    if !same_value_impl(call.heap(), actual, expected) {
         return Err(HostError::new("assert.sameValue failed"));
     }
     Ok(Value::undefined())
@@ -54,10 +54,29 @@ fn not_same_value(call: &mut HostCall<'_>) -> Result<Value, HostError> {
         .get(1)
         .copied()
         .ok_or_else(|| HostError::new("assert.notSameValue requires two arguments"))?;
-    if call.heap().strict_eq(actual, expected) {
+    if same_value_impl(call.heap(), actual, expected) {
         return Err(HostError::new("assert.notSameValue failed"));
     }
     Ok(Value::undefined())
+}
+
+fn same_value_impl(heap: &kagura_value::Heap, left: Value, right: Value) -> bool {
+    if left.is_number() || right.is_number() {
+        let (Some(left), Some(right)) = (heap.as_number(left), heap.as_number(right)) else {
+            return false;
+        };
+        if left.is_nan() && right.is_nan() {
+            return true;
+        }
+        if left == 0.0 && right == 0.0 {
+            return left.is_sign_negative() == right.is_sign_negative();
+        }
+        return left == right;
+    }
+    if let (Some(left), Some(right)) = (left.as_boolean(), right.as_boolean()) {
+        return left == right;
+    }
+    heap.strict_eq(left, right)
 }
 
 fn fail(call: &mut HostCall<'_>) -> Result<Value, HostError> {

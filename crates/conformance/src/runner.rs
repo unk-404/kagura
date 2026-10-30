@@ -75,6 +75,7 @@ pub fn run_case(case: &TestCase) -> CaseReport {
 
     let mut host = Test262Host::default();
     let mut runtime = Runtime::default();
+    runtime.set_step_limit(5_000);
     let result = runtime.run(&case.source, &mut host);
     let (outcome, message) = match (case.metadata.negative.as_ref(), result) {
         (None, Ok(_)) => (Outcome::Pass, String::new()),

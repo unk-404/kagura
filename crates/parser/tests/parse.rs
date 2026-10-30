@@ -127,3 +127,8 @@ fn rejects_unterminated_string() {
     let error = parse("let value = \"oops;").unwrap_err();
     assert!(error.message.contains("unterminated string"));
 }
+
+#[test]
+fn parses_unicode_string_escapes() {
+    parse("let value = \"\\u0041\\u{1F600}\\x41\\А\";").unwrap();
+}

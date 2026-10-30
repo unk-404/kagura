@@ -163,20 +163,54 @@ fn lex_string(source: &str, start: usize, quote: u8) -> Result<(Token, usize), P
         }
         if byte == b'\\' {
             pos += 1;
-            let Some(escaped) = bytes.get(pos).copied() else {
+            let Some(escaped) = source[pos..].chars().next() else {
                 break;
             };
+            pos += escaped.len_utf8();
             match escaped {
-                b'n' => value.push('\n'),
-                b'r' => value.push('\r'),
-                b't' => value.push('\t'),
-                b'\\' => value.push('\\'),
-                b'"' => value.push('"'),
-                b'\'' => value.push('\''),
-                b'0' => value.push('\0'),
-                other => value.push(other as char),
+                'n' => value.push('\n'),
+                'r' => value.push('\r'),
+                't' => value.push('\t'),
+                '\\' => value.push('\\'),
+                '"' => value.push('"'),
+                '\'' => value.push('\''),
+                '0' => value.push('\0'),
+                'x' => {
+                    if let Some(digits) = source[pos..].get(..2)
+                        && let Ok(code) = u32::from_str_radix(digits, 16)
+                        && let Some(ch) = char::from_u32(code)
+                    {
+                        value.push(ch);
+                        pos += 2;
+                    }
+                }
+                'u' => {
+                    if source[pos..].starts_with('{') {
+                        if let Some(end) = source[pos + 1..].find('}') {
+                            let digits = &source[pos + 1..pos + 1 + end];
+                            if let Ok(code) = u32::from_str_radix(digits, 16)
+                                && let Some(ch) = char::from_u32(code)
+                            {
+                                value.push(ch);
+                            }
+                            pos += end + 2;
+                        }
+                    } else if let Some(digits) = source[pos..].get(..4)
+                        && let Ok(code) = u32::from_str_radix(digits, 16)
+                        && let Some(ch) = char::from_u32(code)
+                    {
+                        value.push(ch);
+                        pos += 4;
+                    }
+                }
+                '\r' => {
+                    if source[pos..].starts_with('\n') {
+                        pos += 1;
+                    }
+                }
+                '\n' => {}
+                other => value.push(other),
             }
-            pos += 1;
             continue;
         }
         let ch = source[pos..].chars().next().ok_or_else(|| {

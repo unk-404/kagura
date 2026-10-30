@@ -41,6 +41,7 @@ pub struct Interpreter<'a> {
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     depth: usize,
+    step_limit: u64,
 }
 
 impl<'a> Interpreter<'a> {
@@ -50,6 +51,7 @@ impl<'a> Interpreter<'a> {
         objects: &'a mut ObjectHeap,
         shapes: &'a mut ShapeTable,
         host: &'a mut dyn Host,
+        step_limit: u64,
     ) -> Self {
         Self {
             module,
@@ -59,6 +61,7 @@ impl<'a> Interpreter<'a> {
             host,
             host_cache: vec![None; module.constants.len()],
             depth: 0,
+            step_limit,
         }
     }
 
@@ -86,6 +89,7 @@ impl<'a> Interpreter<'a> {
         let mut handlers: Vec<TryHandler> = Vec::new();
         let mut stack: Vec<Value> = Vec::new();
         let mut pc = 0usize;
+        let mut steps = 0u64;
         macro_rules! try_op {
             ($expr:expr) => {
                 match $expr {
@@ -100,6 +104,10 @@ impl<'a> Interpreter<'a> {
         }
         loop {
             let span = self.module.span_at(function_index, pc);
+            steps += 1;
+            if steps > self.step_limit {
+                return Err(RuntimeError::range("execution step limit exceeded", span));
+            }
             let byte = *function.code.get(pc).ok_or_else(|| {
                 RuntimeError::new(
                     RuntimeErrorKind::Runtime,

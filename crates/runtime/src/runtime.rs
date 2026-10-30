@@ -11,6 +11,7 @@ pub struct Runtime {
     heap: Heap,
     objects: ObjectHeap,
     shapes: ShapeTable,
+    step_limit: u64,
 }
 
 impl Default for Runtime {
@@ -25,7 +26,12 @@ impl Runtime {
             heap: Heap::new(heap_capacity),
             objects: ObjectHeap::new(heap_capacity),
             shapes: ShapeTable::new(),
+            step_limit: 1_000_000,
         }
+    }
+
+    pub fn set_step_limit(&mut self, step_limit: u64) {
+        self.step_limit = step_limit;
     }
 
     pub fn heap_used(&self) -> usize {
@@ -74,6 +80,7 @@ impl Runtime {
                 &mut self.objects,
                 &mut self.shapes,
                 host,
+                self.step_limit,
             );
             interpreter.run()?
         };
