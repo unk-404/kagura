@@ -30,10 +30,39 @@ fn skips_unsupported_harness_and_flags() {
     assert!(skip_reason(&metadata).is_some());
 
     let metadata = Metadata {
-        includes: vec!["assert.js".into()],
+        includes: vec!["helper.js".into()],
         ..Metadata::default()
     };
     assert!(skip_reason(&metadata).is_some());
+
+    let metadata = Metadata {
+        includes: vec!["assert.js".into(), "sta.js".into()],
+        ..Metadata::default()
+    };
+    assert_eq!(skip_reason(&metadata), None);
+}
+
+#[test]
+fn runs_test262_assertions() {
+    let pass = TestCase {
+        path: "assert-pass.js".into(),
+        source: "assert.sameValue(1, 1);".into(),
+        metadata: Metadata {
+            includes: vec!["assert.js".into(), "sta.js".into()],
+            ..Metadata::default()
+        },
+    };
+    assert_eq!(run_case(&pass).outcome, Outcome::Pass);
+
+    let fail = TestCase {
+        path: "assert-fail.js".into(),
+        source: "assert.sameValue(1, 2);".into(),
+        metadata: Metadata {
+            includes: vec!["assert.js".into(), "sta.js".into()],
+            ..Metadata::default()
+        },
+    };
+    assert_eq!(run_case(&fail).outcome, Outcome::Fail);
 }
 
 #[test]

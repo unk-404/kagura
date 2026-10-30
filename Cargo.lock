@@ -279,8 +279,9 @@ name = "kagura-conformance"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "kagura-bindgen",
  "kagura-runtime",
- "kagura-testkit",
+ "kagura-value",
 ]
 
 [[package]]

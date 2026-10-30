@@ -3,8 +3,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use kagura_runtime::Runtime;
-use kagura_testkit::CaptureHost;
 
+use crate::host::Test262Host;
 use crate::metadata::{Metadata, parse_metadata};
 
 #[derive(Clone, Debug)]
@@ -43,8 +43,13 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
     {
         return Some("unsupported test262 flag");
     }
-    if !metadata.includes.is_empty() {
-        return Some("test262 includes/harness not supported yet");
+    if !metadata.includes.is_empty()
+        && metadata
+            .includes
+            .iter()
+            .any(|include| !matches!(include.as_str(), "assert.js" | "sta.js"))
+    {
+        return Some("test262 includes beyond assert.js/sta.js are not supported yet");
     }
     if !metadata.features.is_empty() {
         return Some("test262 features not supported yet");
@@ -60,8 +65,15 @@ pub fn run_case(case: &TestCase) -> CaseReport {
             message: reason.to_owned(),
         };
     }
+    if let Some(assertion) = unsupported_assertion(&case.source) {
+        return CaseReport {
+            path: case.path.clone(),
+            outcome: Outcome::Skip,
+            message: format!("unsupported assertion helper: {assertion}"),
+        };
+    }
 
-    let mut host = CaptureHost::default();
+    let mut host = Test262Host::default();
     let mut runtime = Runtime::default();
     let result = runtime.run(&case.source, &mut host);
     let (outcome, message) = match (case.metadata.negative.as_ref(), result) {
@@ -78,6 +90,19 @@ pub fn run_case(case: &TestCase) -> CaseReport {
         outcome,
         message,
     }
+}
+
+fn unsupported_assertion(source: &str) -> Option<&'static str> {
+    const UNSUPPORTED: &[&str] = &[
+        "assert.throws",
+        "assert.throwsAsync",
+        "assert.compareArray",
+        "assert.deepEqual",
+    ];
+    UNSUPPORTED
+        .iter()
+        .copied()
+        .find(|pattern| source.contains(pattern))
 }
 
 fn visit(root: &Path, cases: &mut Vec<TestCase>) -> io::Result<()> {
