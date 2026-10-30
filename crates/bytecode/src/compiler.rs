@@ -144,7 +144,6 @@ impl<'a> FunctionCompiler<'a> {
                     self.compile_stmt(stmt)?;
                 }
                 self.scopes.pop();
-                self.locals.truncate(base);
                 Ok(())
             }
             Stmt::If {
@@ -234,7 +233,6 @@ impl<'a> FunctionCompiler<'a> {
                     self.patch_jump(patch, self.code.len());
                 }
                 self.scopes.pop();
-                self.locals.truncate(base);
                 Ok(())
             }
             Stmt::Return { value, span } => {
@@ -370,6 +368,7 @@ impl<'a> FunctionCompiler<'a> {
                     ));
                 }
                 self.compile_expr(value)?;
+                self.emit(Op::Dup, *span);
                 self.emit_u16(Op::StoreLocal, slot, *span);
             }
             Expr::Call { callee, args, span } => {

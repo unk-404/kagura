@@ -221,6 +221,8 @@ name = "kagura-bench"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "kagura-runtime",
+ "kagura-testkit",
 ]
 
 [[package]]
@@ -238,7 +240,10 @@ name = "kagura-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "kagura-bytecode",
  "kagura-diagnostics",
+ "kagura-interp",
+ "kagura-parser",
  "kagura-runtime",
  "tracing-subscriber",
 ]
@@ -293,6 +298,7 @@ dependencies = [
  "kagura-parser",
  "kagura-support",
  "kagura-target",
+ "kagura-testkit",
  "kagura-value",
  "thiserror",
  "tracing",

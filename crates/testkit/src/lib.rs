@@ -1,14 +1,23 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use kagura_interp::Host;
+
+#[derive(Debug, Default)]
+pub struct CaptureHost {
+    output: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl CaptureHost {
+    pub fn output(&self) -> &str {
+        &self.output
+    }
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    pub fn take(self) -> String {
+        self.output
+    }
+}
+
+impl Host for CaptureHost {
+    fn print(&mut self, text: &str) {
+        self.output.push_str(text);
+        self.output.push('\n');
     }
 }
