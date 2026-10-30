@@ -89,6 +89,19 @@ fn gc_runs_during_script_allocations() {
 }
 
 #[test]
+fn gc_keeps_caller_roots_alive() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::new(64 * 1024);
+    runtime
+        .run(
+            "function make() { for (let i = 0; i < 2000; i = i + 1) { let o = { x: i }; } return 1; } let keep = { x: 7 }; let result = make(); console.log(keep.x + result);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "8\n");
+}
+
+#[test]
 fn reports_syntax_errors() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

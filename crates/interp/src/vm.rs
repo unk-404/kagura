@@ -45,11 +45,16 @@ impl<'a> Interpreter<'a> {
     #[instrument(skip(self), fields(entry = self.module.entry))]
     pub fn run(&mut self) -> Result<Value, RuntimeError> {
         let entry = self.module.entry;
-        self.call(entry, &[])
+        self.call(entry, &[], &[])
     }
 
-    #[instrument(skip(self, args), fields(function = index, argc = args.len()))]
-    fn call(&mut self, index: usize, args: &[Value]) -> Result<Value, RuntimeError> {
+    #[instrument(skip(self, args, caller_roots), fields(function = index, argc = args.len()))]
+    fn call(
+        &mut self,
+        index: usize,
+        args: &[Value],
+        caller_roots: &[Value],
+    ) -> Result<Value, RuntimeError> {
         if self.depth >= MAX_CALL_DEPTH {
             return Err(RuntimeError::range(
                 "maximum call depth exceeded",
@@ -72,7 +77,7 @@ impl<'a> Interpreter<'a> {
         defined[..function.param_count as usize].fill(true);
 
         self.depth += 1;
-        let result = self.execute(index, &function, &mut locals, &mut defined);
+        let result = self.execute(index, &function, &mut locals, &mut defined, caller_roots);
         self.depth -= 1;
         result
     }
@@ -83,6 +88,7 @@ impl<'a> Interpreter<'a> {
         function: &kagura_bytecode::FunctionProto,
         locals: &mut [Value],
         defined: &mut [bool],
+        caller_roots: &[Value],
     ) -> Result<Value, RuntimeError> {
         let mut stack: Vec<Value> = Vec::new();
         let mut pc = 0usize;
@@ -244,7 +250,16 @@ impl<'a> Interpreter<'a> {
                         args.push(pop(&mut stack, span)?);
                     }
                     args.reverse();
-                    let value = self.call_name(&name, index as usize, &args, span)?;
+                    let mut roots =
+                        Vec::with_capacity(caller_roots.len() + locals.len() + stack.len());
+                    roots.extend_from_slice(caller_roots);
+                    for (value, is_defined) in locals.iter().zip(defined.iter()) {
+                        if *is_defined {
+                            roots.push(*value);
+                        }
+                    }
+                    roots.extend_from_slice(&stack);
+                    let value = self.call_name(&name, index as usize, &args, span, &roots)?;
                     push(&mut stack, value, span)?;
                 }
                 Op::CallHost => {
@@ -371,7 +386,9 @@ impl<'a> Interpreter<'a> {
                 }
                 Op::GcCheck => {
                     if self.objects.live_bytes() >= GC_THRESHOLD {
-                        let mut roots = Vec::with_capacity(locals.len() + stack.len());
+                        let mut roots =
+                            Vec::with_capacity(caller_roots.len() + locals.len() + stack.len());
+                        roots.extend_from_slice(caller_roots);
                         for (value, is_defined) in locals.iter().zip(defined.iter()) {
                             if *is_defined {
                                 roots.push(*value);
@@ -403,9 +420,10 @@ impl<'a> Interpreter<'a> {
         index: usize,
         args: &[Value],
         span: Span,
+        caller_roots: &[Value],
     ) -> Result<Value, RuntimeError> {
         if let Some(function) = self.module.find_function(name) {
-            return self.call(function, args);
+            return self.call(function, args, caller_roots);
         }
         let id = self.resolve_host(name, index, span)?;
         self.invoke_host(id, args, span)

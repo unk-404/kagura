@@ -69,7 +69,7 @@ fn compile_function(
             ));
         }
     }
-    let mut compiler = FunctionCompiler::new(&decl.name, &decl.params, false, constants);
+    let mut compiler = FunctionCompiler::new(&decl.name, &decl.params, true, constants);
     for stmt in &decl.body {
         compiler.compile_stmt(stmt)?;
     }
