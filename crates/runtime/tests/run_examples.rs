@@ -52,6 +52,7 @@ const OBJECT_CHECKS: &str = include_str!("../../../examples/object_checks.ts");
 const FINALLY_RETURN: &str = include_str!("../../../examples/finally_return.ts");
 const OBJECT_ASSIGN: &str = include_str!("../../../examples/object_assign.ts");
 const FINALLY_LOOPS: &str = include_str!("../../../examples/finally_loops.ts");
+const BUILTIN_EXTRAS: &str = include_str!("../../../examples/builtin_extras.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -523,6 +524,17 @@ fn runs_finally_on_break_and_continue() {
     let mut runtime = Runtime::default();
     runtime.run(FINALLY_LOOPS, &mut host).unwrap();
     assert_eq!(host.output(), "0,f0,f1\n0ff2f\n");
+}
+
+#[test]
+fn runs_extra_array_and_string_builtins() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(BUILTIN_EXTRAS, &mut host).unwrap();
+    assert_eq!(
+        host.output(),
+        "3,2,1\n1,2,3,4,5\na|b|c\ntrue\ntrue\nababab\ncde\ncde\n"
+    );
 }
 
 #[test]

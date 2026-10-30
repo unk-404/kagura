@@ -995,7 +995,6 @@ impl<'a> FunctionCompiler<'a> {
             Expr::Array { elements, span } => {
                 self.emit(Op::NewArray, *span);
                 for element in elements {
-                    self.emit(Op::Dup, *span);
                     match element {
                         Some(element) => self.compile_expr(element)?,
                         None => self.emit(Op::LoadHole, *span),

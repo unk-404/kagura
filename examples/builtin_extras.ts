@@ -1,0 +1,10 @@
+let values = [1, 2, 3];
+console.log(values.reverse().join(","));
+console.log([1, 2].concat([3, 4], 5).join(","));
+let text = "a,b,c";
+console.log(text.split(",").join("|"));
+console.log(text.startsWith("a"));
+console.log(text.endsWith("c"));
+console.log("ab".repeat(3));
+console.log("abcdef".substring(2, 5));
+console.log("abcdef".substring(5, 2));

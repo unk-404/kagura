@@ -480,6 +480,91 @@ impl<'a> Interpreter<'a> {
                 "toUpperCase" => self.heap.string(&text.to_uppercase()),
                 "toLowerCase" => self.heap.string(&text.to_lowercase()),
                 "trim" => self.heap.string(text.trim()),
+                "startsWith" => {
+                    let needle = args
+                        .first()
+                        .map(|value| self.heap.to_js_string(*value))
+                        .unwrap_or_default();
+                    let position = arg_index(args, 1);
+                    let suffix: String = text.chars().skip(position).collect();
+                    Value::boolean(suffix.starts_with(&needle))
+                }
+                "endsWith" => {
+                    let needle = args
+                        .first()
+                        .map(|value| self.heap.to_js_string(*value))
+                        .unwrap_or_default();
+                    let length = text.chars().count();
+                    let end = args
+                        .get(1)
+                        .and_then(|value| value.as_smi())
+                        .map(|value| value.clamp(0, length as i32) as usize)
+                        .unwrap_or(length);
+                    let prefix: String = text.chars().take(end).collect();
+                    Value::boolean(prefix.ends_with(&needle))
+                }
+                "repeat" => {
+                    let count = args
+                        .first()
+                        .and_then(|value| value.as_smi())
+                        .unwrap_or(0)
+                        .max(0) as usize;
+                    if text.len().saturating_mul(count) > 1_000_000 {
+                        return Err(RuntimeError::range("repeat result is too large", span));
+                    }
+                    self.heap.string(&text.repeat(count))
+                }
+                "substring" => {
+                    let length = text.chars().count();
+                    let start = arg_index(args, 0).min(length);
+                    let end = args
+                        .get(1)
+                        .and_then(|value| value.as_smi())
+                        .map(|value| value.clamp(0, length as i32) as usize)
+                        .unwrap_or(length);
+                    let (start, end) = if start <= end {
+                        (start, end)
+                    } else {
+                        (end, start)
+                    };
+                    let value: String = text.chars().skip(start).take(end - start).collect();
+                    self.heap.string(&value)
+                }
+                "split" => {
+                    let limit = args
+                        .get(1)
+                        .and_then(|value| value.as_smi())
+                        .map(|value| value.max(0) as usize);
+                    let separator = if args.is_empty()
+                        || args.first().is_some_and(|value| value.is_undefined())
+                    {
+                        None
+                    } else {
+                        Some(
+                            args.first()
+                                .map(|value| self.heap.to_js_string(*value))
+                                .unwrap_or_default(),
+                        )
+                    };
+                    let parts: Vec<String> = match separator {
+                        None => vec![text.clone()],
+                        Some(separator) if separator.is_empty() => {
+                            text.chars().map(|ch| ch.to_string()).collect()
+                        }
+                        Some(separator) => text.split(&separator).map(str::to_owned).collect(),
+                    };
+                    let array = self
+                        .objects
+                        .allocate_array(self.shapes.root())
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    for part in parts.into_iter().take(limit.unwrap_or(usize::MAX)) {
+                        let value = self.heap.string(&part);
+                        self.objects
+                            .array_push(array, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                    Value::object(array.index())
+                }
                 _ => return Ok(None),
             }));
         }
@@ -633,6 +718,107 @@ impl<'a> Interpreter<'a> {
                     self.objects
                         .array_push(array, value)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                Value::object(array.index())
+            }
+            "reverse" => {
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let mut low = 0u32;
+                let mut high = length;
+                while low + 1 < high {
+                    high -= 1;
+                    let has_low = self
+                        .objects
+                        .array_has(object_id, low)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let has_high = self
+                        .objects
+                        .array_has(object_id, high)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let low_value = if has_low {
+                        self.objects
+                            .array_get(object_id, low)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    } else {
+                        Value::hole()
+                    };
+                    let high_value = if has_high {
+                        self.objects
+                            .array_get(object_id, high)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    } else {
+                        Value::hole()
+                    };
+                    self.objects
+                        .array_set(object_id, low, high_value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    self.objects
+                        .array_set(object_id, high, low_value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    low += 1;
+                }
+                Value::object(object_id.index())
+            }
+            "concat" => {
+                let array = self
+                    .objects
+                    .allocate_array(self.shapes.root())
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                for index in 0..length {
+                    let value = if self
+                        .objects
+                        .array_has(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        self.objects
+                            .array_get(object_id, index)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    } else {
+                        Value::hole()
+                    };
+                    self.objects
+                        .array_push(array, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                for argument in args {
+                    let source = argument.object_offset().map(ObjectId::new);
+                    if let Some(source) = source
+                        && self
+                            .objects
+                            .is_array(source)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        let length = self
+                            .objects
+                            .array_length(source)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        for index in 0..length {
+                            let value =
+                                if self.objects.array_has(source, index).map_err(|error| {
+                                    RuntimeError::runtime(error.to_string(), span)
+                                })? {
+                                    self.objects.array_get(source, index).map_err(|error| {
+                                        RuntimeError::runtime(error.to_string(), span)
+                                    })?
+                                } else {
+                                    Value::hole()
+                                };
+                            self.objects
+                                .array_push(array, value)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        }
+                    } else {
+                        self.objects
+                            .array_push(array, *argument)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
                 }
                 Value::object(array.index())
             }
