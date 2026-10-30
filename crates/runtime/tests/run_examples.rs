@@ -74,6 +74,7 @@ const FOR_IN: &str = include_str!("../../../examples/for_in.ts");
 const JSON_PARSE: &str = include_str!("../../../examples/json_parse.ts");
 const DATE_BASIC: &str = include_str!("../../../examples/date_basic.ts");
 const ARRAY_INDEX: &str = include_str!("../../../examples/array_index.ts");
+const ARRAY_METHODS: &str = include_str!("../../../examples/array_methods.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -739,6 +740,14 @@ fn distinguishes_array_indices_from_named_properties() {
     let mut runtime = Runtime::default();
     runtime.run(ARRAY_INDEX, &mut host).unwrap();
     assert_eq!(host.output(), "named fractional first 1\n");
+}
+
+#[test]
+fn runs_extended_array_methods() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARRAY_METHODS, &mut host).unwrap();
+    assert_eq!(host.output(), "1\n1,9,3\n3 undefined\n2 0\n");
 }
 
 #[test]

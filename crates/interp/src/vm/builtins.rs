@@ -2695,6 +2695,103 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(array.index())
             }
+            "findIndex" => {
+                let callback = args.first().copied().unwrap_or_else(Value::undefined);
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let roots = roots.to_vec();
+                for index in 0..length {
+                    if !self
+                        .objects
+                        .array_has(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        continue;
+                    }
+                    let value = self
+                        .objects
+                        .array_get(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let callback_args = [value, self.heap.number(index as f64), object];
+                    let result = self.invoke_callable(callback, &callback_args, &roots, span)?;
+                    if self.heap.truthy(result) {
+                        return Ok(Some(self.heap.number(index as f64)));
+                    }
+                }
+                self.heap.number(-1.0)
+            }
+            "fill" => {
+                let value = args.first().copied().unwrap_or_else(Value::undefined);
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let start = relative_array_index(self.heap, args.get(1).copied(), length, 0);
+                let end = relative_array_index(self.heap, args.get(2).copied(), length, length);
+                for index in start..end {
+                    self.objects
+                        .array_set(object_id, index, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                Value::object(object_id.index())
+            }
+            "at" => {
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let raw = args
+                    .first()
+                    .and_then(|value| self.heap.as_number(*value))
+                    .unwrap_or(0.0) as i64;
+                let index = if raw < 0 { length as i64 + raw } else { raw };
+                if index < 0 || index >= length as i64 {
+                    Value::undefined()
+                } else {
+                    self.objects
+                        .array_get(object_id, index as u32)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                }
+            }
+            "lastIndexOf" => {
+                let needle = args.first().copied().unwrap_or_else(Value::undefined);
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let start = args
+                    .get(1)
+                    .and_then(|value| self.heap.as_number(*value))
+                    .map(|value| {
+                        if value < 0.0 {
+                            (length as f64 + value).max(-1.0) as i64
+                        } else {
+                            value.min(length as f64 - 1.0) as i64
+                        }
+                    })
+                    .unwrap_or(length as i64 - 1);
+                let mut index = start;
+                while index >= 0 {
+                    let index_u32 = index as u32;
+                    if self
+                        .objects
+                        .array_has(object_id, index_u32)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        let value = self
+                            .objects
+                            .array_get(object_id, index_u32)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        if self.heap.strict_eq(value, needle) {
+                            return Ok(Some(self.heap.number(index as f64)));
+                        }
+                    }
+                    index -= 1;
+                }
+                self.heap.number(-1.0)
+            }
             "sort" => {
                 if self
                     .objects
@@ -2937,6 +3034,26 @@ impl<'a> Interpreter<'a> {
             _ => return Ok(None),
         }))
     }
+}
+
+fn relative_array_index(
+    heap: &kagura_value::Heap,
+    value: Option<Value>,
+    length: u32,
+    default: u32,
+) -> u32 {
+    let number = value
+        .and_then(|value| heap.as_number(value))
+        .unwrap_or(default as f64);
+    if number.is_nan() {
+        return 0;
+    }
+    let number = if number < 0.0 {
+        length as f64 + number
+    } else {
+        number
+    };
+    number.clamp(0.0, length as f64) as u32
 }
 
 fn parse_int_value(heap: &kagura_value::Heap, args: &[Value]) -> f64 {
