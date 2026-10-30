@@ -1205,6 +1205,19 @@ fn creates_implicit_global_in_sloppy_mode() {
 }
 
 #[test]
+fn global_parse_builtins_are_installed() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(parseInt('42'), parseFloat('3.5'), isNaN(NaN), isFinite(Infinity));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "42 3.5 true false\n");
+}
+
+#[test]
 fn hoists_catch_var_to_function_scope() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

@@ -1791,6 +1791,10 @@ impl<'a> Interpreter<'a> {
             "URIError",
             "NaN",
             "Infinity",
+            "parseInt",
+            "parseFloat",
+            "isNaN",
+            "isFinite",
         ] {
             let builtin = self.load_builtin(name, span)?;
             self.set_non_enumerable_property(value, name, builtin, span)?;
