@@ -1695,6 +1695,15 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(super) fn load_builtin(&mut self, name: &str, span: Span) -> Result<Value, RuntimeError> {
+        if let Some(value) = self.builtin_cache.get(name).copied() {
+            return Ok(value);
+        }
+        let value = self.build_builtin(name, span)?;
+        self.builtin_cache.insert(name.to_owned(), value);
+        Ok(value)
+    }
+
+    fn build_builtin(&mut self, name: &str, span: Span) -> Result<Value, RuntimeError> {
         if name == "Math" {
             let object = self
                 .objects

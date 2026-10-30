@@ -892,6 +892,19 @@ fn runs_logical_assignments_and_nullish() {
 }
 
 #[test]
+fn keeps_builtin_identity_stable() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(Array === Array, Object === Object, Array.prototype === Array.prototype);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "true true true\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

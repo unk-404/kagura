@@ -4,7 +4,7 @@ mod properties;
 
 use kagura_bytecode::{Const, Module, Op};
 use kagura_object::{ObjectHeap, ObjectId, ShapeId, ShapeTable};
-use kagura_support::Span;
+use kagura_support::{FastHashMap, Span};
 use kagura_value::{Heap, Value};
 use tracing::instrument;
 
@@ -40,6 +40,7 @@ pub struct Interpreter<'a> {
     shapes: &'a mut ShapeTable,
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
+    builtin_cache: FastHashMap<String, Value>,
     array_prototype: Option<ObjectId>,
     object_prototype: Option<ObjectId>,
     depth: usize,
@@ -62,6 +63,7 @@ impl<'a> Interpreter<'a> {
             shapes,
             host,
             host_cache: vec![None; module.constants.len()],
+            builtin_cache: FastHashMap::default(),
             array_prototype: None,
             object_prototype: None,
             depth: 0,
@@ -1100,6 +1102,7 @@ impl<'a> Interpreter<'a> {
                         if let Some(prototype) = self.object_prototype {
                             roots.push(Value::object(prototype.index()));
                         }
+                        roots.extend(self.builtin_cache.values().copied());
                         self.objects.collect(&roots);
                     }
                 }
