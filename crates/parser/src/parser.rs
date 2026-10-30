@@ -1,6 +1,9 @@
+mod control;
+mod functions;
+
 use kagura_ast::{
-    ArrowBody, AssignTarget, BinaryOp, Expr, ForInit, FuncDecl, ObjectProperty, Param, Program,
-    Stmt, TypeAnn, UnaryOp, VarDecl, VarKind,
+    ArrowBody, AssignTarget, BinaryOp, Expr, ForInit, ObjectProperty, Param, Program, Stmt,
+    TypeAnn, UnaryOp, VarDecl, VarKind,
 };
 use kagura_support::Span;
 use tracing::instrument;
@@ -113,146 +116,6 @@ impl Parser {
         })
     }
 
-    fn parse_params(&mut self, opener: &str) -> Result<Vec<Param>, ParseError> {
-        self.expect(&TokenKind::LParen, opener)?;
-        let mut params = Vec::new();
-        if !self.at(&TokenKind::RParen) {
-            loop {
-                let param_token = self.expect_ident("expected parameter name")?;
-                let param_name = match param_token.kind {
-                    TokenKind::Ident(name) => name,
-                    _ => unreachable!(),
-                };
-                let ty = if self.eat(&TokenKind::Colon) {
-                    Some(self.parse_type()?)
-                } else {
-                    None
-                };
-                params.push(Param {
-                    name: param_name,
-                    ty,
-                    span: param_token.span,
-                });
-                if !self.eat(&TokenKind::Comma) {
-                    break;
-                }
-            }
-        }
-        self.expect(&TokenKind::RParen, "expected ')' after parameters")?;
-        Ok(params)
-    }
-
-    fn parse_function_expr(&mut self) -> Result<Expr, ParseError> {
-        let start = self.advance().span;
-        let name = if let TokenKind::Ident(name) = self.peek().kind.clone() {
-            self.advance();
-            Some(name)
-        } else {
-            None
-        };
-        let params = self.parse_params("expected '(' after function")?;
-        if self.eat(&TokenKind::Colon) {
-            self.parse_type()?;
-        }
-        let body_start = self.peek().span;
-        let body = self.parse_block()?;
-        let end = body_start.merge(
-            body.last()
-                .map(Stmt::span)
-                .unwrap_or_else(|| Span::empty(body_start.start)),
-        );
-        Ok(Expr::Function {
-            name,
-            params,
-            body,
-            span: start.merge(end),
-        })
-    }
-
-    fn parse_arrow_body(&mut self) -> Result<ArrowBody, ParseError> {
-        if self.at(&TokenKind::LBrace) {
-            Ok(ArrowBody::Block(self.parse_block()?))
-        } else {
-            Ok(ArrowBody::Expr(Box::new(self.parse_expr()?)))
-        }
-    }
-
-    fn try_parse_parenthesized_arrow(&mut self) -> Result<Option<Expr>, ParseError> {
-        let save = self.pos;
-        let start = self.peek().span;
-        let params = match self.parse_params("expected '(' after arrow parameters") {
-            Ok(params) => params,
-            Err(_) => {
-                self.pos = save;
-                return Ok(None);
-            }
-        };
-        if !self.eat(&TokenKind::Arrow) {
-            self.pos = save;
-            return Ok(None);
-        }
-        let body = self.parse_arrow_body()?;
-        let end = body_span(&body);
-        Ok(Some(Expr::Arrow {
-            params,
-            body,
-            span: start.merge(end),
-        }))
-    }
-
-    fn parse_func_decl(&mut self) -> Result<FuncDecl, ParseError> {
-        let start = self.advance().span;
-        let name_token = self.expect_ident("expected function name")?;
-        let name = match name_token.kind {
-            TokenKind::Ident(name) => name,
-            _ => unreachable!(),
-        };
-        self.expect(&TokenKind::LParen, "expected '(' after function name")?;
-        let mut params = Vec::new();
-        if !self.at(&TokenKind::RParen) {
-            loop {
-                let param_token = self.expect_ident("expected parameter name")?;
-                let param_name = match param_token.kind {
-                    TokenKind::Ident(name) => name,
-                    _ => unreachable!(),
-                };
-                let ty = if self.eat(&TokenKind::Colon) {
-                    Some(self.parse_type()?)
-                } else {
-                    None
-                };
-                params.push(Param {
-                    name: param_name,
-                    ty,
-                    span: param_token.span,
-                });
-                if !self.eat(&TokenKind::Comma) {
-                    break;
-                }
-            }
-        }
-        self.expect(&TokenKind::RParen, "expected ')' after parameters")?;
-        let ret = if self.eat(&TokenKind::Colon) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
-        let body_start = self.peek().span;
-        let body = self.parse_block()?;
-        let end = body_start.merge(
-            body.last()
-                .map(Stmt::span)
-                .unwrap_or_else(|| Span::empty(body_start.start)),
-        );
-        Ok(FuncDecl {
-            name,
-            params,
-            ret,
-            body,
-            span: start.merge(end),
-        })
-    }
-
     fn parse_block(&mut self) -> Result<Vec<Stmt>, ParseError> {
         self.expect(&TokenKind::LBrace, "expected '{'")?;
         let mut body = Vec::new();
@@ -351,61 +214,6 @@ impl Parser {
             ));
         }
         self.parse_stmt()
-    }
-
-    fn parse_throw(&mut self) -> Result<Stmt, ParseError> {
-        let start = self.advance().span;
-        let value = self.parse_expr()?;
-        self.expect(&TokenKind::Semi, "expected ';' after throw")?;
-        let span = start.merge(value.span());
-        Ok(Stmt::Throw { value, span })
-    }
-
-    fn parse_try(&mut self) -> Result<Stmt, ParseError> {
-        let start = self.advance().span;
-        let block = self.parse_block()?;
-        let mut catch_param = None;
-        let mut catch_block = None;
-        if self.eat(&TokenKind::Catch) {
-            if self.eat(&TokenKind::LParen) {
-                let token = self.expect_ident("expected catch parameter")?;
-                let TokenKind::Ident(name) = token.kind else {
-                    unreachable!()
-                };
-                catch_param = Some(name);
-                self.expect(&TokenKind::RParen, "expected ')' after catch parameter")?;
-            }
-            catch_block = Some(self.parse_block()?);
-        }
-        let finally_block = if self.eat(&TokenKind::Finally) {
-            Some(self.parse_block()?)
-        } else {
-            None
-        };
-        if catch_block.is_none() {
-            return Err(ParseError::new(
-                "try requires a catch or finally block",
-                start,
-            ));
-        }
-        Ok(Stmt::Try {
-            block,
-            catch_param,
-            catch_block,
-            finally_block,
-            span: start,
-        })
-    }
-
-    fn parse_return(&mut self) -> Result<Stmt, ParseError> {
-        let start = self.advance().span;
-        let value = if self.at(&TokenKind::Semi) || self.at(&TokenKind::RBrace) {
-            None
-        } else {
-            Some(self.parse_expr()?)
-        };
-        self.expect(&TokenKind::Semi, "expected ';' after return")?;
-        Ok(Stmt::Return { value, span: start })
     }
 
     fn parse_type_alias(&mut self) -> Result<Stmt, ParseError> {
