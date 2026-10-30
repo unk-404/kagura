@@ -512,10 +512,24 @@ impl ObjectHeap {
             });
             return Ok(block.offset);
         }
-        let offset = self
-            .arena
-            .alloc(size as usize, 4)
-            .ok_or(ObjectHeapError::OutOfMemory)?;
+        let offset = match self.arena.alloc(size as usize, 4) {
+            Some(offset) => offset,
+            None => {
+                if std::env::var_os("KAGURA_HEAP_TRACE").is_some() {
+                    let total_free: u32 = self.free.iter().map(|block| block.size).sum();
+                    let max_free = self.free.iter().map(|block| block.size).max().unwrap_or(0);
+                    eprintln!(
+                        "heap exhausted: request={size} kind={kind:?} used={} capacity={} allocations={} free_blocks={} free_bytes={} max_free={max_free}",
+                        self.arena.used(),
+                        self.arena.capacity(),
+                        self.allocations.len(),
+                        self.free.len(),
+                        total_free,
+                    );
+                }
+                return Err(ObjectHeapError::OutOfMemory);
+            }
+        };
         self.allocations.push(Allocation { offset, size, kind });
         Ok(offset)
     }
@@ -551,12 +565,31 @@ impl ObjectHeap {
             }
         }
         self.allocations = live;
+        self.coalesce_free();
         GcStats {
             live_bytes_before,
             live_bytes_after: self.live_bytes(),
             freed_objects,
             freed_arrays,
         }
+    }
+
+    fn coalesce_free(&mut self) {
+        if self.free.len() < 2 {
+            return;
+        }
+        self.free.sort_unstable_by_key(|block| block.offset);
+        let mut merged: Vec<FreeBlock> = Vec::with_capacity(self.free.len());
+        for block in self.free.drain(..) {
+            if let Some(previous) = merged.last_mut()
+                && previous.offset + previous.size == block.offset
+            {
+                previous.size = previous.size.saturating_add(block.size);
+                continue;
+            }
+            merged.push(block);
+        }
+        self.free = merged;
     }
 
     fn mark(&mut self, offset: u32, work: &mut Vec<u32>) {
