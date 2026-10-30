@@ -275,6 +275,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kagura-conformance"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "kagura-runtime",
+ "kagura-testkit",
+]
+
+[[package]]
 name = "kagura-diagnostics"
 version = "0.1.0"
 dependencies = [
