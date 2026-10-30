@@ -41,7 +41,8 @@ impl<'a> Interpreter<'a> {
     pub(super) fn get_property_ic(
         &mut self,
         object: Value,
-        feedback_index: u32,
+        function_index: usize,
+        site: u32,
         key: &str,
         span: Span,
     ) -> Result<Value, RuntimeError> {
@@ -58,7 +59,11 @@ impl<'a> Interpreter<'a> {
             shape: cached_shape,
             location,
             ..
-        }) = self.property_feedback.get(feedback_index as usize).copied()
+        }) = self
+            .property_feedback
+            .get(function_index)
+            .and_then(|sites| sites.get(site as usize))
+            .copied()
             && cached_shape == shape
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
@@ -70,7 +75,11 @@ impl<'a> Interpreter<'a> {
             .shapes
             .lookup(shape, &PropertyKey::from_string(key))
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(slot) = self.property_feedback.get_mut(feedback_index as usize) {
+        if let Some(slot) = self
+            .property_feedback
+            .get_mut(function_index)
+            .and_then(|sites| sites.get_mut(site as usize))
+        {
             *slot = match descriptor {
                 Some(descriptor) => PropertyFeedback::OwnData {
                     shape,
@@ -86,7 +95,8 @@ impl<'a> Interpreter<'a> {
     pub(super) fn set_property_ic(
         &mut self,
         object: Value,
-        feedback_index: u32,
+        function_index: usize,
+        site: u32,
         key: &str,
         value: Value,
         span: Span,
@@ -112,7 +122,11 @@ impl<'a> Interpreter<'a> {
             shape: cached_shape,
             location,
             writable: true,
-        }) = self.property_feedback.get(feedback_index as usize).copied()
+        }) = self
+            .property_feedback
+            .get(function_index)
+            .and_then(|sites| sites.get(site as usize))
+            .copied()
             && cached_shape == shape
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
@@ -128,7 +142,11 @@ impl<'a> Interpreter<'a> {
             .shapes
             .lookup(shape, &PropertyKey::from_string(key))
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(slot) = self.property_feedback.get_mut(feedback_index as usize) {
+        if let Some(slot) = self
+            .property_feedback
+            .get_mut(function_index)
+            .and_then(|sites| sites.get_mut(site as usize))
+        {
             *slot = match descriptor {
                 Some(descriptor) if descriptor.attributes.writable => PropertyFeedback::OwnData {
                     shape,

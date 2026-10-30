@@ -1313,6 +1313,26 @@ fn provides_performance_now() {
 }
 
 #[test]
+fn property_inline_cache_is_per_call_site() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.set_step_limit(5_000_000);
+    runtime
+        .run(
+            "var first = { value: 1 }; var second = { pad: 0, value: 2 }; var total = 0; for (var i = 0; i < 100; i++) { total += first.value; total += second.value; } console.log(total);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "300\n");
+    let (hits, misses) = runtime.property_ic_stats();
+    assert!(misses >= 2, "each shape/site pair needs a fill");
+    assert!(
+        hits > 100,
+        "per-site caches should not thrash between shapes"
+    );
+}
+
+#[test]
 fn property_inline_cache_hits_and_stays_correct() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

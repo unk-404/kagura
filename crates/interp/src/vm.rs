@@ -52,7 +52,7 @@ pub struct Interpreter<'a> {
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     builtin_cache: FastHashMap<String, Value>,
-    property_feedback: Vec<PropertyFeedback>,
+    property_feedback: Vec<Vec<PropertyFeedback>>,
     property_ic_hits: u64,
     property_ic_misses: u64,
     rng_state: u64,
@@ -80,7 +80,11 @@ impl<'a> Interpreter<'a> {
             host,
             host_cache: vec![None; module.constants.len()],
             builtin_cache: FastHashMap::default(),
-            property_feedback: vec![PropertyFeedback::Empty; module.constants.len()],
+            property_feedback: module
+                .functions
+                .iter()
+                .map(|function| vec![PropertyFeedback::Empty; function.code.len()])
+                .collect(),
             property_ic_hits: 0,
             property_ic_misses: 0,
             rng_state: 0x9E37_79B9_7F4A_7C15,
@@ -1078,6 +1082,7 @@ impl<'a> Interpreter<'a> {
                     push(&mut stack, Value::object(object.index()), span)?;
                 }
                 Op::GetProp => {
+                    let site = pc.saturating_sub(1) as u32;
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let key = match self.module.constants.get(index as usize) {
                         Some(Const::String(key)) => key.clone(),
@@ -1086,7 +1091,8 @@ impl<'a> Interpreter<'a> {
                         }
                     };
                     let object = pop(&mut stack, span)?;
-                    let value = try_op!(self.get_property_ic(object, index, &key, span));
+                    let value =
+                        try_op!(self.get_property_ic(object, function_index, site, &key, span));
                     push(&mut stack, value, span)?;
                 }
                 Op::SetProp => {
@@ -1131,6 +1137,7 @@ impl<'a> Interpreter<'a> {
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 }
                 Op::SetPropValue => {
+                    let site = pc.saturating_sub(1) as u32;
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let key = match self.module.constants.get(index as usize) {
                         Some(Const::String(key)) => key.clone(),
@@ -1140,7 +1147,7 @@ impl<'a> Interpreter<'a> {
                     };
                     let value = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
-                    try_op!(self.set_property_ic(object, index, &key, value, span));
+                    try_op!(self.set_property_ic(object, function_index, site, &key, value, span));
                     push(&mut stack, value, span)?;
                 }
                 Op::NewArray => {
