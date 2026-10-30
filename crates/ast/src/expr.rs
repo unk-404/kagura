@@ -136,5 +136,6 @@ impl Expr {
 pub struct Param {
     pub name: String,
     pub ty: Option<TypeAnn>,
+    pub default: Option<Box<Expr>>,
     pub span: Span,
 }

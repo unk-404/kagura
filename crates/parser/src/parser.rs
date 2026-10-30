@@ -544,6 +544,7 @@ impl Parser {
                         params: vec![Param {
                             name,
                             ty: None,
+                            default: None,
                             span: token.span,
                         }],
                         body,

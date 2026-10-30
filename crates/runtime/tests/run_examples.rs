@@ -45,6 +45,7 @@ const WHILE_CLOSURES: &str = include_str!("../../../examples/while_closures.ts")
 const METHOD_THIS: &str = include_str!("../../../examples/method_this.ts");
 const METHOD_SHADOWING: &str = include_str!("../../../examples/method_shadowing.ts");
 const ARROW_THIS: &str = include_str!("../../../examples/arrow_this.ts");
+const DEFAULT_PARAMS: &str = include_str!("../../../examples/default_params.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -468,6 +469,14 @@ fn arrows_capture_lexical_this() {
     let mut runtime = Runtime::default();
     runtime.run(ARROW_THIS, &mut host).unwrap();
     assert_eq!(host.output(), "7\n7\n");
+}
+
+#[test]
+fn applies_default_parameters() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(DEFAULT_PARAMS, &mut host).unwrap();
+    assert_eq!(host.output(), "6\n8\n8\n10\n11\n");
 }
 
 #[test]

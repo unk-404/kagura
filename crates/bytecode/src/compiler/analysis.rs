@@ -1,6 +1,15 @@
-use kagura_ast::{AssignTarget, Expr, ForInit, Stmt};
+use kagura_ast::{AssignTarget, Expr, ForInit, Param, Stmt};
 
 use super::Local;
+
+pub(super) fn params_have_closure(params: &[Param]) -> bool {
+    params.iter().any(|param| {
+        param
+            .default
+            .as_ref()
+            .is_some_and(|expr| expr_has_closure(expr))
+    })
+}
 
 pub(super) fn loop_has_closure(cond: Option<&Expr>, update: Option<&Expr>, body: &Stmt) -> bool {
     cond.is_some_and(expr_has_closure)

@@ -6,7 +6,9 @@ use kagura_support::{FastHashSet, Span};
 use crate::error::CompileError;
 use crate::module::{Const, FunctionProto, Module, VERSION};
 use crate::op::Op;
-use analysis::{body_has_closure, collect_iteration_locals, loop_has_closure, member_path};
+use analysis::{
+    body_has_closure, collect_iteration_locals, loop_has_closure, member_path, params_have_closure,
+};
 
 pub fn compile(program: &Program) -> Result<Module, CompileError> {
     Compiler::default().compile(program)
@@ -156,7 +158,7 @@ impl<'a> FunctionCompiler<'a> {
             scopes: vec![0],
             loops: Vec::new(),
             gc_safe,
-            uses_env: body_has_closure(body),
+            uses_env: body_has_closure(body) || params_have_closure(params),
             self_slot: None,
             iterations: Vec::new(),
             outer: Vec::new(),
@@ -169,6 +171,22 @@ impl<'a> FunctionCompiler<'a> {
                 .expect("parameters are unique");
         }
         compiler
+    }
+
+    fn compile_param_defaults(&mut self, params: &[Param]) -> Result<(), CompileError> {
+        for (slot, param) in params.iter().enumerate() {
+            let Some(default) = &param.default else {
+                continue;
+            };
+            self.emit_u16(Op::LoadLocal, slot as u16, param.span);
+            self.emit_const(Const::Undefined, param.span);
+            self.emit(Op::StrictEq, param.span);
+            let skip = self.emit_jump(Op::JumpIfFalse, param.span);
+            self.compile_expr(default)?;
+            self.emit_u16(Op::StoreLocal, slot as u16, param.span);
+            self.patch_jump(skip, self.code.len());
+        }
+        Ok(())
     }
 
     fn finish(self) -> FunctionProto {
@@ -551,6 +569,7 @@ impl<'a> FunctionCompiler<'a> {
         {
             compiler.self_slot = Some(slot);
         }
+        compiler.compile_param_defaults(params)?;
         for stmt in body {
             compiler.compile_stmt(stmt)?;
         }
