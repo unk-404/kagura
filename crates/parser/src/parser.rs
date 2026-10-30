@@ -166,7 +166,7 @@ impl Parser {
     fn parse_for(&mut self) -> Result<Stmt, ParseError> {
         let start = self.advance().span;
         self.expect(&TokenKind::LParen, "expected '(' after for")?;
-        let init = if matches!(
+        if matches!(
             self.peek().kind,
             TokenKind::Var | TokenKind::Let | TokenKind::Const
         ) {
@@ -175,17 +175,52 @@ impl Parser {
                 TokenKind::Let => VarKind::Let,
                 _ => VarKind::Const,
             };
-            let decl = self.parse_var_decl(kind, false)?;
+            let declaration = self.parse_var_decl(kind, false)?;
+            if self.eat(&TokenKind::In) {
+                let object = self.parse_expr()?;
+                self.expect(&TokenKind::RParen, "expected ')' after for-in object")?;
+                let body = Box::new(self.parse_sub_stmt()?);
+                let span = start.merge(body.span());
+                return Ok(Stmt::ForIn {
+                    declaration: Some(declaration),
+                    target: None,
+                    object,
+                    body,
+                    span,
+                });
+            }
             self.expect(&TokenKind::Semi, "expected ';' after for initializer")?;
-            Some(ForInit::Var(decl))
-        } else if self.at(&TokenKind::Semi) {
+            return self.parse_for_tail(start, Some(ForInit::Var(declaration)));
+        }
+        if self.at(&TokenKind::Semi) {
             self.advance();
-            None
-        } else {
-            let expr = self.parse_expr()?;
-            self.expect(&TokenKind::Semi, "expected ';' after for initializer")?;
-            Some(ForInit::Expr(expr))
-        };
+            return self.parse_for_tail(start, None);
+        }
+        let expr = self.parse_expr()?;
+        if let Expr::Binary {
+            op: BinaryOp::In,
+            left,
+            right,
+            span,
+        } = expr
+        {
+            let target = self.expr_to_target(*left, span)?;
+            self.expect(&TokenKind::RParen, "expected ')' after for-in object")?;
+            let body = Box::new(self.parse_sub_stmt()?);
+            let span = start.merge(body.span());
+            return Ok(Stmt::ForIn {
+                declaration: None,
+                target: Some(target),
+                object: *right,
+                body,
+                span,
+            });
+        }
+        self.expect(&TokenKind::Semi, "expected ';' after for initializer")?;
+        self.parse_for_tail(start, Some(ForInit::Expr(expr)))
+    }
+
+    fn parse_for_tail(&mut self, start: Span, init: Option<ForInit>) -> Result<Stmt, ParseError> {
         let cond = if self.at(&TokenKind::Semi) {
             None
         } else {

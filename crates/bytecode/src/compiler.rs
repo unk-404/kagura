@@ -468,6 +468,95 @@ impl<'a> FunctionCompiler<'a> {
                 self.close_scope();
                 Ok(())
             }
+            Stmt::ForIn {
+                declaration,
+                target,
+                object,
+                body,
+                span,
+            } => {
+                let keys_slot = self.hidden_local(*span);
+                let index_slot = self.hidden_local(*span);
+                let key_slot = self.hidden_local(*span);
+                self.compile_expr(object)?;
+                self.emit(Op::ForInKeys, *span);
+                self.emit_u16(Op::StoreLocal, keys_slot, *span);
+                self.emit_const(Const::Number(0.0), *span);
+                self.emit_u16(Op::StoreLocal, index_slot, *span);
+                let loop_start = self.code.len();
+                self.emit_u16(Op::LoadLocal, index_slot, *span);
+                self.emit_u16(Op::LoadLocal, keys_slot, *span);
+                let length_key = self.add_const(Const::String("length".into()));
+                self.emit_u32(Op::GetProp, length_key, *span);
+                self.emit(Op::Lt, *span);
+                let end_jump = self.emit_jump(Op::JumpIfFalse, *span);
+                self.emit_u16(Op::LoadLocal, keys_slot, *span);
+                self.emit_u16(Op::LoadLocal, index_slot, *span);
+                self.emit(Op::GetIndex, *span);
+                self.emit_u16(Op::StoreLocal, key_slot, *span);
+                if let Some(declaration) = declaration {
+                    let slot = match self.resolve(&declaration.name) {
+                        Some(Resolved::Local { slot, .. }) => slot,
+                        Some(_) => {
+                            return Err(CompileError::new(
+                                format!("unsupported for-in binding '{}'", declaration.name),
+                                declaration.span,
+                            ));
+                        }
+                        None => self
+                            .declare(&declaration.name, true, declaration.span)
+                            .ok_or_else(|| {
+                                CompileError::new(
+                                    format!("duplicate for-in binding '{}'", declaration.name),
+                                    declaration.span,
+                                )
+                            })?,
+                    };
+                    self.emit_u16(Op::LoadLocal, key_slot, *span);
+                    self.emit_u16(Op::StoreLocal, slot, *span);
+                } else if let Some(target) = target {
+                    match target {
+                        AssignTarget::Ident(name) => {
+                            let Some(Resolved::Local { slot, .. }) = self.resolve(name) else {
+                                return Err(CompileError::new(
+                                    format!("unsupported for-in target '{name}'"),
+                                    *span,
+                                ));
+                            };
+                            self.emit_u16(Op::LoadLocal, key_slot, *span);
+                            self.emit_u16(Op::StoreLocal, slot, *span);
+                        }
+                        _ => {
+                            return Err(CompileError::new(
+                                "only identifier for-in targets are supported",
+                                *span,
+                            ));
+                        }
+                    }
+                }
+                self.loops.push(LoopContext {
+                    break_patches: Vec::new(),
+                    continue_patches: Vec::new(),
+                    continue_target: None,
+                });
+                self.compile_stmt(body)?;
+                let update_start = self.code.len();
+                self.emit_u16(Op::LoadLocal, index_slot, *span);
+                self.emit_const(Const::Number(1.0), *span);
+                self.emit(Op::Add, *span);
+                self.emit_u16(Op::StoreLocal, index_slot, *span);
+                let context = self.loops.pop().expect("loop context");
+                for patch in context.continue_patches {
+                    self.patch_jump(patch, update_start);
+                }
+                self.emit_jump_back(Op::Jump, loop_start, *span);
+                let end = self.code.len();
+                self.patch_jump(end_jump, end);
+                for patch in context.break_patches {
+                    self.patch_jump(patch, end);
+                }
+                Ok(())
+            }
             Stmt::Return { value, span } => {
                 if let Some(value) = value {
                     self.compile_expr(value)?;

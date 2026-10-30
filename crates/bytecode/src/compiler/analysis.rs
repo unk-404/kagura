@@ -86,6 +86,19 @@ fn stmt_has_closure(stmt: &Stmt) -> bool {
                 || update.as_ref().is_some_and(expr_has_closure)
                 || stmt_has_closure(body)
         }
+        Stmt::ForIn {
+            declaration,
+            object,
+            body,
+            ..
+        } => {
+            declaration
+                .as_ref()
+                .and_then(|decl| decl.init.as_ref())
+                .is_some_and(expr_has_closure)
+                || expr_has_closure(object)
+                || stmt_has_closure(body)
+        }
         Stmt::Return { value, .. } => value.as_ref().is_some_and(expr_has_closure),
         Stmt::Throw { value, .. } => expr_has_closure(value),
         Stmt::Try {

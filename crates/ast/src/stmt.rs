@@ -55,6 +55,13 @@ pub enum Stmt {
         body: Box<Stmt>,
         span: Span,
     },
+    ForIn {
+        declaration: Option<VarDecl>,
+        target: Option<crate::expr::AssignTarget>,
+        object: Expr,
+        body: Box<Stmt>,
+        span: Span,
+    },
     Return {
         value: Option<Expr>,
         span: Span,
@@ -105,6 +112,7 @@ impl Stmt {
             Self::If { span, .. }
             | Self::While { span, .. }
             | Self::For { span, .. }
+            | Self::ForIn { span, .. }
             | Self::Return { span, .. }
             | Self::Throw { span, .. }
             | Self::Try { span, .. }

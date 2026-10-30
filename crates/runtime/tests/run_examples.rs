@@ -70,6 +70,7 @@ const STRING_REPLACE: &str = include_str!("../../../examples/string_replace.ts")
 const NEW_ERRORS: &str = include_str!("../../../examples/new_errors.ts");
 const NEW_CONSTRUCTOR: &str = include_str!("../../../examples/new_constructor.ts");
 const GLOBALS_MATH: &str = include_str!("../../../examples/globals_math.ts");
+const FOR_IN: &str = include_str!("../../../examples/for_in.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -694,6 +695,14 @@ fn runs_global_conversions_and_math() {
     let mut runtime = Runtime::default();
     runtime.run(GLOBALS_MATH, &mut host).unwrap();
     assert_eq!(host.output(), "1 3\n1 3 1\n42 255 1.5\ntrue true\n");
+}
+
+#[test]
+fn runs_for_in_loops() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(FOR_IN, &mut host).unwrap();
+    assert_eq!(host.output(), "a 1\nb 2\n");
 }
 
 #[test]

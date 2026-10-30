@@ -827,6 +827,89 @@ impl<'a> Interpreter<'a> {
         Ok(true)
     }
 
+    pub(super) fn for_in_keys(&mut self, value: Value, span: Span) -> Result<Value, RuntimeError> {
+        self.for_in_keys_inner(value, span)
+    }
+
+    fn for_in_keys_inner(&mut self, value: Value, span: Span) -> Result<Value, RuntimeError> {
+        let array = self
+            .objects
+            .allocate_array(self.shapes.root())
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let mut seen = kagura_support::FastHashSet::default();
+        let mut push = |this: &mut Self, key: String| -> Result<(), RuntimeError> {
+            if seen.insert(key.clone()) {
+                let value = this.heap.string(&key);
+                this.objects
+                    .array_push(array, value)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            }
+            Ok(())
+        };
+        if let Some(text) = self.heap.as_str(value).map(str::to_owned) {
+            for (index, _) in text.chars().enumerate() {
+                push(self, index.to_string())?;
+            }
+            return Ok(Value::object(array.index()));
+        }
+        let Some(mut id) = value.object_offset().map(ObjectId::new) else {
+            return Ok(Value::object(array.index()));
+        };
+        let mut visited = kagura_support::FastHashSet::default();
+        while visited.insert(id.index()) {
+            if self
+                .objects
+                .is_array(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                let length = self
+                    .objects
+                    .array_length(id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                for index in 0..length {
+                    if self
+                        .objects
+                        .array_has(id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        push(self, index.to_string())?;
+                    }
+                }
+            }
+            let shape = self
+                .objects
+                .shape(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let keys = own_property_keys(self.shapes, shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            for key in keys {
+                let descriptor = self
+                    .shapes
+                    .lookup(shape, &key)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                if !descriptor.is_some_and(|descriptor| descriptor.attributes.enumerable) {
+                    continue;
+                }
+                let key = match key {
+                    PropertyKey::String(key) => key,
+                    PropertyKey::Index(index) => index.to_string(),
+                    PropertyKey::Symbol(_) => continue,
+                };
+                push(self, key)?;
+            }
+            let Some(prototype) = self
+                .shapes
+                .get(shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .prototype
+            else {
+                break;
+            };
+            id = prototype;
+        }
+        Ok(Value::object(array.index()))
+    }
+
     pub(super) fn instance_of(
         &mut self,
         value: Value,

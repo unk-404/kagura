@@ -116,8 +116,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18845 executed, 2811 passed, 16034 failed, 35184 skipped
-oracle node: 2811 checked, 2810 matched, 1 mismatched
+54029 selected, 18845 executed, 2870 passed, 15975 failed, 35184 skipped
+oracle node: 2870 checked, 2869 matched, 1 mismatched
 ```
 
 The single Node mismatch is tracked as a differential warning, not hidden:

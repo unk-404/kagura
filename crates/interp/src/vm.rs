@@ -265,6 +265,11 @@ impl<'a> Interpreter<'a> {
                     let found = try_op!(self.has_property(key, target, span));
                     push(&mut stack, Value::boolean(found), span)?;
                 }
+                Op::ForInKeys => {
+                    let value = pop(&mut stack, span)?;
+                    let keys = try_op!(self.for_in_keys(value, span));
+                    push(&mut stack, keys, span)?;
+                }
                 Op::InstanceOf => {
                     let constructor = pop(&mut stack, span)?;
                     let value = pop(&mut stack, span)?;
@@ -857,8 +862,8 @@ impl<'a> Interpreter<'a> {
                 Op::GetIndex => {
                     let index = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
-                    let index = try_op!(self.index_value(index, span));
                     if let Some(text) = self.heap.as_str(object) {
+                        let index = try_op!(self.index_value(index, span));
                         let value = text
                             .encode_utf16()
                             .nth(index as usize)
@@ -869,12 +874,23 @@ impl<'a> Interpreter<'a> {
                         continue;
                     }
                     let id = try_op!(self.object_id(object, span));
-                    let value = try_op!(
+                    if try_op!(
                         self.objects
-                            .array_get(id, index)
+                            .is_array(id)
                             .map_err(|error| RuntimeError::runtime(error.to_string(), span))
-                    );
-                    push(&mut stack, value, span)?;
+                    ) {
+                        let index = try_op!(self.index_value(index, span));
+                        let value = try_op!(
+                            self.objects
+                                .array_get(id, index)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                        );
+                        push(&mut stack, value, span)?;
+                    } else {
+                        let key = self.heap.to_js_string(index);
+                        let value = try_op!(self.get_property(object, &key, span));
+                        push(&mut stack, value, span)?;
+                    }
                 }
                 Op::SetIndexValue => {
                     let value = pop(&mut stack, span)?;
@@ -889,27 +905,34 @@ impl<'a> Interpreter<'a> {
                         push(&mut stack, value, span)?;
                         continue;
                     }
-                    let index = try_op!(self.index_value(index, span));
                     if try_op!(
                         self.objects
-                            .is_sealed(id)
+                            .is_array(id)
                             .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                     ) {
-                        let length = try_op!(
+                        let index = try_op!(self.index_value(index, span));
+                        if try_op!(
                             self.objects
-                                .array_length(id)
+                                .is_sealed(id)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                        ) {
+                            let length = try_op!(self.objects.array_length(id).map_err(|error| {
+                                RuntimeError::runtime(error.to_string(), span)
+                            }));
+                            if index >= length {
+                                push(&mut stack, value, span)?;
+                                continue;
+                            }
+                        }
+                        try_op!(
+                            self.objects
+                                .array_set(id, index, value)
                                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                         );
-                        if index >= length {
-                            push(&mut stack, value, span)?;
-                            continue;
-                        }
+                    } else {
+                        let key = self.heap.to_js_string(index);
+                        try_op!(self.set_property(object, &key, value, span));
                     }
-                    try_op!(
-                        self.objects
-                            .array_set(id, index, value)
-                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
-                    );
                     push(&mut stack, value, span)?;
                 }
                 Op::DeleteProp => {
