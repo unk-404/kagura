@@ -26,6 +26,7 @@ pub struct CaseReport {
     pub path: PathBuf,
     pub outcome: Outcome,
     pub message: String,
+    pub output: String,
 }
 
 pub fn discover(root: &Path) -> io::Result<Vec<TestCase>> {
@@ -63,6 +64,7 @@ pub fn run_case(case: &TestCase) -> CaseReport {
             path: case.path.clone(),
             outcome: Outcome::Skip,
             message: reason.to_owned(),
+            output: String::new(),
         };
     }
     if let Some(assertion) = unsupported_assertion(&case.source) {
@@ -70,6 +72,7 @@ pub fn run_case(case: &TestCase) -> CaseReport {
             path: case.path.clone(),
             outcome: Outcome::Skip,
             message: format!("unsupported assertion helper: {assertion}"),
+            output: String::new(),
         };
     }
 
@@ -102,6 +105,7 @@ pub fn run_case(case: &TestCase) -> CaseReport {
         path: case.path.clone(),
         outcome,
         message,
+        output: host.output(),
     }
 }
 

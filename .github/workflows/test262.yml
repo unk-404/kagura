@@ -34,12 +34,12 @@ jobs:
         run: |
           set -o pipefail
           ARGS=()
-          if [[ -n "${{ inputs.limit }}" ]]; then
-            ARGS+=(--limit "${{ inputs.limit }}")
+          if [[ -n "${{ github.event.inputs.limit }}" ]]; then
+            ARGS+=(--limit "${{ github.event.inputs.limit }}")
           fi
-          MIN_PASS="${{ inputs.min_pass }}"
+          MIN_PASS="${{ github.event.inputs.min_pass }}"
           MIN_PASS="${MIN_PASS:-1200}"
-          cargo run -q -p kagura-cli -- test262 /tmp/test262 --min-pass "$MIN_PASS" "${ARGS[@]}" | tee /tmp/test262-report.txt
+          cargo run -q -p kagura-cli -- test262 /tmp/test262 --node --min-pass "$MIN_PASS" "${ARGS[@]}" | tee /tmp/test262-report.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

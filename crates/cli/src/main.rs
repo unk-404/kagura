@@ -56,6 +56,10 @@ enum Command {
         verbose: bool,
         #[arg(long)]
         min_pass: Option<usize>,
+        #[arg(long)]
+        node: bool,
+        #[arg(long)]
+        harness: Option<PathBuf>,
     },
 }
 
@@ -77,7 +81,9 @@ fn main() {
             fail_on_error,
             verbose,
             min_pass,
-        } => run_test262(path, limit, fail_on_error, verbose, min_pass),
+            node,
+            harness,
+        } => run_test262(path, limit, fail_on_error, verbose, min_pass, node, harness),
     };
     std::process::exit(code);
 }
@@ -222,11 +228,15 @@ fn run_test262(
     fail_on_error: bool,
     verbose: bool,
     min_pass: Option<usize>,
+    node: bool,
+    harness: Option<PathBuf>,
 ) -> i32 {
     let worker = std::thread::Builder::new()
         .name("kagura-test262".into())
         .stack_size(64 * 1024 * 1024)
-        .spawn(move || run_test262_inner(path, limit, fail_on_error, verbose, min_pass));
+        .spawn(move || {
+            run_test262_inner(path, limit, fail_on_error, verbose, min_pass, node, harness)
+        });
     match worker {
         Ok(worker) => worker.join().unwrap_or(2),
         Err(error) => {
@@ -242,6 +252,8 @@ fn run_test262_inner(
     fail_on_error: bool,
     verbose: bool,
     min_pass: Option<usize>,
+    node: bool,
+    harness: Option<PathBuf>,
 ) -> i32 {
     let cases = match discover_test262(&path) {
         Ok(cases) => cases,
@@ -251,9 +263,30 @@ fn run_test262_inner(
         }
     };
     let selected = limit.map_or(cases.len(), |limit| limit.min(cases.len()));
+    let harness = if node {
+        let harness = harness.or_else(|| find_harness(&path));
+        let Some(harness) = harness else {
+            eprintln!("kagura: cannot find test262 harness (assert.js/sta.js)");
+            return 2;
+        };
+        if std::process::Command::new("node")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            eprintln!("kagura: --node requires node on PATH");
+            return 2;
+        }
+        Some(harness)
+    } else {
+        None
+    };
     let mut passed = 0usize;
     let mut failed = 0usize;
     let mut skipped = 0usize;
+    let mut oracle_checked = 0usize;
+    let mut oracle_matched = 0usize;
+    let mut oracle_failures = Vec::new();
     let mut failures = Vec::new();
     let mut skip_reasons: BTreeMap<String, usize> = BTreeMap::new();
     for case in cases.iter().take(selected) {
@@ -261,6 +294,35 @@ fn run_test262_inner(
             eprintln!("{}", case.path.display());
         }
         let report = run_test262_case(case);
+        if let Some(harness) = &harness
+            && report.outcome == Outcome::Pass
+        {
+            oracle_checked += 1;
+            let oracle = match kagura_conformance::node::run_case(case, harness) {
+                Ok(oracle) => oracle,
+                Err(error) => {
+                    eprintln!("kagura: node oracle failed: {error}");
+                    return 2;
+                }
+            };
+            let matched = if case.metadata.negative.is_some() {
+                !oracle.success
+            } else {
+                oracle.success && oracle.stdout == report.output
+            };
+            if matched {
+                oracle_matched += 1;
+            } else if oracle_failures.len() < 25 {
+                oracle_failures.push(format!(
+                    "{}: kagura={:?} node_success={} node_stdout={:?} node_stderr={:?}",
+                    report.path.display(),
+                    report.outcome,
+                    oracle.success,
+                    oracle.stdout,
+                    oracle.stderr.lines().next().unwrap_or_default()
+                ));
+            }
+        }
         match report.outcome {
             Outcome::Pass => passed += 1,
             Outcome::Fail => {
@@ -275,20 +337,45 @@ fn run_test262_inner(
             }
         }
     }
-    println!("test262: {selected} selected, {passed} passed, {failed} failed, {skipped} skipped");
+    println!(
+        "test262: {selected} selected, {} executed, {passed} passed, {failed} failed, {skipped} skipped",
+        passed + failed
+    );
     for (reason, count) in skip_reasons.iter().take(10) {
         println!("skip {count}: {reason}");
     }
     for failure in &failures {
         println!("{failure}");
     }
+    if harness.is_some() {
+        println!(
+            "oracle node: {oracle_checked} checked, {oracle_matched} matched, {} mismatched",
+            oracle_checked.saturating_sub(oracle_matched)
+        );
+        for failure in &oracle_failures {
+            println!("{failure}");
+        }
+    }
     if failed > 0 && fail_on_error {
+        return 1;
+    }
+    if oracle_checked != oracle_matched && fail_on_error {
         return 1;
     }
     if min_pass.is_some_and(|minimum| passed < minimum) {
         return 1;
     }
     0
+}
+
+fn find_harness(root: &Path) -> Option<PathBuf> {
+    let mut candidates = vec![root.join("harness")];
+    if let Some(parent) = root.parent() {
+        candidates.push(parent.join("harness"));
+    }
+    candidates.into_iter().find(|candidate| {
+        candidate.join("assert.js").is_file() && candidate.join("sta.js").is_file()
+    })
 }
 
 fn run_typescript(path: PathBuf) -> i32 {

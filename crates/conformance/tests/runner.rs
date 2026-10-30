@@ -23,6 +23,13 @@ fn parses_test262_frontmatter() {
 }
 
 #[test]
+fn parses_cr_only_metadata() {
+    let metadata = parse_metadata("/*---\rflags: [noStrict]\rfeatures: [let]\r---*/\r");
+    assert_eq!(metadata.flags, ["noStrict"]);
+    assert_eq!(metadata.features, ["let"]);
+}
+
+#[test]
 fn parses_multiline_metadata_lists() {
     let metadata = parse_metadata(
         "/*---\nflags: [\n  noStrict\n]\nfeatures: [\n  Array.prototype.map,\n  Symbol.iterator\n]\nincludes: [\n  assert.js\n]\n---*/\n",
@@ -76,6 +83,18 @@ fn runs_test262_assertions() {
         },
     };
     assert_eq!(run_case(&fail).outcome, Outcome::Fail);
+}
+
+#[test]
+fn captures_test262_output() {
+    let case = TestCase {
+        path: "output.js".into(),
+        source: "console.log('a', 1);".into(),
+        metadata: Metadata::default(),
+    };
+    let report = run_case(&case);
+    assert_eq!(report.outcome, Outcome::Pass);
+    assert_eq!(report.output, "a 1\n");
 }
 
 #[test]

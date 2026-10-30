@@ -13,7 +13,8 @@ pub struct Negative {
 }
 
 pub fn parse_metadata(source: &str) -> Metadata {
-    let Some(block) = metadata_block(source) else {
+    let normalized = source.replace("\r\n", "\n").replace('\r', "\n");
+    let Some(block) = metadata_block(&normalized) else {
         return Metadata::default();
     };
     let lines: Vec<&str> = block.lines().collect();

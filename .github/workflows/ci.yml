@@ -77,7 +77,7 @@ jobs:
           QEMU_LD_PREFIX: /usr/arm-linux-gnueabihf
 
   test262:
-    if: github.event_name == 'workflow_dispatch' && inputs.test262
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.test262 == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,10 +93,10 @@ jobs:
         run: |
           set -o pipefail
           ARGS=()
-          if [[ -n "${{ inputs.limit }}" ]]; then
-            ARGS+=(--limit "${{ inputs.limit }}")
+          if [[ -n "${{ github.event.inputs.limit }}" ]]; then
+            ARGS+=(--limit "${{ github.event.inputs.limit }}")
           fi
-          cargo run -q -p kagura-cli -- test262 /tmp/test262 --min-pass 1200 "${ARGS[@]}" | tee /tmp/test262-report.txt
+          cargo run -q -p kagura-cli -- test262 /tmp/test262 --node --min-pass 1200 "${ARGS[@]}" | tee /tmp/test262-report.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

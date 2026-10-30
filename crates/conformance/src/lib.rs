@@ -1,5 +1,6 @@
 mod host;
 mod metadata;
+pub mod node;
 mod runner;
 pub mod typescript;
 

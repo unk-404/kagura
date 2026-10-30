@@ -1,18 +1,35 @@
-﻿use kagura_bindgen::{Bindings, Host, HostCall, HostError, HostFunctionId};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use kagura_bindgen::{Bindings, Host, HostCall, HostError, HostFunctionId};
 use kagura_value::Value;
 
 pub struct Test262Host {
     bindings: Bindings,
+    output: Rc<RefCell<String>>,
 }
 
 impl Default for Test262Host {
     fn default() -> Self {
         let mut bindings = Bindings::new();
+        let output = Rc::new(RefCell::new(String::new()));
         bindings.bind("assert.sameValue", same_value);
         bindings.bind("assert.notSameValue", not_same_value);
         bindings.bind("assert.fail", fail);
         bindings.bind("$DONOTEVALUATE", do_not_evaluate);
-        Self { bindings }
+        let console_output = output.clone();
+        bindings.bind("console.log", move |call| {
+            record_output(call, &console_output)
+        });
+        let print_output = output.clone();
+        bindings.bind("print", move |call| record_output(call, &print_output));
+        Self { bindings, output }
+    }
+}
+
+impl Test262Host {
+    pub fn output(&self) -> String {
+        self.output.borrow().clone()
     }
 }
 
@@ -90,4 +107,17 @@ fn fail(call: &mut HostCall<'_>) -> Result<Value, HostError> {
 
 fn do_not_evaluate(_call: &mut HostCall<'_>) -> Result<Value, HostError> {
     Err(HostError::new("$DONOTEVALUATE"))
+}
+
+fn record_output(call: &mut HostCall<'_>, output: &RefCell<String>) -> Result<Value, HostError> {
+    let text = call
+        .args()
+        .iter()
+        .map(|value| call.heap().to_js_string(*value))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut output = output.borrow_mut();
+    output.push_str(&text);
+    output.push('\n');
+    Ok(Value::undefined())
 }
