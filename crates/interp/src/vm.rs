@@ -892,13 +892,17 @@ impl<'a> Interpreter<'a> {
                             .is_array(id)
                             .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                     ) {
-                        let index = try_op!(self.index_value(index, span));
-                        let value = try_op!(
-                            self.objects
-                                .array_get(id, index)
-                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
-                        );
-                        push(&mut stack, value, span)?;
+                        if let Some(index) = self.array_index(index) {
+                            let value =
+                                try_op!(self.objects.array_get(id, index).map_err(|error| {
+                                    RuntimeError::runtime(error.to_string(), span)
+                                }));
+                            push(&mut stack, value, span)?;
+                        } else {
+                            let key = self.heap.to_js_string(index);
+                            let value = try_op!(self.get_property(object, &key, span));
+                            push(&mut stack, value, span)?;
+                        }
                     } else {
                         let key = self.heap.to_js_string(index);
                         let value = try_op!(self.get_property(object, &key, span));
@@ -923,7 +927,12 @@ impl<'a> Interpreter<'a> {
                             .is_array(id)
                             .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                     ) {
-                        let index = try_op!(self.index_value(index, span));
+                        let Some(index) = self.array_index(index) else {
+                            let key = self.heap.to_js_string(index);
+                            try_op!(self.set_property(object, &key, value, span));
+                            push(&mut stack, value, span)?;
+                            continue;
+                        };
                         if try_op!(
                             self.objects
                                 .is_sealed(id)
@@ -1052,6 +1061,31 @@ impl<'a> Interpreter<'a> {
             .object_offset()
             .map(ObjectId::new)
             .ok_or_else(|| RuntimeError::type_error("value is not an object", span))
+    }
+
+    fn array_index(&self, value: Value) -> Option<u32> {
+        if let Some(index) = value.as_smi() {
+            return index.ge(&0).then_some(index as u32);
+        }
+        if let Some(number) = self.heap.as_number(value)
+            && number >= 0.0
+            && number.fract() == 0.0
+            && number <= 0xFFFF_FFFE_u32 as f64
+        {
+            return Some(number as u32);
+        }
+        if let Some(text) = self.heap.as_str(value) {
+            if text == "0" {
+                return Some(0);
+            }
+            if let Ok(index) = text.parse::<u32>()
+                && index != u32::MAX
+                && index.to_string() == text
+            {
+                return Some(index);
+            }
+        }
+        None
     }
 
     fn index_value(&self, value: Value, span: Span) -> Result<u32, RuntimeError> {
