@@ -1273,6 +1273,23 @@ fn gc_runs_during_script_allocations() {
 }
 
 #[test]
+fn records_interpreter_safepoints() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "for (let i = 0; i < 2000; i = i + 1) { let o = { x: i }; }",
+            &mut host,
+        )
+        .unwrap();
+    let stats = runtime.safepoint_stats();
+    assert!(stats.count > 0);
+    let last = stats.last.as_ref().expect("last safepoint");
+    assert!(last.local_count > 0);
+    assert!(last.defined_locals > 0);
+}
+
+#[test]
 fn gc_keeps_caller_roots_alive() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::new(64 * 1024);

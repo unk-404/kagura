@@ -26,6 +26,25 @@ enum PropertyFeedback {
     },
 }
 
+/// Snapshot of the interpreter frame at a GC safepoint.
+#[derive(Clone, Debug, Default)]
+pub struct FrameDescriptor {
+    pub function_index: usize,
+    pub pc: usize,
+    pub param_count: u16,
+    pub local_count: u16,
+    pub defined_locals: u16,
+    pub operand_depth: u32,
+}
+
+/// Observability for interpreter safepoints.
+#[derive(Clone, Debug, Default)]
+pub struct SafepointStats {
+    pub count: u64,
+    pub max_operand_depth: u32,
+    pub last: Option<FrameDescriptor>,
+}
+
 struct FrameContext<'a> {
     caller_roots: &'a [Value],
     args: &'a [Value],
@@ -55,6 +74,7 @@ pub struct Interpreter<'a> {
     property_feedback: Vec<Vec<PropertyFeedback>>,
     property_ic_hits: u64,
     property_ic_misses: u64,
+    safepoint_stats: SafepointStats,
     rng_state: u64,
     global_object: Option<ObjectId>,
     array_prototype: Option<ObjectId>,
@@ -87,6 +107,7 @@ impl<'a> Interpreter<'a> {
                 .collect(),
             property_ic_hits: 0,
             property_ic_misses: 0,
+            safepoint_stats: SafepointStats::default(),
             rng_state: 0x9E37_79B9_7F4A_7C15,
             global_object: None,
             array_prototype: None,
@@ -98,6 +119,10 @@ impl<'a> Interpreter<'a> {
 
     pub fn property_ic_stats(&self) -> (u64, u64) {
         (self.property_ic_hits, self.property_ic_misses)
+    }
+
+    pub fn safepoint_stats(&self) -> SafepointStats {
+        self.safepoint_stats.clone()
     }
 
     #[instrument(skip(self), fields(entry = self.module.entry))]
@@ -1309,16 +1334,42 @@ impl<'a> Interpreter<'a> {
                     push(&mut stack, Value::boolean(true), span)?;
                 }
                 Op::GcCheck => {
+                    let descriptor = FrameDescriptor {
+                        function_index,
+                        pc: pc.saturating_sub(1),
+                        param_count: function.param_count,
+                        local_count: function.local_count,
+                        defined_locals: defined.iter().filter(|defined| **defined).count() as u16,
+                        operand_depth: stack.len() as u32,
+                    };
+                    self.safepoint_stats.count = self.safepoint_stats.count.saturating_add(1);
+                    self.safepoint_stats.max_operand_depth = self
+                        .safepoint_stats
+                        .max_operand_depth
+                        .max(descriptor.operand_depth);
+                    self.safepoint_stats.last = Some(descriptor.clone());
                     if self.objects.live_bytes() >= GC_THRESHOLD {
-                        let mut roots =
-                            Vec::with_capacity(caller_roots.len() + locals.len() + stack.len());
+                        let mut roots = Vec::with_capacity(
+                            caller_roots.len()
+                                + descriptor.local_count as usize
+                                + descriptor.operand_depth as usize,
+                        );
                         roots.extend_from_slice(caller_roots);
-                        for (value, is_defined) in locals.iter().zip(defined.iter()) {
+                        for (value, is_defined) in locals
+                            .iter()
+                            .zip(defined.iter())
+                            .take(descriptor.local_count as usize)
+                        {
                             if *is_defined {
                                 roots.push(*value);
                             }
                         }
-                        roots.extend_from_slice(&stack);
+                        roots.extend(
+                            stack
+                                .iter()
+                                .take(descriptor.operand_depth as usize)
+                                .copied(),
+                        );
                         if let Some(env) = env {
                             roots.push(Value::object(env.index()));
                         }
