@@ -1163,12 +1163,12 @@ impl<'a> Interpreter<'a> {
                                 }));
                             push(&mut stack, value, span)?;
                         } else {
-                            let key = self.heap.to_js_string(index);
+                            let key = try_op!(self.property_key(index, span));
                             let value = try_op!(self.get_property(object, &key, span));
                             push(&mut stack, value, span)?;
                         }
                     } else {
-                        let key = self.heap.to_js_string(index);
+                        let key = try_op!(self.property_key(index, span));
                         let value = try_op!(self.get_property(object, &key, span));
                         push(&mut stack, value, span)?;
                     }
@@ -1192,7 +1192,7 @@ impl<'a> Interpreter<'a> {
                             .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                     ) {
                         let Some(index) = self.array_index(index) else {
-                            let key = self.heap.to_js_string(index);
+                            let key = try_op!(self.property_key(index, span));
                             try_op!(self.set_property(object, &key, value, span));
                             push(&mut stack, value, span)?;
                             continue;
@@ -1216,7 +1216,7 @@ impl<'a> Interpreter<'a> {
                                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                         );
                     } else {
-                        let key = self.heap.to_js_string(index);
+                        let key = try_op!(self.property_key(index, span));
                         try_op!(self.set_property(object, &key, value, span));
                     }
                     push(&mut stack, value, span)?;
@@ -1270,7 +1270,7 @@ impl<'a> Interpreter<'a> {
                             );
                         }
                     } else {
-                        let key = self.heap.to_js_string(index);
+                        let key = try_op!(self.property_key(index, span));
                         try_op!(self.delete_property(object, &key, span));
                     }
                     push(&mut stack, Value::boolean(true), span)?;
@@ -1370,6 +1370,31 @@ impl<'a> Interpreter<'a> {
         } else {
             Ok(self.shapes.root())
         }
+    }
+
+    fn property_key(&mut self, value: Value, span: Span) -> Result<String, RuntimeError> {
+        if !value.is_object() {
+            return Ok(self.heap.to_js_string(value));
+        }
+        let roots = [value];
+        for name in ["toString", "valueOf"] {
+            let method = self.get_property(value, name, span)?;
+            let Some(id) = method.object_offset().map(kagura_object::ObjectId::new) else {
+                continue;
+            };
+            let callable = self
+                .objects
+                .is_function(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if !callable {
+                continue;
+            }
+            let result = self.call_with_this(method, value, &[], &roots, span)?;
+            if !result.is_object() {
+                return Ok(self.heap.to_js_string(result));
+            }
+        }
+        Ok("[object Object]".into())
     }
 
     fn array_index(&self, value: Value) -> Option<u32> {

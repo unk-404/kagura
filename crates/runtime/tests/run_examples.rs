@@ -1218,6 +1218,19 @@ fn coerces_non_numbers_in_arithmetic_and_comparison() {
 }
 
 #[test]
+fn converts_object_keys_with_to_string() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var key = { toString: function () { return 'x'; } }; var target = {}; target[key] = 3; console.log(target.x);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "3\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
