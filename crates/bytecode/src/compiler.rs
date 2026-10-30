@@ -77,6 +77,7 @@ struct Local {
     name: String,
     mutable: bool,
     predeclared: bool,
+    active: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -202,7 +203,7 @@ impl<'a> FunctionCompiler<'a> {
                 for stmt in body {
                     self.compile_stmt(stmt)?;
                 }
-                self.scopes.pop();
+                self.close_scope();
                 Ok(())
             }
             Stmt::If {
@@ -273,6 +274,7 @@ impl<'a> FunctionCompiler<'a> {
                                     name: decl.name.clone(),
                                     mutable: matches!(decl.kind, kagura_ast::VarKind::Let),
                                     predeclared: false,
+                                    active: true,
                                 }];
                                 collect_iteration_locals(body, &mut bindings);
                                 let count = bindings.len();
@@ -336,7 +338,7 @@ impl<'a> FunctionCompiler<'a> {
                 for patch in context.break_patches {
                     self.patch_jump(patch, cleanup);
                 }
-                self.scopes.pop();
+                self.close_scope();
                 Ok(())
             }
             Stmt::Return { value, span } => {
@@ -380,7 +382,7 @@ impl<'a> FunctionCompiler<'a> {
                     for stmt in catch_block {
                         self.compile_stmt(stmt)?;
                     }
-                    self.scopes.pop();
+                    self.close_scope();
                 }
                 let finally_pc = self.code.len();
                 self.patch_jump(end_patch, finally_pc);
@@ -428,7 +430,7 @@ impl<'a> FunctionCompiler<'a> {
         for stmt in body {
             self.compile_stmt(stmt)?;
         }
-        self.scopes.pop();
+        self.close_scope();
         Ok(())
     }
 
@@ -452,7 +454,7 @@ impl<'a> FunctionCompiler<'a> {
         let base = *self.scopes.last().expect("scope");
         let predeclared = self.locals[base..]
             .iter()
-            .position(|local| local.name == decl.name && local.predeclared)
+            .position(|local| local.active && local.name == decl.name && local.predeclared)
             .map(|offset| base + offset);
         let slot = if let Some(slot) = predeclared {
             self.locals[slot].predeclared = false;
@@ -500,7 +502,13 @@ impl<'a> FunctionCompiler<'a> {
         for scope in self.iterations.iter().rev() {
             outer.push(scope.bindings.clone());
         }
-        outer.push(self.locals.clone());
+        outer.push(
+            self.locals
+                .iter()
+                .filter(|local| local.active)
+                .cloned()
+                .collect(),
+        );
         outer.extend(self.outer.iter().cloned());
         let mut compiler =
             FunctionCompiler::new(name, params, body, true, self.constants, self.functions);
@@ -770,21 +778,37 @@ impl<'a> FunctionCompiler<'a> {
         }
     }
 
+    fn close_scope(&mut self) {
+        if let Some(base) = self.scopes.pop() {
+            for local in &mut self.locals[base..] {
+                local.active = false;
+            }
+        }
+    }
+
     fn predeclare(&mut self, name: &str, mutable: bool, _span: Span) -> bool {
-        if self.locals.iter().any(|local| local.name == name) {
+        if self
+            .locals
+            .iter()
+            .any(|local| local.active && local.name == name)
+        {
             return false;
         }
         self.locals.push(Local {
             name: name.to_owned(),
             mutable,
             predeclared: true,
+            active: true,
         });
         true
     }
 
     fn declare(&mut self, name: &str, mutable: bool, _span: Span) -> Option<u16> {
         let base = *self.scopes.last().expect("scope");
-        if self.locals[base..].iter().any(|local| local.name == name) {
+        if self.locals[base..]
+            .iter()
+            .any(|local| local.active && local.name == name)
+        {
             return None;
         }
         let slot = self.locals.len();
@@ -795,6 +819,7 @@ impl<'a> FunctionCompiler<'a> {
             name: name.to_owned(),
             mutable,
             predeclared: false,
+            active: true,
         });
         Some(slot as u16)
     }
@@ -819,7 +844,7 @@ impl<'a> FunctionCompiler<'a> {
             .iter()
             .enumerate()
             .rev()
-            .find(|(_, local)| local.name == name)
+            .find(|(_, local)| local.active && local.name == name)
             .map(|(slot, local)| (slot as u16, local))
         {
             return Some(Resolved::Local {
@@ -948,6 +973,7 @@ fn collect_iteration_locals(stmt: &Stmt, bindings: &mut Vec<Local>) {
                     name: decl.name.clone(),
                     mutable: matches!(decl.kind, kagura_ast::VarKind::Let),
                     predeclared: false,
+                    active: true,
                 });
             }
         }

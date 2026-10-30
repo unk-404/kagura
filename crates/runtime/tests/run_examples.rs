@@ -215,6 +215,26 @@ fn captures_top_level_script_bindings() {
 }
 
 #[test]
+fn closure_can_capture_block_binding() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "let read; { let value = 3; read = () => value; } console.log(read());",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "3\n");
+}
+
+#[test]
+fn hides_block_bindings_after_scope() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    assert!(runtime.run("{ let value = 1; } value;", &mut host).is_err());
+}
+
+#[test]
 fn named_function_expression_is_recursive() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
