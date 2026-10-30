@@ -465,6 +465,18 @@ impl<'a> Interpreter<'a> {
         span: Span,
     ) -> Result<Value, RuntimeError> {
         let id = self.object_id(object, span)?;
+        if key == "length"
+            && self
+                .objects
+                .is_array(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            let length = self
+                .objects
+                .array_length(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            return Ok(self.heap.number(length as f64));
+        }
         let shape = self
             .objects
             .shape(id)
@@ -496,6 +508,18 @@ impl<'a> Interpreter<'a> {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let id = self.object_id(object, span)?;
+        if key == "length"
+            && self
+                .objects
+                .is_array(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            let length = self.index_value(value, span)?;
+            self.objects
+                .set_array_length(id, length)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            return Ok(());
+        }
         let shape = self
             .objects
             .shape(id)

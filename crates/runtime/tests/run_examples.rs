@@ -7,6 +7,7 @@ const OBJECTS: &str = include_str!("../../../examples/objects.ts");
 const OBJECTS_WRITE: &str = include_str!("../../../examples/objects_write.ts");
 const OBJECTS_MANY: &str = include_str!("../../../examples/objects_many.ts");
 const ARRAYS: &str = include_str!("../../../examples/arrays.ts");
+const ARRAYS_LENGTH: &str = include_str!("../../../examples/arrays_length.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -54,6 +55,14 @@ fn runs_arrays_and_index_writes() {
     let mut runtime = Runtime::default();
     runtime.run(ARRAYS, &mut host).unwrap();
     assert_eq!(host.output(), "13\n");
+}
+
+#[test]
+fn reads_and_writes_array_length() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARRAYS_LENGTH, &mut host).unwrap();
+    assert_eq!(host.output(), "3\n2\nundefined\n4\nundefined\n");
 }
 
 #[test]

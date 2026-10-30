@@ -85,6 +85,27 @@ impl ObjectHeap {
         read_u32(&self.arena, elements).ok_or(ObjectHeapError::InvalidPropertyArray)
     }
 
+    pub fn set_array_length(
+        &mut self,
+        object: ObjectId,
+        length: u32,
+    ) -> Result<(), ObjectHeapError> {
+        if !self.is_array(object)? {
+            return Err(ObjectHeapError::NotArray);
+        }
+        if length == 0 {
+            let elements = read_u32(&self.arena, object.index() + ELEMENTS_OFFSET)
+                .ok_or(ObjectHeapError::InvalidObject)?;
+            if elements != NO_ARRAY {
+                write_u32(&mut self.arena, elements, 0);
+            }
+            return Ok(());
+        }
+        let elements = self.ensure_elements(object, length)?;
+        write_u32(&mut self.arena, elements, length);
+        Ok(())
+    }
+
     pub fn array_get(&self, object: ObjectId, index: u32) -> Result<Value, ObjectHeapError> {
         if !self.is_array(object)? {
             return Err(ObjectHeapError::NotArray);

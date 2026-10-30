@@ -8,6 +8,8 @@ const OBJECTS_WRITE: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/objects_write.kbc");
 const OBJECTS_MANY: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/objects_many.kbc");
 const ARRAYS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/arrays.kbc");
+const ARRAYS_LENGTH: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
 #[test]
 fn executes_v1_fib_bytecode() {
@@ -55,4 +57,12 @@ fn executes_v1_array_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(ARRAYS, &mut host).unwrap();
     assert_eq!(host.output(), "13\n");
+}
+
+#[test]
+fn executes_v1_array_length_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(ARRAYS_LENGTH, &mut host).unwrap();
+    assert_eq!(host.output(), "3\n2\nundefined\n4\nundefined\n");
 }

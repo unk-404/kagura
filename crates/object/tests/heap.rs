@@ -59,6 +59,22 @@ fn grows_elements_and_preserves_holes() {
 }
 
 #[test]
+fn resizes_array_length() {
+    let shapes = ShapeTable::new();
+    let mut heap = ObjectHeap::new(4096);
+    let object = heap.allocate_array(shapes.root()).unwrap();
+    heap.array_push(object, Value::smi(1)).unwrap();
+    heap.array_push(object, Value::smi(2)).unwrap();
+    heap.array_push(object, Value::smi(3)).unwrap();
+    heap.set_array_length(object, 2).unwrap();
+    assert_eq!(heap.array_length(object).unwrap(), 2);
+    assert_eq!(heap.array_get(object, 2).unwrap(), Value::undefined());
+    heap.set_array_length(object, 4).unwrap();
+    assert_eq!(heap.array_length(object).unwrap(), 4);
+    assert_eq!(heap.array_get(object, 3).unwrap(), Value::undefined());
+}
+
+#[test]
 fn rejects_slot_outside_record() {
     let shapes = ShapeTable::new();
     let mut heap = ObjectHeap::new(4096);
