@@ -99,6 +99,16 @@ fn stmt_has_closure(stmt: &Stmt) -> bool {
                 || expr_has_closure(object)
                 || stmt_has_closure(body)
         }
+        Stmt::Switch {
+            discriminant,
+            cases,
+            ..
+        } => {
+            expr_has_closure(discriminant)
+                || cases.iter().any(|case| {
+                    case.test.as_ref().is_some_and(expr_has_closure) || body_has_closure(&case.body)
+                })
+        }
         Stmt::Return { value, .. } => value.as_ref().is_some_and(expr_has_closure),
         Stmt::Throw { value, .. } => expr_has_closure(value),
         Stmt::Try {

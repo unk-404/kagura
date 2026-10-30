@@ -72,7 +72,8 @@ The current P1 slice adds:
 
 - `new` with `Error`, `TypeError`, `RangeError`, `ReferenceError`,
   `SyntaxError`, `Test262Error`, `Object`, and `Array` targets
-- `var` declarations, prefix/postfix `++`/`--`, `instanceof`
+- `var` declarations, prefix/postfix `++`/`--`, `instanceof`, `for...in`, `switch`
+- object computed access (`object[key]`) for string keys
 - constructor values for the error families, loaded as builtin globals
 - `assert.throws`, `assert.compareArray`, and `assert.deepEqual`
 - loading and executing extra test262 harness includes
@@ -116,8 +117,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18845 executed, 2870 passed, 15975 failed, 35184 skipped
-oracle node: 2870 checked, 2869 matched, 1 mismatched
+54029 selected, 18845 executed, 2891 passed, 15954 failed, 35184 skipped
+oracle node: 2891 checked, 2890 matched, 1 mismatched
 ```
 
 The single Node mismatch is tracked as a differential warning, not hidden:

@@ -27,6 +27,13 @@ pub struct FuncDecl {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct SwitchCase {
+    pub test: Option<Expr>,
+    pub body: Vec<Stmt>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ForInit {
     Var(VarDecl),
     Expr(Expr),
@@ -60,6 +67,11 @@ pub enum Stmt {
         target: Option<crate::expr::AssignTarget>,
         object: Expr,
         body: Box<Stmt>,
+        span: Span,
+    },
+    Switch {
+        discriminant: Expr,
+        cases: Vec<SwitchCase>,
         span: Span,
     },
     Return {
@@ -113,6 +125,7 @@ impl Stmt {
             | Self::While { span, .. }
             | Self::For { span, .. }
             | Self::ForIn { span, .. }
+            | Self::Switch { span, .. }
             | Self::Return { span, .. }
             | Self::Throw { span, .. }
             | Self::Try { span, .. }

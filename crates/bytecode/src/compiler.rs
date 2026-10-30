@@ -124,6 +124,7 @@ struct LoopContext {
     break_patches: Vec<usize>,
     continue_patches: Vec<usize>,
     continue_target: Option<usize>,
+    is_switch: bool,
 }
 
 struct FinallyContext {
@@ -340,6 +341,7 @@ impl<'a> FunctionCompiler<'a> {
                     break_patches: Vec::new(),
                     continue_patches: Vec::new(),
                     continue_target: None,
+                    is_switch: false,
                 });
                 self.compile_stmt(body)?;
                 let fork_start = self.code.len();
@@ -432,6 +434,7 @@ impl<'a> FunctionCompiler<'a> {
                     break_patches: Vec::new(),
                     continue_patches: Vec::new(),
                     continue_target: None,
+                    is_switch: false,
                 });
                 self.compile_stmt(body)?;
                 let fork_start = self.code.len();
@@ -538,6 +541,7 @@ impl<'a> FunctionCompiler<'a> {
                     break_patches: Vec::new(),
                     continue_patches: Vec::new(),
                     continue_target: None,
+                    is_switch: false,
                 });
                 self.compile_stmt(body)?;
                 let update_start = self.code.len();
@@ -552,6 +556,55 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit_jump_back(Op::Jump, loop_start, *span);
                 let end = self.code.len();
                 self.patch_jump(end_jump, end);
+                for patch in context.break_patches {
+                    self.patch_jump(patch, end);
+                }
+                Ok(())
+            }
+            Stmt::Switch {
+                discriminant,
+                cases,
+                span,
+            } => {
+                let value_slot = self.hidden_local(*span);
+                self.compile_expr(discriminant)?;
+                self.emit_u16(Op::StoreLocal, value_slot, *span);
+                let mut test_jumps = Vec::new();
+                let mut default_index = None;
+                for (index, case) in cases.iter().enumerate() {
+                    if let Some(test) = &case.test {
+                        self.emit_u16(Op::LoadLocal, value_slot, *span);
+                        self.compile_expr(test)?;
+                        self.emit(Op::StrictEq, *span);
+                        let jump = self.emit_jump(Op::JumpIfTrue, *span);
+                        test_jumps.push((index, jump));
+                    } else {
+                        default_index = Some(index);
+                    }
+                }
+                let dispatch_jump = self.emit_jump(Op::Jump, *span);
+                self.loops.push(LoopContext {
+                    break_patches: Vec::new(),
+                    continue_patches: Vec::new(),
+                    continue_target: None,
+                    is_switch: true,
+                });
+                let mut starts = Vec::with_capacity(cases.len());
+                for case in cases {
+                    starts.push(self.code.len());
+                    for stmt in &case.body {
+                        self.compile_stmt(stmt)?;
+                    }
+                }
+                let end = self.code.len();
+                let context = self.loops.pop().expect("switch context");
+                self.patch_jump(
+                    dispatch_jump,
+                    default_index.map_or(end, |index| starts[index]),
+                );
+                for (index, jump) in test_jumps {
+                    self.patch_jump(jump, starts[index]);
+                }
                 for patch in context.break_patches {
                     self.patch_jump(patch, end);
                 }
@@ -760,9 +813,11 @@ impl<'a> FunctionCompiler<'a> {
                 Ok(())
             }
             Stmt::Continue { span } => {
-                if self.loops.is_empty() {
+                let Some(continue_index) =
+                    self.loops.iter().rposition(|context| !context.is_switch)
+                else {
                     return Err(CompileError::new("continue outside loop", *span));
-                }
+                };
                 let slots: Vec<u16> = self
                     .finallys
                     .iter()
@@ -776,7 +831,7 @@ impl<'a> FunctionCompiler<'a> {
                         self.emit_u16(Op::StoreLocal, slot, *span);
                     }
                     let jump = self.emit_jump(Op::Jump, *span);
-                    let loop_index = self.loops.len() - 1;
+                    let loop_index = continue_index;
                     self.finallys
                         .last_mut()
                         .expect("finally context")
@@ -794,11 +849,7 @@ impl<'a> FunctionCompiler<'a> {
                     return Ok(());
                 }
                 let patch = self.emit_jump(Op::Jump, *span);
-                self.loops
-                    .last_mut()
-                    .expect("loop")
-                    .continue_patches
-                    .push(patch);
+                self.loops[continue_index].continue_patches.push(patch);
                 Ok(())
             }
             Stmt::Expr { expr, .. } => {

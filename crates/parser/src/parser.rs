@@ -3,7 +3,7 @@ mod functions;
 
 use kagura_ast::{
     ArrowBody, AssignTarget, BinaryOp, Expr, ForInit, ObjectProperty, Param, Program, Stmt,
-    TypeAnn, UnaryOp, VarDecl, VarKind,
+    SwitchCase, TypeAnn, UnaryOp, VarDecl, VarKind,
 };
 use kagura_support::Span;
 use tracing::instrument;
@@ -51,6 +51,7 @@ impl Parser {
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),
+            TokenKind::Switch => self.parse_switch(),
             TokenKind::Return => self.parse_return(),
             TokenKind::Throw => self.parse_throw(),
             TokenKind::Try => self.parse_try(),
@@ -241,6 +242,49 @@ impl Parser {
             update,
             body,
             span: start.merge(end),
+        })
+    }
+
+    fn parse_switch(&mut self) -> Result<Stmt, ParseError> {
+        let start = self.advance().span;
+        self.expect(&TokenKind::LParen, "expected '(' after switch")?;
+        let discriminant = self.parse_expr()?;
+        self.expect(&TokenKind::RParen, "expected ')' after switch expression")?;
+        self.expect(&TokenKind::LBrace, "expected '{' after switch")?;
+        let mut cases = Vec::new();
+        let mut seen_default = false;
+        while !self.at(&TokenKind::RBrace) {
+            let case_start = self.peek().span;
+            let test = if self.eat(&TokenKind::Case) {
+                Some(self.parse_expr()?)
+            } else if self.eat(&TokenKind::Default) {
+                if seen_default {
+                    return Err(ParseError::new("duplicate default clause", case_start));
+                }
+                seen_default = true;
+                None
+            } else {
+                return Err(ParseError::new("expected case or default", case_start));
+            };
+            self.expect(&TokenKind::Colon, "expected ':' after switch clause")?;
+            let mut body = Vec::new();
+            while !self.at(&TokenKind::Case)
+                && !self.at(&TokenKind::Default)
+                && !self.at(&TokenKind::RBrace)
+            {
+                body.push(self.parse_stmt()?);
+            }
+            let span = body
+                .last()
+                .map(|stmt| case_start.merge(stmt.span()))
+                .unwrap_or(case_start);
+            cases.push(SwitchCase { test, body, span });
+        }
+        let end = self.expect(&TokenKind::RBrace, "expected '}' after switch")?;
+        Ok(Stmt::Switch {
+            discriminant,
+            cases,
+            span: start.merge(end.span),
         })
     }
 
