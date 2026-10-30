@@ -26,6 +26,10 @@ const TRY_FINALLY: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/
 const TRY_CROSS_FUNCTION: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/try_cross_function.kbc");
 const BUILTINS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/builtins.kbc");
+const BUILTINS_CALLBACKS: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/builtins_callbacks.kbc");
+const BUILTINS_CHAIN: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/builtins_chain.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -192,4 +196,20 @@ fn executes_v1_builtin_method_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(BUILTINS, &mut host).unwrap();
     assert_eq!(host.output(), "3\n1-2-3\n3\ntrue\n1\n1\ne\nHELLO\n2\nel\n");
+}
+
+#[test]
+fn executes_v1_callback_builtin_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(BUILTINS_CALLBACKS, &mut host).unwrap();
+    assert_eq!(host.output(), "2,4,6\n2\n6\n");
+}
+
+#[test]
+fn executes_v1_chained_builtin_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(BUILTINS_CHAIN, &mut host).unwrap();
+    assert_eq!(host.output(), "2,3,4\n");
 }

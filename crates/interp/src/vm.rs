@@ -562,19 +562,6 @@ impl<'a> Interpreter<'a> {
                     }
                     args.reverse();
                     let callee = pop(&mut stack, span)?;
-                    let object = self.object_id(callee, span)?;
-                    if !self
-                        .objects
-                        .is_function(object)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-                    {
-                        return Err(RuntimeError::type_error("value is not callable", span));
-                    }
-                    let (function, env_value) = self
-                        .objects
-                        .function_data(object)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                    let closure_env = env_value.object_offset().map(ObjectId::new);
                     let mut roots =
                         Vec::with_capacity(caller_roots.len() + locals.len() + stack.len() + 2);
                     roots.extend_from_slice(caller_roots);
@@ -593,13 +580,7 @@ impl<'a> Interpreter<'a> {
                     if let Some(capture_env) = capture_env {
                         roots.push(Value::object(capture_env.index()));
                     }
-                    let value = match self.call(
-                        function as usize,
-                        &args,
-                        &roots,
-                        closure_env,
-                        Some(callee),
-                    ) {
+                    let value = match self.invoke_callable(callee, &args, &roots, span) {
                         Ok(value) => value,
                         Err(error) => {
                             let catch_pc = self.catch_error(&mut handlers, &mut stack, error)?;
@@ -622,8 +603,28 @@ impl<'a> Interpreter<'a> {
                     }
                     args.reverse();
                     let object = pop(&mut stack, span)?;
+                    let mut roots =
+                        Vec::with_capacity(caller_roots.len() + locals.len() + stack.len() + 4);
+                    roots.extend_from_slice(caller_roots);
+                    for (value, is_defined) in locals.iter().zip(defined.iter()) {
+                        if *is_defined {
+                            roots.push(*value);
+                        }
+                    }
+                    roots.extend_from_slice(&stack);
+                    if let Some(env) = env {
+                        roots.push(Value::object(env.index()));
+                    }
+                    if let Some(closure_env) = closure_env {
+                        roots.push(Value::object(closure_env.index()));
+                    }
+                    if let Some(capture_env) = capture_env {
+                        roots.push(Value::object(capture_env.index()));
+                    }
+                    roots.push(object);
+                    roots.extend_from_slice(&args);
                     let value = self
-                        .call_builtin(object, &key, &args, span)?
+                        .call_builtin(object, &key, &args, span, &roots)?
                         .ok_or_else(|| RuntimeError::type_error("method is not supported", span))?;
                     push(&mut stack, value, span)?;
                 }
@@ -864,12 +865,42 @@ impl<'a> Interpreter<'a> {
             .map_err(|error| RuntimeError::runtime(error.message, span))
     }
 
+    fn invoke_callable(
+        &mut self,
+        callee: Value,
+        args: &[Value],
+        caller_roots: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.object_id(callee, span)?;
+        if !self
+            .objects
+            .is_function(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Err(RuntimeError::type_error("value is not callable", span));
+        }
+        let (function, env_value) = self
+            .objects
+            .function_data(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let closure_env = env_value.object_offset().map(ObjectId::new);
+        self.call(
+            function as usize,
+            args,
+            caller_roots,
+            closure_env,
+            Some(callee),
+        )
+    }
+
     fn call_builtin(
         &mut self,
         object: Value,
         key: &str,
         args: &[Value],
         span: Span,
+        roots: &[Value],
     ) -> Result<Option<Value>, RuntimeError> {
         let arg_index = |args: &[Value], index: usize| {
             args.get(index)
@@ -1038,6 +1069,55 @@ impl<'a> Interpreter<'a> {
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 }
                 Value::object(array.index())
+            }
+            "map" | "filter" | "forEach" => {
+                let callback = args.first().copied().unwrap_or_else(Value::undefined);
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let result = if key == "forEach" {
+                    None
+                } else {
+                    Some(
+                        self.objects
+                            .allocate_array(self.shapes.root())
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+                    )
+                };
+                let mut roots = roots.to_vec();
+                if let Some(result) = result {
+                    roots.push(Value::object(result.index()));
+                }
+                for index in 0..length {
+                    let value = self
+                        .objects
+                        .array_get(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let callback_args = [value, self.heap.number(index as f64), object];
+                    let mapped = self.invoke_callable(callback, &callback_args, &roots, span)?;
+                    match key {
+                        "map" => {
+                            if let Some(result) = result {
+                                self.objects.array_push(result, mapped).map_err(|error| {
+                                    RuntimeError::runtime(error.to_string(), span)
+                                })?;
+                                roots.push(mapped);
+                            }
+                        }
+                        "filter" => {
+                            if let Some(result) = result
+                                && self.heap.truthy(mapped)
+                            {
+                                self.objects.array_push(result, value).map_err(|error| {
+                                    RuntimeError::runtime(error.to_string(), span)
+                                })?;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                result.map_or_else(Value::undefined, |array| Value::object(array.index()))
             }
             _ => return Ok(None),
         }))

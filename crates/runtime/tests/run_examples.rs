@@ -35,6 +35,8 @@ const TRY_FINALLY: &str = include_str!("../../../examples/try_finally.ts");
 const TRY_NESTED: &str = include_str!("../../../examples/try_nested.ts");
 const TRY_CROSS_FUNCTION: &str = include_str!("../../../examples/try_cross_function.ts");
 const BUILTINS: &str = include_str!("../../../examples/builtins.ts");
+const BUILTINS_CALLBACKS: &str = include_str!("../../../examples/builtins_callbacks.ts");
+const BUILTINS_CHAIN: &str = include_str!("../../../examples/builtins_chain.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -352,6 +354,22 @@ fn runs_array_and_string_builtin_methods() {
     let mut runtime = Runtime::default();
     runtime.run(BUILTINS, &mut host).unwrap();
     assert_eq!(host.output(), "3\n1-2-3\n3\ntrue\n1\n1\ne\nHELLO\n2\nel\n");
+}
+
+#[test]
+fn runs_array_callback_methods() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(BUILTINS_CALLBACKS, &mut host).unwrap();
+    assert_eq!(host.output(), "2,4,6\n2\n6\n");
+}
+
+#[test]
+fn runs_chained_array_callbacks() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(BUILTINS_CHAIN, &mut host).unwrap();
+    assert_eq!(host.output(), "2,3,4\n");
 }
 
 #[test]

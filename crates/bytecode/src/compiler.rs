@@ -677,29 +677,33 @@ impl<'a> FunctionCompiler<'a> {
                         self.emit_u32(Op::CallName, index, *span);
                         self.emit_u8_raw(args.len(), *span);
                     }
-                } else if let Some(path) = member_path(callee) {
-                    let root = path.split('.').next().unwrap_or_default();
-                    if self.resolve(root).is_some() {
-                        if let Expr::Member {
-                            object, property, ..
-                        } = callee.as_ref()
-                            && is_builtin_method(property)
-                        {
-                            self.compile_expr(object)?;
-                            self.compile_args(args)?;
-                            let index = self.add_const(Const::String(property.clone()));
-                            self.emit_u32(Op::CallMethod, index, *span);
-                            self.emit_u8_raw(args.len(), *span);
-                        } else {
+                } else if let Expr::Member {
+                    object, property, ..
+                } = callee.as_ref()
+                {
+                    if is_builtin_method(property) {
+                        self.compile_expr(object)?;
+                        self.compile_args(args)?;
+                        let index = self.add_const(Const::String(property.clone()));
+                        self.emit_u32(Op::CallMethod, index, *span);
+                        self.emit_u8_raw(args.len(), *span);
+                    } else if let Some(path) = member_path(callee) {
+                        let root = path.split('.').next().unwrap_or_default();
+                        if self.resolve(root).is_some() {
                             self.compile_expr(callee)?;
                             self.compile_args(args)?;
                             self.emit(Op::CallValue, *span);
                             self.emit_u8_raw(args.len(), *span);
+                        } else {
+                            self.compile_args(args)?;
+                            let index = self.add_const(Const::String(path));
+                            self.emit_u32(Op::CallHost, index, *span);
+                            self.emit_u8_raw(args.len(), *span);
                         }
                     } else {
+                        self.compile_expr(callee)?;
                         self.compile_args(args)?;
-                        let index = self.add_const(Const::String(path));
-                        self.emit_u32(Op::CallHost, index, *span);
+                        self.emit(Op::CallValue, *span);
                         self.emit_u8_raw(args.len(), *span);
                     }
                 } else {
@@ -976,6 +980,9 @@ fn is_builtin_method(name: &str) -> bool {
             | "indexOf"
             | "includes"
             | "slice"
+            | "map"
+            | "filter"
+            | "forEach"
             | "charAt"
             | "charCodeAt"
             | "toUpperCase"
