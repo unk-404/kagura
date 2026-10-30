@@ -209,14 +209,38 @@ impl<'a> Interpreter<'a> {
             .function_data(object)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         let closure_env = env_value.object_offset().map(ObjectId::new);
+        let receiver = self.callee_receiver(callee, function, None, span)?;
         self.call(
             function as usize,
             args,
             caller_roots,
             closure_env,
             Some(callee),
-            None,
+            receiver,
         )
+    }
+
+    fn callee_receiver(
+        &self,
+        callee: Value,
+        function_index: u32,
+        receiver: Option<Value>,
+        span: Span,
+    ) -> Result<Option<Value>, RuntimeError> {
+        if self
+            .module
+            .functions
+            .get(function_index as usize)
+            .is_some_and(|proto| proto.name == "<arrow>")
+        {
+            let object = self.object_id(callee, span)?;
+            return self
+                .objects
+                .function_this(object)
+                .map(Some)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+        }
+        Ok(receiver)
     }
 
     pub(super) fn invoke_method(
@@ -240,13 +264,14 @@ impl<'a> Interpreter<'a> {
             .function_data(object)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         let closure_env = env_value.object_offset().map(ObjectId::new);
+        let receiver = self.callee_receiver(callee, function, Some(receiver), span)?;
         self.call(
             function as usize,
             args,
             caller_roots,
             closure_env,
             Some(callee),
-            Some(receiver),
+            receiver,
         )
     }
 

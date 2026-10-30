@@ -44,6 +44,7 @@ const BUILTINS_HOLES: &str = include_str!("../../../examples/builtins_holes.ts")
 const WHILE_CLOSURES: &str = include_str!("../../../examples/while_closures.ts");
 const METHOD_THIS: &str = include_str!("../../../examples/method_this.ts");
 const METHOD_SHADOWING: &str = include_str!("../../../examples/method_shadowing.ts");
+const ARROW_THIS: &str = include_str!("../../../examples/arrow_this.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -459,6 +460,14 @@ fn user_methods_shadow_builtin_names() {
     let mut runtime = Runtime::default();
     runtime.run(METHOD_SHADOWING, &mut host).unwrap();
     assert_eq!(host.output(), "11\n2,4\n");
+}
+
+#[test]
+fn arrows_capture_lexical_this() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARROW_THIS, &mut host).unwrap();
+    assert_eq!(host.output(), "7\n7\n");
 }
 
 #[test]

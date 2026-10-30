@@ -492,9 +492,24 @@ impl<'a> Interpreter<'a> {
                     let env = capture_env.ok_or_else(|| {
                         RuntimeError::runtime("closure created without an environment", span)
                     })?;
+                    let lexical_this = self
+                        .module
+                        .functions
+                        .get(function as usize)
+                        .is_some_and(|proto| proto.name == "<arrow>");
+                    let captured_this = if lexical_this {
+                        self_value.unwrap_or_else(Value::undefined)
+                    } else {
+                        Value::undefined()
+                    };
                     let object = self
                         .objects
-                        .allocate_function(self.shapes.root(), function, Value::object(env.index()))
+                        .allocate_function(
+                            self.shapes.root(),
+                            function,
+                            Value::object(env.index()),
+                            captured_this,
+                        )
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                     push(&mut stack, Value::object(object.index()), span)?;
                 }

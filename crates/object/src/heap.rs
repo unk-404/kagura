@@ -106,6 +106,7 @@ impl ObjectHeap {
         shape: ShapeId,
         function_index: u32,
         env: Value,
+        captured_this: Value,
     ) -> Result<ObjectId, ObjectHeapError> {
         let object = self.allocate(shape)?;
         write_u32(
@@ -115,6 +116,7 @@ impl ObjectHeap {
         );
         self.set_slot(object, 0, Value::smi(function_index as i32))?;
         self.set_slot(object, 1, env)?;
+        self.set_slot(object, 2, captured_this)?;
         Ok(object)
     }
 
@@ -133,6 +135,13 @@ impl ObjectHeap {
             .as_smi()
             .ok_or(ObjectHeapError::InvalidObject)? as u32;
         Ok((index, self.get_slot(object, 1)?))
+    }
+
+    pub fn function_this(&self, object: ObjectId) -> Result<Value, ObjectHeapError> {
+        if !self.is_function(object)? {
+            return Err(ObjectHeapError::InvalidObject);
+        }
+        self.get_slot(object, 2)
     }
 
     pub fn shape(&self, object: ObjectId) -> Result<ShapeId, ObjectHeapError> {

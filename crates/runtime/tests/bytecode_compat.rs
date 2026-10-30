@@ -43,6 +43,7 @@ const WHILE_CLOSURES: &[u8] =
 const METHOD_THIS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/method_this.kbc");
 const METHOD_SHADOWING: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/method_shadowing.kbc");
+const ARROW_THIS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/arrow_this.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -283,4 +284,12 @@ fn executes_v1_method_shadowing_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(METHOD_SHADOWING, &mut host).unwrap();
     assert_eq!(host.output(), "11\n2,4\n");
+}
+
+#[test]
+fn executes_v1_arrow_this_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(ARROW_THIS, &mut host).unwrap();
+    assert_eq!(host.output(), "7\n7\n");
 }
