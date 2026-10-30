@@ -7,7 +7,9 @@ use kagura_ast::{
 use kagura_support::{FastHashSet, Span};
 
 use crate::error::CompileError;
-use crate::module::{Const, FeedbackKind, FunctionProto, Module, Safepoint, VERSION};
+use crate::module::{
+    Const, FeedbackKind, FunctionProto, Module, SAFEPOINT_DEPTH_UNKNOWN, Safepoint, VERSION,
+};
 use crate::op::Op;
 use analysis::{
     body_has_closure, collect_iteration_locals, loop_has_closure, member_path, params_have_closure,
@@ -416,7 +418,7 @@ impl<'a> FunctionCompiler<'a> {
             self.safepoints.push(Safepoint {
                 pc: self.code.len() as u32,
                 local_count: self.locals.len() as u16,
-                operand_depth: 0,
+                operand_depth: SAFEPOINT_DEPTH_UNKNOWN,
             });
             self.emit(Op::GcCheck, stmt.span());
         }

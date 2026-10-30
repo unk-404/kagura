@@ -601,7 +601,6 @@ impl<'a> Interpreter<'a> {
                         return Err(RuntimeError::runtime("global object is missing", span));
                     };
                     try_op!(self.set_property(Value::object(global.index()), &name, value, span));
-                    push(&mut stack, value, span)?;
                 }
                 Op::LoadBuiltin => {
                     let index = read_u32(&function.code, &mut pc, span)?;
