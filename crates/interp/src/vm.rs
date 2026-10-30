@@ -85,6 +85,18 @@ impl<'a> Interpreter<'a> {
         let mut handlers: Vec<TryHandler> = Vec::new();
         let mut stack: Vec<Value> = Vec::new();
         let mut pc = 0usize;
+        macro_rules! try_op {
+            ($expr:expr) => {
+                match $expr {
+                    Ok(value) => value,
+                    Err(error) => {
+                        let catch_pc = self.catch_error(&mut handlers, &mut stack, error)?;
+                        pc = catch_pc;
+                        continue;
+                    }
+                }
+            };
+        }
         loop {
             let span = self.module.span_at(function_index, pc);
             let byte = *function.code.get(pc).ok_or_else(|| {
@@ -629,7 +641,7 @@ impl<'a> Interpreter<'a> {
                         }
                     };
                     let object = pop(&mut stack, span)?;
-                    let value = self.get_property(object, &key, span)?;
+                    let value = try_op!(self.get_property(object, &key, span));
                     push(&mut stack, value, span)?;
                 }
                 Op::SetProp => {
@@ -642,7 +654,7 @@ impl<'a> Interpreter<'a> {
                     };
                     let value = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
-                    self.set_property(object, &key, value, span)?;
+                    try_op!(self.set_property(object, &key, value, span));
                 }
                 Op::SetPropValue => {
                     let index = read_u32(&function.code, &mut pc, span)?;
@@ -654,7 +666,7 @@ impl<'a> Interpreter<'a> {
                     };
                     let value = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
-                    self.set_property(object, &key, value, span)?;
+                    try_op!(self.set_property(object, &key, value, span));
                     push(&mut stack, value, span)?;
                 }
                 Op::NewArray => {

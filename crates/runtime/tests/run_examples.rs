@@ -331,6 +331,19 @@ fn uncaught_throw_fails_execution() {
 }
 
 #[test]
+fn catches_runtime_error_in_same_frame() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "try { undefined.missing; } catch (error) { console.log(\"caught\"); }",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "caught\n");
+}
+
+#[test]
 fn catches_throw_from_called_function() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
