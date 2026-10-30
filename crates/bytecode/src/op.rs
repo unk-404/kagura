@@ -32,6 +32,7 @@ pub enum Op {
     NewObject = 28,
     GetProp = 29,
     SetProp = 30,
+    SetPropValue = 31,
 }
 
 impl Op {
@@ -68,6 +69,7 @@ impl Op {
             28 => Self::NewObject,
             29 => Self::GetProp,
             30 => Self::SetProp,
+            31 => Self::SetPropValue,
             _ => return None,
         })
     }

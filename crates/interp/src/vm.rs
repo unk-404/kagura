@@ -317,6 +317,19 @@ impl<'a> Interpreter<'a> {
                     self.set_property(object, &key, value, span)?;
                     push(&mut stack, object, span)?;
                 }
+                Op::SetPropValue => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let key = match self.module.constants.get(index as usize) {
+                        Some(Const::String(key)) => key.clone(),
+                        _ => {
+                            return Err(RuntimeError::runtime("invalid property key", span));
+                        }
+                    };
+                    let value = pop(&mut stack, span)?;
+                    let object = pop(&mut stack, span)?;
+                    self.set_property(object, &key, value, span)?;
+                    push(&mut stack, value, span)?;
+                }
                 Op::Pop => {
                     pop(&mut stack, span)?;
                 }

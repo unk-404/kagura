@@ -4,6 +4,7 @@ use kagura_testkit::CaptureHost;
 const HELLO: &str = include_str!("../../../examples/hello.ts");
 const FIB: &str = include_str!("../../../examples/fib.ts");
 const OBJECTS: &str = include_str!("../../../examples/objects.ts");
+const OBJECTS_WRITE: &str = include_str!("../../../examples/objects_write.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -27,6 +28,14 @@ fn runs_object_literals() {
     let mut runtime = Runtime::default();
     runtime.run(OBJECTS, &mut host).unwrap();
     assert_eq!(host.output(), "3\n");
+}
+
+#[test]
+fn writes_object_properties() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(OBJECTS_WRITE, &mut host).unwrap();
+    assert_eq!(host.output(), "7\n");
 }
 
 #[test]

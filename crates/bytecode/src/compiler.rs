@@ -1,4 +1,6 @@
-use kagura_ast::{BinaryOp, Expr, ForInit, FuncDecl, Param, Program, Stmt, UnaryOp, VarDecl};
+use kagura_ast::{
+    AssignTarget, BinaryOp, Expr, ForInit, FuncDecl, Param, Program, Stmt, UnaryOp, VarDecl,
+};
 use kagura_support::{FastHashSet, Span};
 
 use crate::error::CompileError;
@@ -355,20 +357,32 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit(binary_op(*op), *span);
                 }
             }
-            Expr::Assign { name, value, span } => {
-                let (slot, mutable) = self.resolve(name).ok_or_else(|| {
-                    CompileError::new(format!("unknown variable '{name}'"), *span)
-                })?;
-                if !mutable {
-                    return Err(CompileError::new(
-                        format!("assignment to constant '{name}'"),
-                        *span,
-                    ));
+            Expr::Assign {
+                target,
+                value,
+                span,
+            } => match target {
+                AssignTarget::Ident(name) => {
+                    let (slot, mutable) = self.resolve(name).ok_or_else(|| {
+                        CompileError::new(format!("unknown variable '{name}'"), *span)
+                    })?;
+                    if !mutable {
+                        return Err(CompileError::new(
+                            format!("assignment to constant '{name}'"),
+                            *span,
+                        ));
+                    }
+                    self.compile_expr(value)?;
+                    self.emit(Op::Dup, *span);
+                    self.emit_u16(Op::StoreLocal, slot, *span);
                 }
-                self.compile_expr(value)?;
-                self.emit(Op::Dup, *span);
-                self.emit_u16(Op::StoreLocal, slot, *span);
-            }
+                AssignTarget::Member { object, property } => {
+                    self.compile_expr(object)?;
+                    self.compile_expr(value)?;
+                    let index = self.add_const(Const::String(property.clone()));
+                    self.emit_u32(Op::SetPropValue, index, *span);
+                }
+            },
             Expr::Call { callee, args, span } => {
                 if let Expr::Ident { name, .. } = callee.as_ref() {
                     self.compile_args(args)?;

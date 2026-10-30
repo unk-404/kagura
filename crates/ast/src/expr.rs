@@ -38,7 +38,7 @@ pub enum Expr {
         span: Span,
     },
     Assign {
-        name: String,
+        target: AssignTarget,
         value: Box<Expr>,
         span: Span,
     },
@@ -61,6 +61,12 @@ pub enum Expr {
         ty: TypeAnn,
         span: Span,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum AssignTarget {
+    Ident(String),
+    Member { object: Box<Expr>, property: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]

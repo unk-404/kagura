@@ -25,6 +25,21 @@ fn parses_object_literal() {
 }
 
 #[test]
+fn parses_member_assignment_target() {
+    let program = parse("point.x = 2;").unwrap();
+    let kagura_ast::Stmt::Expr { expr, .. } = &program.body[0] else {
+        panic!("expected expression statement");
+    };
+    assert!(matches!(
+        expr,
+        kagura_ast::Expr::Assign {
+            target: kagura_ast::AssignTarget::Member { .. },
+            ..
+        }
+    ));
+}
+
+#[test]
 fn rejects_unterminated_string() {
     let error = parse("let value = \"oops;").unwrap_err();
     assert!(error.message.contains("unterminated string"));

@@ -1,6 +1,6 @@
 use kagura_ast::{
-    BinaryOp, Expr, ForInit, FuncDecl, ObjectProperty, Param, Program, Stmt, TypeAnn, UnaryOp,
-    VarDecl, VarKind,
+    AssignTarget, BinaryOp, Expr, ForInit, FuncDecl, ObjectProperty, Param, Program, Stmt, TypeAnn,
+    UnaryOp, VarDecl, VarKind,
 };
 use kagura_support::Span;
 use tracing::instrument;
@@ -317,7 +317,14 @@ impl Parser {
             let span = left.span().merge(value.span());
             return match left {
                 Expr::Ident { name, .. } => Ok(Expr::Assign {
-                    name,
+                    target: AssignTarget::Ident(name),
+                    value: Box::new(value),
+                    span,
+                }),
+                Expr::Member {
+                    object, property, ..
+                } => Ok(Expr::Assign {
+                    target: AssignTarget::Member { object, property },
                     value: Box::new(value),
                     span,
                 }),
