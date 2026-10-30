@@ -98,6 +98,8 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
         "Number.isSafeInteger",
         "Number.parseInt",
         "Number.parseFloat",
+        "String.fromCharCode",
+        "String.fromCodePoint",
     ];
     if metadata
         .flags

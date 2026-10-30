@@ -56,6 +56,28 @@ impl<'a> Interpreter<'a> {
                 .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
             return Ok(Some(self.heap.number(parse_float_prefix(&text))));
         }
+        if path == "String.fromCharCode" {
+            let mut text = String::new();
+            for value in args {
+                let unit = self.heap.to_number(*value).unwrap_or(0.0) as u32 & 0xFFFF;
+                text.push(char::from_u32(unit).unwrap_or('\u{FFFD}'));
+            }
+            return Ok(Some(self.heap.string(&text)));
+        }
+        if path == "String.fromCodePoint" {
+            let mut text = String::new();
+            for value in args {
+                let number = self.heap.to_number(*value).unwrap_or(f64::NAN);
+                let Some(ch) = (number.is_finite() && number >= 0.0 && number <= 0x10FFFF as f64)
+                    .then_some(number as u32)
+                    .and_then(char::from_u32)
+                else {
+                    return Err(RuntimeError::range("invalid code point", span));
+                };
+                text.push(ch);
+            }
+            return Ok(Some(self.heap.string(&text)));
+        }
         if path == "Object" {
             let value = args.first().copied().unwrap_or_else(Value::undefined);
             if value.is_undefined() || value.is_null() {
@@ -2560,6 +2582,15 @@ impl<'a> Interpreter<'a> {
             {
                 return Ok(Some(value));
             }
+        }
+        if let Some(boolean) = object.as_boolean() {
+            return Ok(Some(match key {
+                "valueOf" => object,
+                "toString" | "toLocaleString" => {
+                    self.heap.string(if boolean { "true" } else { "false" })
+                }
+                _ => return Ok(None),
+            }));
         }
         if let Some(number) = self.heap.as_number(object) {
             return Ok(Some(match key {

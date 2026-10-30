@@ -840,6 +840,19 @@ fn runs_number_static_and_prototype_methods() {
 }
 
 #[test]
+fn runs_string_statics_and_boolean_methods() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(String.fromCharCode(65, 66), String.fromCodePoint(128512), true.toString());",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "AB 😀 true\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
