@@ -1379,6 +1379,11 @@ impl<'a> FunctionCompiler<'a> {
             Expr::Object { properties, span } => {
                 self.emit(Op::NewObject, *span);
                 for property in properties {
+                    if property.spread {
+                        self.compile_expr(&property.value)?;
+                        self.emit(Op::SpreadObject, property.span);
+                        continue;
+                    }
                     self.emit(Op::Dup, *span);
                     self.compile_expr(&property.value)?;
                     let index = self.add_const(Const::String(property.key.clone()));

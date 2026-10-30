@@ -239,6 +239,13 @@ impl<'a> Interpreter<'a> {
                     };
                     push(&mut stack, self.heap.number(value), span)?;
                 }
+                Op::SpreadObject => {
+                    let source = pop(&mut stack, span)?;
+                    let target = *stack
+                        .last()
+                        .ok_or_else(|| RuntimeError::runtime("operand stack underflow", span))?;
+                    try_op!(self.copy_spread_properties(target, source, span));
+                }
                 Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;

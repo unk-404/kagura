@@ -75,6 +75,7 @@ The current P1 slice adds:
   `SyntaxError`, `Test262Error`, `Object`, and `Array` targets
 - `JSON.parse` backed by `serde_json`; `JSON.stringify` uses the existing
   object/array serializer
+- object spread in object literals (`{ ...source }`)
 - `globalThis` global object and stable script `this`
 - stable builtin identity through a per-interpreter builtin cache
 - logical assignment (`&&=`, `||=`, `??=`), nullish coalescing, and fixed
@@ -155,8 +156,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 19237 executed, 4188 passed, 15049 failed, 34792 skipped
-oracle node: 4188 checked, 4183 matched, 5 mismatched
+54029 selected, 19301 executed, 4200 passed, 15101 failed, 34728 skipped
+oracle node: 4200 checked, 4195 matched, 5 mismatched
 ```
 
 The five Node mismatches are tracked as differential warnings, not hidden:

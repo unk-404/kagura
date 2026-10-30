@@ -121,6 +121,7 @@ pub enum AssignTarget {
 pub struct ObjectProperty {
     pub key: String,
     pub value: Expr,
+    pub spread: bool,
     pub span: Span,
 }
 

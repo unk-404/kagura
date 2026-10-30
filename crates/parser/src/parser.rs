@@ -917,6 +917,20 @@ impl Parser {
         if !self.at(&TokenKind::RBrace) {
             loop {
                 let key_token = self.peek().clone();
+                if self.eat(&TokenKind::DotDotDot) {
+                    let value = self.parse_expr()?;
+                    let span = key_token.span.merge(value.span());
+                    properties.push(ObjectProperty {
+                        key: String::new(),
+                        value,
+                        spread: true,
+                        span,
+                    });
+                    if !self.eat(&TokenKind::Comma) || self.at(&TokenKind::RBrace) {
+                        break;
+                    }
+                    continue;
+                }
                 let key = match key_token.kind {
                     TokenKind::Ident(key) | TokenKind::Str(key) => key,
                     TokenKind::Number(value) => format!("{value}"),
@@ -931,7 +945,12 @@ impl Parser {
                 self.expect(&TokenKind::Colon, "expected ':' after object property")?;
                 let value = self.parse_expr()?;
                 let span = key_token.span.merge(value.span());
-                properties.push(ObjectProperty { key, value, span });
+                properties.push(ObjectProperty {
+                    key,
+                    value,
+                    spread: false,
+                    span,
+                });
                 if !self.eat(&TokenKind::Comma) || self.at(&TokenKind::RBrace) {
                     break;
                 }

@@ -67,6 +67,7 @@ pub enum Op {
     ForInKeys = 63,
     CallBuiltin = 64,
     Pow = 65,
+    SpreadObject = 66,
 }
 
 impl Op {
@@ -138,6 +139,7 @@ impl Op {
             63 => Self::ForInKeys,
             64 => Self::CallBuiltin,
             65 => Self::Pow,
+            66 => Self::SpreadObject,
             _ => return None,
         })
     }

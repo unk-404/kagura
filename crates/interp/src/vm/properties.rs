@@ -305,4 +305,43 @@ impl<'a> Interpreter<'a> {
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         }
     }
+
+    pub(super) fn copy_spread_properties(
+        &mut self,
+        target: Value,
+        source: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let Some(source_id) = source.object_offset().map(kagura_object::ObjectId::new) else {
+            return Ok(());
+        };
+        let shape = self
+            .objects
+            .shape(source_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let keys = kagura_object::own_property_keys(self.shapes, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for key in keys {
+            let enumerable = self
+                .shapes
+                .lookup(shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .is_some_and(|descriptor| descriptor.attributes.enumerable);
+            if !enumerable {
+                continue;
+            }
+            let key_string = match &key {
+                PropertyKey::Index(index) => index.to_string(),
+                PropertyKey::String(key) => key.clone(),
+                PropertyKey::Symbol(_) => continue,
+            };
+            if let Some(value) = self
+                .get_own_data_property(source, &key_string)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                self.set_property(target, &key_string, value, span)?;
+            }
+        }
+        Ok(())
+    }
 }

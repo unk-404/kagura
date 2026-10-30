@@ -918,6 +918,19 @@ fn exposes_global_this() {
 }
 
 #[test]
+fn spreads_object_literals() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var x = { a: 1, b: 2 }; var y = { ...x, b: 3, c: 4 }; console.log(y.a, y.b, y.c, Object.keys(y).join(','));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "1 3 4 a,b,c\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
