@@ -77,6 +77,7 @@ impl<'a> Interpreter<'a> {
         self.depth += 1;
         let frame = FrameContext {
             caller_roots,
+            args,
             env,
             closure_env,
             self_value: receiver,

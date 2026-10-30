@@ -46,6 +46,7 @@ const METHOD_THIS: &str = include_str!("../../../examples/method_this.ts");
 const METHOD_SHADOWING: &str = include_str!("../../../examples/method_shadowing.ts");
 const ARROW_THIS: &str = include_str!("../../../examples/arrow_this.ts");
 const DEFAULT_PARAMS: &str = include_str!("../../../examples/default_params.ts");
+const REST_PARAMS: &str = include_str!("../../../examples/rest_params.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -477,6 +478,14 @@ fn applies_default_parameters() {
     let mut runtime = Runtime::default();
     runtime.run(DEFAULT_PARAMS, &mut host).unwrap();
     assert_eq!(host.output(), "6\n8\n8\n10\n11\n");
+}
+
+#[test]
+fn collects_rest_parameters() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(REST_PARAMS, &mut host).unwrap();
+    assert_eq!(host.output(), "1-2-3\n\n2\n");
 }
 
 #[test]

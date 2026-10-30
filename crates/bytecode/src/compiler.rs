@@ -189,6 +189,18 @@ impl<'a> FunctionCompiler<'a> {
         Ok(())
     }
 
+    fn compile_rest_param(&mut self, params: &[Param]) -> Result<(), CompileError> {
+        let Some((slot, param)) = params.iter().enumerate().find(|(_, param)| param.rest) else {
+            return Ok(());
+        };
+        if slot + 1 != params.len() {
+            return Err(CompileError::new("rest parameter must be last", param.span));
+        }
+        self.emit_u16(Op::Rest, slot as u16, param.span);
+        self.emit_u16(Op::StoreLocal, slot as u16, param.span);
+        Ok(())
+    }
+
     fn finish(self) -> FunctionProto {
         FunctionProto {
             name: self.name,
@@ -570,6 +582,7 @@ impl<'a> FunctionCompiler<'a> {
             compiler.self_slot = Some(slot);
         }
         compiler.compile_param_defaults(params)?;
+        compiler.compile_rest_param(params)?;
         for stmt in body {
             compiler.compile_stmt(stmt)?;
         }

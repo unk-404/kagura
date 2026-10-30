@@ -58,6 +58,7 @@ pub(crate) enum TokenKind {
     OrOr,
     Bang,
     Dot,
+    DotDotDot,
     Eof,
 }
 

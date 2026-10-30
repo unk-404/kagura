@@ -12,6 +12,7 @@ impl Parser {
         let mut params = Vec::new();
         if !self.at(&TokenKind::RParen) {
             loop {
+                let rest = self.eat(&TokenKind::DotDotDot);
                 let param_token = self.expect_ident("expected parameter name")?;
                 let param_name = match param_token.kind {
                     TokenKind::Ident(name) => name,
@@ -22,7 +23,7 @@ impl Parser {
                 } else {
                     None
                 };
-                let default = if self.eat(&TokenKind::Assign) {
+                let default = if !rest && self.eat(&TokenKind::Assign) {
                     Some(Box::new(self.parse_expr()?))
                 } else {
                     None
@@ -31,9 +32,10 @@ impl Parser {
                     name: param_name,
                     ty,
                     default,
+                    rest,
                     span: param_token.span,
                 });
-                if !self.eat(&TokenKind::Comma) {
+                if rest || !self.eat(&TokenKind::Comma) {
                     break;
                 }
             }
@@ -111,6 +113,7 @@ impl Parser {
         let mut params = Vec::new();
         if !self.at(&TokenKind::RParen) {
             loop {
+                let rest = self.eat(&TokenKind::DotDotDot);
                 let param_token = self.expect_ident("expected parameter name")?;
                 let param_name = match param_token.kind {
                     TokenKind::Ident(name) => name,
@@ -121,7 +124,7 @@ impl Parser {
                 } else {
                     None
                 };
-                let default = if self.eat(&TokenKind::Assign) {
+                let default = if !rest && self.eat(&TokenKind::Assign) {
                     Some(Box::new(self.parse_expr()?))
                 } else {
                     None
@@ -130,9 +133,10 @@ impl Parser {
                     name: param_name,
                     ty,
                     default,
+                    rest,
                     span: param_token.span,
                 });
-                if !self.eat(&TokenKind::Comma) {
+                if rest || !self.eat(&TokenKind::Comma) {
                     break;
                 }
             }

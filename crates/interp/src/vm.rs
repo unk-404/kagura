@@ -17,6 +17,7 @@ const GC_THRESHOLD: u32 = 32 * 1024;
 
 struct FrameContext<'a> {
     caller_roots: &'a [Value],
+    args: &'a [Value],
     env: Option<ObjectId>,
     closure_env: Option<ObjectId>,
     self_value: Option<Value>,
@@ -140,6 +141,19 @@ impl<'a> Interpreter<'a> {
                         self_value.unwrap_or_else(Value::undefined),
                         span,
                     )?;
+                }
+                Op::Rest => {
+                    let start = read_u16(&function.code, &mut pc, span)? as usize;
+                    let array = self
+                        .objects
+                        .allocate_array(self.shapes.root())
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    for value in frame.args.iter().skip(start) {
+                        self.objects
+                            .array_push(array, *value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                    push(&mut stack, Value::object(array.index()), span)?;
                 }
                 Op::LoadLocal => {
                     let slot = read_u16(&function.code, &mut pc, span)? as usize;

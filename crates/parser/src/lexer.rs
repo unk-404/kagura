@@ -124,6 +124,7 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
             (b'<', ..) => (TokenKind::Lt, 1),
             (b'>', ..) => (TokenKind::Gt, 1),
             (b'!', ..) => (TokenKind::Bang, 1),
+            (b'.', Some(b'.'), Some(b'.')) => (TokenKind::DotDotDot, 3),
             (b'.', ..) => (TokenKind::Dot, 1),
             _ => {
                 return Err(ParseError::new(

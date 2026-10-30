@@ -545,6 +545,7 @@ impl Parser {
                             name,
                             ty: None,
                             default: None,
+                            rest: false,
                             span: token.span,
                         }],
                         body,
