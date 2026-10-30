@@ -356,6 +356,41 @@ impl<'a> Interpreter<'a> {
                         .array_set(env, slot as u32, value)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 }
+                Op::LoadBuiltin => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let name = match self.module.constants.get(index as usize) {
+                        Some(Const::String(name)) => name.clone(),
+                        _ => return Err(RuntimeError::runtime("invalid builtin name", span)),
+                    };
+                    let value = try_op!(self.load_builtin(&name, span));
+                    push(&mut stack, value, span)?;
+                }
+                Op::NewName => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let argc = read_u8(&function.code, &mut pc, span)? as usize;
+                    let name = match self.module.constants.get(index as usize) {
+                        Some(Const::String(name)) => name.clone(),
+                        _ => return Err(RuntimeError::runtime("invalid constructor name", span)),
+                    };
+                    let mut args = Vec::with_capacity(argc);
+                    for _ in 0..argc {
+                        args.push(pop(&mut stack, span)?);
+                    }
+                    args.reverse();
+                    let value = try_op!(self.new_name(&name, &args, span));
+                    push(&mut stack, value, span)?;
+                }
+                Op::NewValue => {
+                    let argc = read_u8(&function.code, &mut pc, span)? as usize;
+                    for _ in 0..argc {
+                        pop(&mut stack, span)?;
+                    }
+                    pop(&mut stack, span)?;
+                    return Err(RuntimeError::type_error(
+                        "constructing a non-identifier target is not supported yet",
+                        span,
+                    ));
+                }
                 Op::CallName => {
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let argc = read_u8(&function.code, &mut pc, span)? as usize;
@@ -656,6 +691,33 @@ impl<'a> Interpreter<'a> {
                         args.push(pop(&mut stack, span)?);
                     }
                     args.reverse();
+                    if path == "assert.throws" {
+                        let mut roots =
+                            Vec::with_capacity(caller_roots.len() + locals.len() + stack.len() + 2);
+                        roots.extend_from_slice(caller_roots);
+                        for (value, is_defined) in locals.iter().zip(defined.iter()) {
+                            if *is_defined {
+                                roots.push(*value);
+                            }
+                        }
+                        roots.extend_from_slice(&stack);
+                        if let Some(env) = env {
+                            roots.push(Value::object(env.index()));
+                        }
+                        let value = try_op!(self.assert_throws(&args, span, &roots));
+                        push(&mut stack, value, span)?;
+                        continue;
+                    }
+                    if path == "assert.compareArray" {
+                        let value = try_op!(self.assert_compare_array(&args, span));
+                        push(&mut stack, value, span)?;
+                        continue;
+                    }
+                    if path == "assert.deepEqual" {
+                        let value = try_op!(self.assert_deep_equal(&args, span));
+                        push(&mut stack, value, span)?;
+                        continue;
+                    }
                     let dispatched = match self.resolve_host(&path, index as usize, span) {
                         Ok(id) => self.invoke_host(id, &args, span),
                         Err(host_error) => match self.call_global(&path, &args, span) {

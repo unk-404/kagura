@@ -66,14 +66,30 @@ assertions, not process output. The `--node` mode adds an independent check:
 This catches cases where Kagura's `assert` host or engine semantics disagree
 with Node, but it cannot turn a skipped feature into a pass.
 
+## P1 support
+
+The current P1 slice adds:
+
+- `new` with `Error`, `TypeError`, `RangeError`, `ReferenceError`,
+  `SyntaxError`, `Test262Error`, `Object`, and `Array` targets
+- constructor values for the error families, loaded as builtin globals
+- `assert.throws`, `assert.compareArray`, and `assert.deepEqual`
+- loading and executing extra test262 harness includes
+- conditional expressions (`cond ? then : else`)
+- a supported-feature whitelist instead of skipping every non-empty feature list
+
+These changes do not mean the skipped features are implemented; they just stop
+hiding runnable cases behind harness gaps.
+
 ## Why skips are expected
 
 A test262 runner normally skips cases that require unsupported flags or
 features. Here the skip set is large because this engine is still an M1 subset:
 `Temporal`, destructuring, classes, generators/async, TypedArrays, `Symbol`,
-`BigInt`, `Proxy`, and non-`assert.js`/`sta.js` harness files are not
-implemented. Those cases are counted as `skip`, never as `pass`. A high skip
-count is normal for an in-progress engine, but it is **not** a claim of full
+`BigInt`, and `Proxy` are not implemented. Extra harness includes are loaded
+and executed; if the engine cannot parse them, the case fails rather than being
+silently skipped. Skipped cases are counted as `skip`, never as `pass`. A high
+skip count is normal for an in-progress engine, but it is **not** a claim of full
 test262 conformance.
 
 ## GitHub Actions
@@ -88,29 +104,14 @@ test262 conformance.
 The full-corpus job requires at least 1200 passing cases by default, to catch
 gross regressions without pretending the whole suite is green.
 
-## Differential sample
-
-To keep a full `--node-all` run bounded, the first 5000 discovered cases give
-this taxonomy:
-
-```text
-selected 5000, executed 2606, passed 54, failed 2552, skipped 2394
-oracle checked 2606, matched 53, mismatched 2459, both_failed 94
-mismatched split: 2458 kagura-fail/node-pass, 1 kagura-pass/node-fail
-```
-
-The dominant bucket is therefore **Kagura fail / Node pass**: missing engine
-semantics and built-ins, not Node disagreements. The one `kagura-pass/node-fail`
-case is the Annex-B divergence described below.
-
 ## Report baseline
 
 Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 13080 executed, 1390 passed, 11690 failed, 40949 skipped
-oracle node: 1390 checked, 1389 matched, 1 mismatched
+54029 selected, 18431 executed, 1727 passed, 16704 failed, 35598 skipped
+oracle node: 1727 checked, 1726 matched, 1 mismatched
 ```
 
 The single Node mismatch is an Annex-B function-declaration test where Node 22

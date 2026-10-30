@@ -16,6 +16,14 @@ pub struct NodeResult {
 pub fn run_case(case: &TestCase, harness: &Path) -> io::Result<NodeResult> {
     let sta = std::fs::read_to_string(harness.join("sta.js"))?;
     let assert = std::fs::read_to_string(harness.join("assert.js"))?;
+    let mut includes = String::new();
+    for include in &case.metadata.includes {
+        if matches!(include.as_str(), "assert.js" | "sta.js") {
+            continue;
+        }
+        includes.push_str(&std::fs::read_to_string(harness.join(include))?);
+        includes.push('\n');
+    }
     let directory = std::env::temp_dir().join(format!(
         "kagura-test262-{}-{}",
         std::process::id(),
@@ -23,7 +31,7 @@ pub fn run_case(case: &TestCase, harness: &Path) -> io::Result<NodeResult> {
     ));
     std::fs::create_dir_all(&directory)?;
     let path = directory.join("case.js");
-    let source = format!("{sta}\n{assert}\n{}\n", case.source);
+    let source = format!("{sta}\n{assert}\n{includes}\n{}\n", case.source);
     std::fs::write(&path, source)?;
     let output = Command::new("node")
         .arg("--no-warnings")

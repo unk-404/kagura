@@ -37,6 +37,43 @@ pub fn discover(root: &Path) -> io::Result<Vec<TestCase>> {
 }
 
 pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
+    const SUPPORTED_FEATURES: &[&str] = &[
+        "arrow-function",
+        "let",
+        "const",
+        "default-parameters",
+        "rest-parameters",
+        "Array.from",
+        "Array.of",
+        "Array.prototype.includes",
+        "Array.prototype.map",
+        "Array.prototype.filter",
+        "Array.prototype.forEach",
+        "Array.prototype.some",
+        "Array.prototype.every",
+        "Array.prototype.find",
+        "Array.prototype.reduce",
+        "Array.prototype.reverse",
+        "Array.prototype.concat",
+        "Object.assign",
+        "Object.keys",
+        "Object.values",
+        "Object.entries",
+        "Object.create",
+        "Object.defineProperty",
+        "Object.freeze",
+        "Object.seal",
+        "Object.hasOwn",
+        "String.prototype.includes",
+        "String.prototype.startsWith",
+        "String.prototype.endsWith",
+        "String.prototype.repeat",
+        "String.prototype.replace",
+        "String.prototype.replaceAll",
+        "String.prototype.trimStart",
+        "String.prototype.trimEnd",
+        "String.prototype.split",
+    ];
     if metadata
         .flags
         .iter()
@@ -44,15 +81,11 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
     {
         return Some("unsupported test262 flag");
     }
-    if !metadata.includes.is_empty()
-        && metadata
-            .includes
-            .iter()
-            .any(|include| !matches!(include.as_str(), "assert.js" | "sta.js"))
+    if metadata
+        .features
+        .iter()
+        .any(|feature| !SUPPORTED_FEATURES.contains(&feature.as_str()))
     {
-        return Some("test262 includes beyond assert.js/sta.js are not supported yet");
-    }
-    if !metadata.features.is_empty() {
         return Some("test262 features not supported yet");
     }
     None
@@ -76,10 +109,22 @@ pub fn run_case(case: &TestCase) -> CaseReport {
         };
     }
 
+    let source = match source_with_includes(case) {
+        Ok(source) => source,
+        Err(message) => {
+            return CaseReport {
+                path: case.path.clone(),
+                outcome: Outcome::Fail,
+                message,
+                output: String::new(),
+            };
+        }
+    };
+
     let mut host = Test262Host::default();
     let mut runtime = Runtime::default();
     runtime.set_step_limit(5_000);
-    let result = runtime.run(&case.source, &mut host);
+    let result = runtime.run(&source, &mut host);
     let (outcome, message) = match (case.metadata.negative.as_ref(), result) {
         (None, Ok(_)) => (Outcome::Pass, String::new()),
         (Some(negative), Err(error)) => {
@@ -117,13 +162,42 @@ fn phase_matches(phase: &str, error: &RunError) -> bool {
     }
 }
 
+fn source_with_includes(case: &TestCase) -> Result<String, String> {
+    let harness = harness_dir_for(&case.path);
+    let mut source = String::new();
+    for include in &case.metadata.includes {
+        if matches!(include.as_str(), "assert.js" | "sta.js") {
+            continue;
+        }
+        let Some(harness) = harness.as_ref() else {
+            return Err(format!("cannot locate harness for include '{include}'"));
+        };
+        let path = harness.join(include);
+        let text = fs::read_to_string(&path)
+            .map_err(|error| format!("cannot read include '{}': {error}", path.display()))?;
+        source.push_str(&text);
+        source.push('\n');
+    }
+    source.push_str(&case.source);
+    Ok(source)
+}
+
+fn harness_dir_for(path: &Path) -> Option<PathBuf> {
+    let mut current = path.parent();
+    while let Some(directory) = current {
+        if directory.file_name().is_some_and(|name| name == "test") {
+            let harness = directory.parent()?.join("harness");
+            if harness.join("assert.js").is_file() {
+                return Some(harness);
+            }
+        }
+        current = directory.parent();
+    }
+    None
+}
+
 fn unsupported_assertion(source: &str) -> Option<&'static str> {
-    const UNSUPPORTED: &[&str] = &[
-        "assert.throws",
-        "assert.throwsAsync",
-        "assert.compareArray",
-        "assert.deepEqual",
-    ];
+    const UNSUPPORTED: &[&str] = &["assert.throwsAsync"];
     UNSUPPORTED
         .iter()
         .copied()

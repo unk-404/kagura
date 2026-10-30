@@ -263,6 +263,20 @@ impl Parser {
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         let left = self.parse_or()?;
+        let left = if self.eat(&TokenKind::Question) {
+            let then_branch = self.parse_expr()?;
+            self.expect(&TokenKind::Colon, "expected ':' in conditional expression")?;
+            let else_branch = self.parse_or()?;
+            let span = left.span().merge(else_branch.span());
+            Expr::Conditional {
+                condition: Box::new(left),
+                then_branch: Box::new(then_branch),
+                else_branch: Box::new(else_branch),
+                span,
+            }
+        } else {
+            left
+        };
         if self.eat(&TokenKind::Assign) {
             let value = self.parse_expr()?;
             let span = left.span().merge(value.span());
@@ -420,6 +434,22 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        if self.at(&TokenKind::New) {
+            let start = self.advance().span;
+            let callee = self.parse_postfix()?;
+            let (callee, args, end) = match callee {
+                Expr::Call { callee, args, span } => (callee, args, span),
+                other => {
+                    let span = other.span();
+                    (Box::new(other), Vec::new(), span)
+                }
+            };
+            return Ok(Expr::New {
+                callee,
+                args,
+                span: start.merge(end),
+            });
+        }
         let op = match self.peek().kind {
             TokenKind::Minus => Some(UnaryOp::Neg),
             TokenKind::Plus => Some(UnaryOp::Plus),

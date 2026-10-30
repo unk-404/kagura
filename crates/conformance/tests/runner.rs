@@ -53,7 +53,7 @@ fn skips_unsupported_harness_and_flags() {
         includes: vec!["helper.js".into()],
         ..Metadata::default()
     };
-    assert!(skip_reason(&metadata).is_some());
+    assert_eq!(skip_reason(&metadata), None);
 
     let metadata = Metadata {
         includes: vec!["assert.js".into(), "sta.js".into()],
@@ -95,6 +95,26 @@ fn captures_test262_output() {
     let report = run_case(&case);
     assert_eq!(report.outcome, Outcome::Pass);
     assert_eq!(report.output, "a 1\n");
+}
+
+#[test]
+fn supports_error_construction_and_throws_assertions() {
+    let case = TestCase {
+        path: "errors.js".into(),
+        source: "let error = new TypeError('x'); assert.sameValue(error.name, 'TypeError'); assert.throws(TypeError, function () { null.x; });".into(),
+        metadata: Metadata::default(),
+    };
+    assert_eq!(run_case(&case).outcome, Outcome::Pass);
+}
+
+#[test]
+fn supports_compare_and_deep_assertions() {
+    let case = TestCase {
+        path: "compare.js".into(),
+        source: "assert.compareArray([1, 2], [1, 2]); assert.deepEqual({ a: 1 }, { a: 1 });".into(),
+        metadata: Metadata::default(),
+    };
+    assert_eq!(run_case(&case).outcome, Outcome::Pass);
 }
 
 #[test]

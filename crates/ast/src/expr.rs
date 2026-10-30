@@ -41,12 +41,23 @@ pub enum Expr {
         right: Box<Expr>,
         span: Span,
     },
+    Conditional {
+        condition: Box<Expr>,
+        then_branch: Box<Expr>,
+        else_branch: Box<Expr>,
+        span: Span,
+    },
     Assign {
         target: AssignTarget,
         value: Box<Expr>,
         span: Span,
     },
     Call {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+        span: Span,
+    },
+    New {
         callee: Box<Expr>,
         args: Vec<Expr>,
         span: Span,
@@ -119,8 +130,10 @@ impl Expr {
             | Self::Ident { span, .. }
             | Self::Unary { span, .. }
             | Self::Binary { span, .. }
+            | Self::Conditional { span, .. }
             | Self::Assign { span, .. }
             | Self::Call { span, .. }
+            | Self::New { span, .. }
             | Self::Member { span, .. }
             | Self::Object { span, .. }
             | Self::Array { span, .. }

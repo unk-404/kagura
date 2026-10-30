@@ -59,6 +59,9 @@ pub enum Op {
     Arguments = 55,
     DeleteProp = 56,
     DeleteIndex = 57,
+    NewName = 58,
+    NewValue = 59,
+    LoadBuiltin = 60,
 }
 
 impl Op {
@@ -122,6 +125,9 @@ impl Op {
             55 => Self::Arguments,
             56 => Self::DeleteProp,
             57 => Self::DeleteIndex,
+            58 => Self::NewName,
+            59 => Self::NewValue,
+            60 => Self::LoadBuiltin,
             _ => return None,
         })
     }

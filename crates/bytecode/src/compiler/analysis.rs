@@ -116,8 +116,18 @@ fn expr_has_closure(expr: &Expr) -> bool {
         Expr::Function { .. } | Expr::Arrow { .. } => true,
         Expr::Unary { expr, .. } | Expr::As { expr, .. } => expr_has_closure(expr),
         Expr::Binary { left, right, .. } => expr_has_closure(left) || expr_has_closure(right),
+        Expr::Conditional {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_has_closure(condition)
+                || expr_has_closure(then_branch)
+                || expr_has_closure(else_branch)
+        }
         Expr::Assign { target, value, .. } => target_has_closure(target) || expr_has_closure(value),
-        Expr::Call { callee, args, .. } => {
+        Expr::Call { callee, args, .. } | Expr::New { callee, args, .. } => {
             expr_has_closure(callee) || args.iter().any(expr_has_closure)
         }
         Expr::Member { object, .. } => expr_has_closure(object),

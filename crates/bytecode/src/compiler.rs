@@ -879,10 +879,15 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit_u16_raw(slot, *span);
                 }
                 None => {
-                    return Err(CompileError::new(
-                        format!("unknown variable '{name}'"),
-                        *span,
-                    ));
+                    if is_builtin_global(name) {
+                        let index = self.add_const(Const::String(name.clone()));
+                        self.emit_u32(Op::LoadBuiltin, index, *span);
+                    } else {
+                        return Err(CompileError::new(
+                            format!("unknown variable '{name}'"),
+                            *span,
+                        ));
+                    }
                 }
             },
             Expr::Unary { op, expr, span } => {
@@ -986,6 +991,22 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit(Op::SetIndexValue, *span);
                 }
             },
+            Expr::Conditional {
+                condition,
+                then_branch,
+                else_branch,
+                span,
+            } => {
+                self.compile_expr(condition)?;
+                let else_jump = self.emit_jump(Op::JumpIfFalse, *span);
+                self.emit(Op::Pop, *span);
+                self.compile_expr(then_branch)?;
+                let end_jump = self.emit_jump(Op::Jump, *span);
+                self.patch_jump(else_jump, self.code.len());
+                self.emit(Op::Pop, *span);
+                self.compile_expr(else_branch)?;
+                self.patch_jump(end_jump, self.code.len());
+            }
             Expr::Call { callee, args, span } => {
                 if let Expr::Ident { name, .. } = callee.as_ref() {
                     if self.resolve(name).is_some() {
@@ -1023,6 +1044,19 @@ impl<'a> FunctionCompiler<'a> {
                     self.compile_expr(callee)?;
                     self.compile_args(args)?;
                     self.emit(Op::CallValue, *span);
+                    self.emit_u8_raw(args.len(), *span);
+                }
+            }
+            Expr::New { callee, args, span } => {
+                if let Expr::Ident { name, .. } = callee.as_ref() {
+                    self.compile_args(args)?;
+                    let index = self.add_const(Const::String(name.clone()));
+                    self.emit_u32(Op::NewName, index, *span);
+                    self.emit_u8_raw(args.len(), *span);
+                } else {
+                    self.compile_expr(callee)?;
+                    self.compile_args(args)?;
+                    self.emit(Op::NewValue, *span);
                     self.emit_u8_raw(args.len(), *span);
                 }
             }
@@ -1261,6 +1295,20 @@ impl<'a> FunctionCompiler<'a> {
         self.code.push(byte);
         self.spans.push(span);
     }
+}
+
+fn is_builtin_global(name: &str) -> bool {
+    matches!(
+        name,
+        "Error"
+            | "TypeError"
+            | "RangeError"
+            | "ReferenceError"
+            | "SyntaxError"
+            | "Test262Error"
+            | "Object"
+            | "Array"
+    )
 }
 
 fn binary_op(op: BinaryOp) -> Op {
