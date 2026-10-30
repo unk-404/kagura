@@ -7,4 +7,8 @@ fn emits_gc_checks_in_entry_loop_body() {
     let module = compile(&program).unwrap();
     let entry = &module.functions[module.entry];
     assert!(entry.code.contains(&(Op::GcCheck as u8)));
+    assert!(!entry.safepoints.is_empty());
+    for safepoint in &entry.safepoints {
+        assert_eq!(entry.code[safepoint.pc as usize], Op::GcCheck as u8);
+    }
 }

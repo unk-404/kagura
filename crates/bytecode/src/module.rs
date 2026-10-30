@@ -12,6 +12,13 @@ pub enum Const {
     False,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Safepoint {
+    pub pc: u32,
+    pub local_count: u16,
+    pub operand_depth: u16,
+}
+
 #[derive(Clone, Debug)]
 pub struct FunctionProto {
     pub name: String,
@@ -21,6 +28,7 @@ pub struct FunctionProto {
     pub self_slot: Option<u16>,
     pub code: Vec<u8>,
     pub spans: Vec<Span>,
+    pub safepoints: Vec<Safepoint>,
 }
 
 #[derive(Clone, Debug)]
@@ -32,7 +40,7 @@ pub struct Module {
 }
 
 pub const MAGIC: [u8; 4] = *b"KGB1";
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
 pub const MIN_VERSION: u16 = 1;
 
 impl Module {
@@ -47,6 +55,15 @@ impl Module {
             .get(function)
             .and_then(|function| function.spans.get(pc).copied())
             .unwrap_or_default()
+    }
+
+    pub fn safepoint_at(&self, function: usize, pc: usize) -> Option<Safepoint> {
+        self.functions
+            .get(function)?
+            .safepoints
+            .iter()
+            .find(|safepoint| safepoint.pc as usize == pc)
+            .copied()
     }
 
     pub fn encode(&self) -> Vec<u8> {
@@ -84,6 +101,14 @@ impl Module {
             for span in &function.spans {
                 out.extend_from_slice(&span.start.to_le_bytes());
                 out.extend_from_slice(&span.end.to_le_bytes());
+            }
+            if self.version >= 2 {
+                write_u32(&mut out, function.safepoints.len() as u32);
+                for safepoint in &function.safepoints {
+                    write_u32(&mut out, safepoint.pc);
+                    out.extend_from_slice(&safepoint.local_count.to_le_bytes());
+                    out.extend_from_slice(&safepoint.operand_depth.to_le_bytes());
+                }
             }
         }
         out
@@ -130,6 +155,17 @@ impl Module {
             for _ in 0..span_count {
                 spans.push(Span::new(reader.u32()?, reader.u32()?));
             }
+            let mut safepoints = Vec::new();
+            if version >= 2 {
+                let safepoint_count = reader.u32()? as usize;
+                for _ in 0..safepoint_count {
+                    safepoints.push(Safepoint {
+                        pc: reader.u32()?,
+                        local_count: reader.u16()?,
+                        operand_depth: reader.u16()?,
+                    });
+                }
+            }
             functions.push(FunctionProto {
                 name,
                 param_count,
@@ -138,6 +174,7 @@ impl Module {
                 self_slot,
                 code,
                 spans,
+                safepoints,
             });
         }
         if reader.remaining() != 0 {

@@ -7,7 +7,7 @@ use kagura_ast::{
 use kagura_support::{FastHashSet, Span};
 
 use crate::error::CompileError;
-use crate::module::{Const, FunctionProto, Module, VERSION};
+use crate::module::{Const, FunctionProto, Module, Safepoint, VERSION};
 use crate::op::Op;
 use analysis::{
     body_has_closure, collect_iteration_locals, loop_has_closure, member_path, params_have_closure,
@@ -168,6 +168,7 @@ struct FunctionCompiler<'a> {
     param_count: u16,
     code: Vec<u8>,
     spans: Vec<Span>,
+    safepoints: Vec<Safepoint>,
     locals: Vec<Local>,
     scopes: Vec<usize>,
     loops: Vec<LoopContext>,
@@ -200,6 +201,7 @@ impl<'a> FunctionCompiler<'a> {
             param_count: params.len() as u16,
             code: Vec::new(),
             spans: Vec::new(),
+            safepoints: Vec::new(),
             locals: Vec::new(),
             scopes: vec![0],
             loops: Vec::new(),
@@ -398,11 +400,17 @@ impl<'a> FunctionCompiler<'a> {
             self_slot: self.self_slot,
             code: self.code,
             spans: self.spans,
+            safepoints: self.safepoints,
         }
     }
 
     fn compile_stmt(&mut self, stmt: &Stmt) -> Result<(), CompileError> {
         if self.gc_safe {
+            self.safepoints.push(Safepoint {
+                pc: self.code.len() as u32,
+                local_count: self.locals.len() as u16,
+                operand_depth: 0,
+            });
             self.emit(Op::GcCheck, stmt.span());
         }
         match stmt {

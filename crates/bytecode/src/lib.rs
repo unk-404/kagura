@@ -6,5 +6,5 @@ mod op;
 pub mod builtins;
 pub use compiler::compile;
 pub use error::{CompileError, DecodeError};
-pub use module::{Const, FunctionProto, MAGIC, MIN_VERSION, Module, VERSION};
+pub use module::{Const, FunctionProto, MAGIC, MIN_VERSION, Module, Safepoint, VERSION};
 pub use op::Op;

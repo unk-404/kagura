@@ -10,7 +10,7 @@ fn sample() -> Module {
 }
 
 #[test]
-fn round_trips_bytecode_v1() {
+fn round_trips_current_bytecode() {
     let module = sample();
     let bytes = module.encode();
     let decoded = Module::decode(&bytes).unwrap();
@@ -24,6 +24,7 @@ fn round_trips_bytecode_v1() {
         assert_eq!(left.local_count, right.local_count);
         assert_eq!(left.code, right.code);
         assert_eq!(left.spans, right.spans);
+        assert_eq!(left.safepoints, right.safepoints);
     }
 }
 
