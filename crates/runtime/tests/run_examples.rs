@@ -879,6 +879,19 @@ fn runs_exponentiation_separators_and_find_last() {
 }
 
 #[test]
+fn runs_logical_assignments_and_nullish() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var a = 0; a ||= 5; var b = 1; b &&= 7; var c = null; c ??= 9; console.log(a, b, c, null ?? 4, true ? 1 : 2);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "5 7 9 4 1\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

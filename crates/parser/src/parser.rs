@@ -344,7 +344,23 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Expr, ParseError> {
-        let left = self.parse_or()?;
+        let mut left = self.parse_or()?;
+        while self.eat(&TokenKind::Nullish) {
+            let right = self.parse_or()?;
+            let span = left.span().merge(right.span());
+            let read = left.clone();
+            left = Expr::Conditional {
+                condition: Box::new(Expr::Binary {
+                    op: BinaryOp::Eq,
+                    left: Box::new(read.clone()),
+                    right: Box::new(Expr::Null { span }),
+                    span,
+                }),
+                then_branch: Box::new(right),
+                else_branch: Box::new(read),
+                span,
+            };
+        }
         let left = if self.eat(&TokenKind::Question) {
             let then_branch = self.parse_expr()?;
             self.expect(&TokenKind::Colon, "expected ':' in conditional expression")?;
@@ -359,6 +375,49 @@ impl Parser {
         } else {
             left
         };
+        if let Some(op) = match self.peek().kind {
+            TokenKind::AndEq => Some(BinaryOp::And),
+            TokenKind::OrEq => Some(BinaryOp::Or),
+            TokenKind::NullishEq => Some(BinaryOp::Eq),
+            _ => None,
+        } {
+            self.advance();
+            let right = self.parse_expr()?;
+            let span = left.span().merge(right.span());
+            let read = left.clone();
+            let target = match left {
+                Expr::Ident { name, .. } => AssignTarget::Ident(name),
+                Expr::Member {
+                    object, property, ..
+                } => AssignTarget::Member { object, property },
+                Expr::Index { object, index, .. } => AssignTarget::Index { object, index },
+                _ => return Err(ParseError::new("invalid assignment target", span)),
+            };
+            let assignment = Expr::Assign {
+                target,
+                value: Box::new(right),
+                span,
+            };
+            return Ok(match op {
+                BinaryOp::And | BinaryOp::Or => Expr::Binary {
+                    op,
+                    left: Box::new(read),
+                    right: Box::new(assignment),
+                    span,
+                },
+                _ => Expr::Conditional {
+                    condition: Box::new(Expr::Binary {
+                        op: BinaryOp::Eq,
+                        left: Box::new(read.clone()),
+                        right: Box::new(Expr::Null { span }),
+                        span,
+                    }),
+                    then_branch: Box::new(assignment),
+                    else_branch: Box::new(read),
+                    span,
+                },
+            });
+        }
         if let Some(op) = match self.peek().kind {
             TokenKind::PlusEq => Some(BinaryOp::Add),
             TokenKind::MinusEq => Some(BinaryOp::Sub),

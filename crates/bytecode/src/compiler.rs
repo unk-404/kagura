@@ -1292,11 +1292,9 @@ impl<'a> FunctionCompiler<'a> {
             } => {
                 self.compile_expr(condition)?;
                 let else_jump = self.emit_jump(Op::JumpIfFalse, *span);
-                self.emit(Op::Pop, *span);
                 self.compile_expr(then_branch)?;
                 let end_jump = self.emit_jump(Op::Jump, *span);
                 self.patch_jump(else_jump, self.code.len());
-                self.emit(Op::Pop, *span);
                 self.compile_expr(else_branch)?;
                 self.patch_jump(end_jump, self.code.len());
             }
