@@ -365,8 +365,18 @@ impl<'a> Interpreter<'a> {
                 Op::GetIndex => {
                     let index = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
-                    let id = self.object_id(object, span)?;
                     let index = self.index_value(index, span)?;
+                    if let Some(text) = self.heap.as_str(object) {
+                        let value = text
+                            .encode_utf16()
+                            .nth(index as usize)
+                            .and_then(|unit| String::from_utf16(&[unit]).ok())
+                            .map(|unit| self.heap.string(&unit))
+                            .unwrap_or_else(Value::undefined);
+                        push(&mut stack, value, span)?;
+                        continue;
+                    }
+                    let id = self.object_id(object, span)?;
                     let value = self
                         .objects
                         .array_get(id, index)
@@ -494,6 +504,14 @@ impl<'a> Interpreter<'a> {
         key: &str,
         span: Span,
     ) -> Result<Value, RuntimeError> {
+        if key == "length"
+            && let Some(length) = self
+                .heap
+                .as_str(object)
+                .map(|text| text.encode_utf16().count() as f64)
+        {
+            return Ok(self.heap.number(length));
+        }
         let id = self.object_id(object, span)?;
         if key == "length"
             && self
