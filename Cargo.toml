@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+phf = { version = "0.14", default-features = false, features = ["macros"] }
 serde_json = { version = "1", default-features = false, features = ["std", "preserve_order"] }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
 thiserror = { version = "2", default-features = false, features = ["std"] }

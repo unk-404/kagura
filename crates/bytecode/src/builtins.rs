@@ -1,125 +1,67 @@
-/// Stable identifiers for builtins that the compiler can resolve without a
-/// runtime string lookup.
-///
-/// Values are encoded in bytecode and must never be reused. Unknown or
-/// user-shadowed paths still use `CallHost`.
-#[repr(u16)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BuiltinId {
-    JsonParse = 1,
-    JsonStringify = 2,
-    ObjectProtoToStringCall = 3,
-    ObjectProtoHasOwnCall = 4,
-    ParseInt = 5,
-    ParseFloat = 6,
-    IsNaN = 7,
-    IsFinite = 8,
-    MathAbs = 20,
-    MathAcos = 21,
-    MathAsin = 22,
-    MathAtan = 23,
-    MathAtan2 = 24,
-    MathCeil = 25,
-    MathClz32 = 26,
-    MathCos = 27,
-    MathExp = 28,
-    MathFloor = 29,
-    MathFround = 30,
-    MathHypot = 31,
-    MathImul = 32,
-    MathLog = 33,
-    MathLog10 = 34,
-    MathLog2 = 35,
-    MathMax = 36,
-    MathMin = 37,
-    MathPow = 38,
-    MathRound = 39,
-    MathSign = 40,
-    MathSin = 41,
-    MathSqrt = 42,
-    MathTan = 43,
-    MathTrunc = 44,
-    MathCbrt = 45,
+/// Defines the stable builtin identifiers and the compile-time path/id maps in
+/// one place. The numeric values are part of the bytecode ABI and must never
+/// be reused.
+macro_rules! define_builtins {
+    ($( $id:literal => $variant:ident, $path:literal ),* $(,)?) => {
+        #[repr(u16)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        pub enum BuiltinId {
+            $( $variant = $id, )*
+        }
+
+        static PATHS: phf::Map<&'static str, BuiltinId> = phf::phf_map! {
+            $( $path => BuiltinId::$variant, )*
+        };
+
+        impl BuiltinId {
+            pub fn from_path(path: &str) -> Option<Self> {
+                PATHS.get(path).copied()
+            }
+
+            pub fn from_u16(value: u16) -> Option<Self> {
+                Some(match value {
+                    $( $id => Self::$variant, )*
+                    _ => return None,
+                })
+            }
+        }
+    };
 }
 
-impl BuiltinId {
-    pub fn from_path(path: &str) -> Option<Self> {
-        Some(match path {
-            "JSON.parse" => Self::JsonParse,
-            "JSON.stringify" => Self::JsonStringify,
-            "Object.prototype.toString.call" => Self::ObjectProtoToStringCall,
-            "Object.prototype.hasOwnProperty.call" => Self::ObjectProtoHasOwnCall,
-            "parseInt" => Self::ParseInt,
-            "parseFloat" => Self::ParseFloat,
-            "isNaN" => Self::IsNaN,
-            "isFinite" => Self::IsFinite,
-            "Math.abs" => Self::MathAbs,
-            "Math.acos" => Self::MathAcos,
-            "Math.asin" => Self::MathAsin,
-            "Math.atan" => Self::MathAtan,
-            "Math.atan2" => Self::MathAtan2,
-            "Math.ceil" => Self::MathCeil,
-            "Math.clz32" => Self::MathClz32,
-            "Math.cos" => Self::MathCos,
-            "Math.exp" => Self::MathExp,
-            "Math.floor" => Self::MathFloor,
-            "Math.fround" => Self::MathFround,
-            "Math.hypot" => Self::MathHypot,
-            "Math.imul" => Self::MathImul,
-            "Math.log" => Self::MathLog,
-            "Math.log10" => Self::MathLog10,
-            "Math.log2" => Self::MathLog2,
-            "Math.max" => Self::MathMax,
-            "Math.min" => Self::MathMin,
-            "Math.pow" => Self::MathPow,
-            "Math.round" => Self::MathRound,
-            "Math.sign" => Self::MathSign,
-            "Math.sin" => Self::MathSin,
-            "Math.sqrt" => Self::MathSqrt,
-            "Math.tan" => Self::MathTan,
-            "Math.trunc" => Self::MathTrunc,
-            "Math.cbrt" => Self::MathCbrt,
-            _ => return None,
-        })
-    }
+define_builtins! {
+    1 => JsonParse, "JSON.parse",
+    2 => JsonStringify, "JSON.stringify",
+    3 => ObjectProtoToStringCall, "Object.prototype.toString.call",
+    4 => ObjectProtoHasOwnCall, "Object.prototype.hasOwnProperty.call",
+    5 => ParseInt, "parseInt",
+    6 => ParseFloat, "parseFloat",
+    7 => IsNaN, "isNaN",
+    8 => IsFinite, "isFinite",
 
-    pub fn from_u16(value: u16) -> Option<Self> {
-        Some(match value {
-            1 => Self::JsonParse,
-            2 => Self::JsonStringify,
-            3 => Self::ObjectProtoToStringCall,
-            4 => Self::ObjectProtoHasOwnCall,
-            5 => Self::ParseInt,
-            6 => Self::ParseFloat,
-            7 => Self::IsNaN,
-            8 => Self::IsFinite,
-            20 => Self::MathAbs,
-            21 => Self::MathAcos,
-            22 => Self::MathAsin,
-            23 => Self::MathAtan,
-            24 => Self::MathAtan2,
-            25 => Self::MathCeil,
-            26 => Self::MathClz32,
-            27 => Self::MathCos,
-            28 => Self::MathExp,
-            29 => Self::MathFloor,
-            30 => Self::MathFround,
-            31 => Self::MathHypot,
-            32 => Self::MathImul,
-            33 => Self::MathLog,
-            34 => Self::MathLog10,
-            35 => Self::MathLog2,
-            36 => Self::MathMax,
-            37 => Self::MathMin,
-            38 => Self::MathPow,
-            39 => Self::MathRound,
-            40 => Self::MathSign,
-            41 => Self::MathSin,
-            42 => Self::MathSqrt,
-            43 => Self::MathTan,
-            44 => Self::MathTrunc,
-            45 => Self::MathCbrt,
-            _ => return None,
-        })
-    }
+    20 => MathAbs, "Math.abs",
+    21 => MathAcos, "Math.acos",
+    22 => MathAsin, "Math.asin",
+    23 => MathAtan, "Math.atan",
+    24 => MathAtan2, "Math.atan2",
+    25 => MathCeil, "Math.ceil",
+    26 => MathClz32, "Math.clz32",
+    27 => MathCos, "Math.cos",
+    28 => MathExp, "Math.exp",
+    29 => MathFloor, "Math.floor",
+    30 => MathFround, "Math.fround",
+    31 => MathHypot, "Math.hypot",
+    32 => MathImul, "Math.imul",
+    33 => MathLog, "Math.log",
+    34 => MathLog10, "Math.log10",
+    35 => MathLog2, "Math.log2",
+    36 => MathMax, "Math.max",
+    37 => MathMin, "Math.min",
+    38 => MathPow, "Math.pow",
+    39 => MathRound, "Math.round",
+    40 => MathSign, "Math.sign",
+    41 => MathSin, "Math.sin",
+    42 => MathSqrt, "Math.sqrt",
+    43 => MathTan, "Math.tan",
+    44 => MathTrunc, "Math.trunc",
+    45 => MathCbrt, "Math.cbrt",
 }
