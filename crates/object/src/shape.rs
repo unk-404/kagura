@@ -99,6 +99,27 @@ impl ShapeTable {
         Ok(id)
     }
 
+    pub fn redescribe(
+        &mut self,
+        shape: ShapeId,
+        key: &PropertyKey,
+        attributes: PropertyAttributes,
+    ) -> Result<ShapeId, ShapeError> {
+        let mut next = self.get(shape)?.clone();
+        let descriptor = next
+            .descriptors
+            .iter_mut()
+            .find(|descriptor| &descriptor.key == key)
+            .ok_or(ShapeError::UnknownShape)?;
+        descriptor.attributes = attributes;
+        next.id = ShapeId::new(self.shapes.len() as u32);
+        next.parent = Some(shape);
+        next.transitions = FastHashMap::default();
+        let id = next.id;
+        self.shapes.push(next);
+        Ok(id)
+    }
+
     pub fn get(&self, id: ShapeId) -> Result<&Shape, ShapeError> {
         self.shapes
             .get(id.index() as usize)

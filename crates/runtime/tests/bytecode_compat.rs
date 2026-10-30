@@ -65,6 +65,8 @@ const FUNCTION_CALL_APPLY: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/function_call_apply.kbc");
 const FUNCTION_BIND: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/function_bind.kbc");
+const PROPERTY_DESCRIPTOR: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/property_descriptor.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -419,4 +421,14 @@ fn executes_v1_bind_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(FUNCTION_BIND, &mut host).unwrap();
     assert_eq!(host.output(), "Hello Ada!\nHello Ada?\n3\nHi A!\n");
+}
+
+#[test]
+fn executes_v1_property_descriptor_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run_bytecode(PROPERTY_DESCRIPTOR, &mut host)
+        .unwrap();
+    assert_eq!(host.output(), "42\n42\nfalse\nfalse\n0\n");
 }

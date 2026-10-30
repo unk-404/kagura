@@ -57,6 +57,7 @@ const BUILTIN_EXTRAS: &str = include_str!("../../../examples/builtin_extras.ts")
 const ARRAY_SORT: &str = include_str!("../../../examples/array_sort.ts");
 const FUNCTION_CALL_APPLY: &str = include_str!("../../../examples/function_call_apply.ts");
 const FUNCTION_BIND: &str = include_str!("../../../examples/function_bind.ts");
+const PROPERTY_DESCRIPTOR: &str = include_str!("../../../examples/property_descriptor.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -571,6 +572,14 @@ fn binds_this_and_partial_arguments() {
     let mut runtime = Runtime::default();
     runtime.run(FUNCTION_BIND, &mut host).unwrap();
     assert_eq!(host.output(), "Hello Ada!\nHello Ada?\n3\nHi A!\n");
+}
+
+#[test]
+fn reads_and_creates_property_descriptors() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(PROPERTY_DESCRIPTOR, &mut host).unwrap();
+    assert_eq!(host.output(), "42\n42\nfalse\nfalse\n0\n");
 }
 
 #[test]

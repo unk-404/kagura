@@ -1,4 +1,6 @@
-use kagura_object::{ObjectId, PropertyKey, own_property_keys};
+use kagura_object::{
+    ObjectId, PropertyAttributes, PropertyKey, PropertyLocation, own_property_keys,
+};
 use kagura_support::Span;
 use kagura_value::Value;
 
@@ -43,6 +45,28 @@ impl<'a> Interpreter<'a> {
                 self.assign_source(target, *source, span)?;
             }
             return Ok(Some(target));
+        }
+        if path == "Object.defineProperty" {
+            let target = args.first().copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.defineProperty requires a target", span)
+            })?;
+            let key = self
+                .heap
+                .to_js_string(args.get(1).copied().unwrap_or_else(Value::undefined));
+            let descriptor = args.get(2).copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.defineProperty requires a descriptor", span)
+            })?;
+            self.define_property(target, &key, descriptor, span)?;
+            return Ok(Some(target));
+        }
+        if path == "Object.getOwnPropertyDescriptor" {
+            let target = args.first().copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.getOwnPropertyDescriptor requires a target", span)
+            })?;
+            let key = self
+                .heap
+                .to_js_string(args.get(1).copied().unwrap_or_else(Value::undefined));
+            return self.own_property_descriptor(target, &key, span).map(Some);
         }
         if path == "Object.create" {
             let Some(prototype) = args.first().copied() else {
@@ -331,6 +355,143 @@ impl<'a> Interpreter<'a> {
             Some(callee),
             receiver,
         )
+    }
+
+    fn define_property(
+        &mut self,
+        target: Value,
+        key: &str,
+        descriptor: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let target_id = self.object_id(target, span)?;
+        self.object_id(descriptor, span)?;
+        let writable = self.get_property(descriptor, "writable", span)?;
+        let writable = self.heap.truthy(writable);
+        let enumerable = self.get_property(descriptor, "enumerable", span)?;
+        let enumerable = self.heap.truthy(enumerable);
+        let configurable = self.get_property(descriptor, "configurable", span)?;
+        let configurable = self.heap.truthy(configurable);
+        let value = self.get_property(descriptor, "value", span)?;
+        let shape = self
+            .objects
+            .shape(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let property = PropertyKey::from_string(key);
+        let existing = self
+            .shapes
+            .lookup(shape, &property)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            .is_some();
+        let attributes = PropertyAttributes {
+            writable,
+            enumerable,
+            configurable,
+        };
+        let shape = if existing {
+            self.shapes
+                .redescribe(shape, &property, attributes)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        } else {
+            self.shapes
+                .add_property(shape, property.clone(), attributes)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        };
+        self.objects
+            .set_shape(target_id, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let location = self
+            .shapes
+            .lookup(shape, &property)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            .expect("defined property has descriptor")
+            .location;
+        match location {
+            PropertyLocation::InObject(slot) => self
+                .objects
+                .set_slot(target_id, slot, value)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+            PropertyLocation::PropertyArray(index) => self
+                .objects
+                .set_property_array(target_id, index, value)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+        }
+    }
+
+    fn own_property_descriptor(
+        &mut self,
+        target: Value,
+        key: &str,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let target_id = self.object_id(target, span)?;
+        if self
+            .objects
+            .is_array(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            if key == "length" {
+                let length = self
+                    .objects
+                    .array_length(target_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let length = self.heap.number(length as f64);
+                return self.make_descriptor(length, true, false, false, span);
+            }
+            if let Ok(index) = key.parse::<u32>()
+                && self
+                    .objects
+                    .array_has(target_id, index)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                let value = self
+                    .objects
+                    .array_get(target_id, index)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                return self.make_descriptor(value, true, true, true, span);
+            }
+        }
+        let shape = self
+            .objects
+            .shape(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let property = PropertyKey::from_string(key);
+        let Some(descriptor) = self
+            .shapes
+            .lookup(shape, &property)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        else {
+            return Ok(Value::undefined());
+        };
+        let attributes = descriptor.attributes;
+        let value = self.get_property(target, key, span)?;
+        self.make_descriptor(
+            value,
+            attributes.writable,
+            attributes.enumerable,
+            attributes.configurable,
+            span,
+        )
+    }
+
+    fn make_descriptor(
+        &mut self,
+        value: Value,
+        writable: bool,
+        enumerable: bool,
+        configurable: bool,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let descriptor = self
+            .objects
+            .allocate(self.shapes.root())
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let object = Value::object(descriptor.index());
+        self.set_property(object, "value", value, span)?;
+        self.set_property(object, "writable", Value::boolean(writable), span)?;
+        self.set_property(object, "enumerable", Value::boolean(enumerable), span)?;
+        self.set_property(object, "configurable", Value::boolean(configurable), span)?;
+        Ok(object)
     }
 
     fn assign_source(
