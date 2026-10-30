@@ -8,7 +8,7 @@ mod shape;
 
 pub use attributes::PropertyAttributes;
 pub use elements::ElementsKind;
-pub use heap::{ObjectHeap, ObjectHeapError};
+pub use heap::{GcStats, ObjectHeap, ObjectHeapError};
 pub use key::{PropertyKey, ordered_keys};
 pub use layout::{HEADER_BYTES_32, MAX_IN_OBJECT_SLOTS, TAGGED_BYTES_32, object_size_32};
 pub use object_id::ObjectId;

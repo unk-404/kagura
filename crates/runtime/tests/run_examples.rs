@@ -66,6 +66,16 @@ fn reads_and_writes_array_length() {
 }
 
 #[test]
+fn collects_script_objects_after_run() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run("let point = { x: 1 }; let values = [point];", &mut host)
+        .unwrap();
+    assert_eq!(runtime.object_live_bytes(), 0);
+}
+
+#[test]
 fn reports_syntax_errors() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

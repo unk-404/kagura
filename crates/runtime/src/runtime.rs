@@ -1,6 +1,6 @@
 use kagura_bytecode::{Module, compile};
 use kagura_interp::{Host, Interpreter};
-use kagura_object::{ObjectHeap, ShapeTable};
+use kagura_object::{GcStats, ObjectHeap, ShapeTable};
 use kagura_parser::parse;
 use kagura_value::{Heap, Value};
 use tracing::instrument;
@@ -44,6 +44,14 @@ impl Runtime {
         self.objects.capacity()
     }
 
+    pub fn object_live_bytes(&self) -> u32 {
+        self.objects.live_bytes()
+    }
+
+    pub fn collect_garbage(&mut self, roots: &[Value]) -> GcStats {
+        self.objects.collect(roots)
+    }
+
     #[instrument(skip(self, source, host), fields(bytes = source.len()))]
     pub fn run(&mut self, source: &str, host: &mut dyn Host) -> Result<Value, RunError> {
         let program = parse(source)?;
@@ -59,20 +67,24 @@ impl Runtime {
 
     #[instrument(skip(self, module, host), fields(version = module.version))]
     pub fn run_module(&mut self, module: &Module, host: &mut dyn Host) -> Result<Value, RunError> {
-        let mut interpreter = Interpreter::new(
-            module,
-            &mut self.heap,
-            &mut self.objects,
-            &mut self.shapes,
-            host,
-        );
-        let value = interpreter.run()?;
+        let value = {
+            let mut interpreter = Interpreter::new(
+                module,
+                &mut self.heap,
+                &mut self.objects,
+                &mut self.shapes,
+                host,
+            );
+            interpreter.run()?
+        };
+        self.objects.collect(&[value]);
         #[cfg(feature = "debug")]
         tracing::debug!(
             heap_used = self.heap.used(),
             heap_capacity = self.heap.capacity(),
             object_used = self.objects.used(),
             object_capacity = self.objects.capacity(),
+            object_live_bytes = self.objects.live_bytes(),
             "runtime heap usage"
         );
         Ok(value)
