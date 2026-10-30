@@ -1,32 +1,15 @@
-//! Per-runner-unit work-stealing deque (skeleton).
-//!
-//! The owner pushes and pops at the **bottom** (LIFO, cache friendly); thieves
-//! steal from the **top** (FIFO, oldest work first). This is the access pattern
-//! of a Chase-Lev deque, implemented here with a mutex as a correctness-first
-//! skeleton. The public shape is meant to survive the replacement with a
-//! lock-free deque.
-//!
-//! The owner/thief distinction is documented, not type-enforced: both
-//! [`WorkerDeque`] and [`Stealer`] share the same inner queue. A future version
-//! may encode ownership in the type system or with a debug-only owner check.
-//!
-//! Synchronization currently comes from the inner mutex: a successful `lock()`
-//! provides the happens-before edge between owner pushes and thief steals. No
-//! atomics are used here; replacing this skeleton with a lock-free Chase-Lev
-//! deque requires reworking owner/thief memory ordering (Acquire/Release and a
-//! retry path for failed steals).
+//! Per-RU work-stealing deque: owner pops newest (bottom), thieves steal oldest
+//! (top). Mutex-backed until the Chase-Lev replacement lands.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-/// The owner side of a work-stealing deque.
 #[derive(Debug)]
 pub struct WorkerDeque<T> {
     queue: Arc<Mutex<VecDeque<T>>>,
 }
 
 impl<T> WorkerDeque<T> {
-    /// Creates an empty deque.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -34,17 +17,14 @@ impl<T> WorkerDeque<T> {
         }
     }
 
-    /// Pushes an item at the bottom (owner side).
     pub fn push(&self, item: T) {
         self.lock().push_back(item);
     }
 
-    /// Pops the newest item from the bottom (owner side).
     pub fn pop(&self) -> Option<T> {
         self.lock().pop_back()
     }
 
-    /// Creates a stealer handle for this deque.
     #[must_use]
     pub fn stealer(&self) -> Stealer<T> {
         Stealer {
@@ -52,13 +32,11 @@ impl<T> WorkerDeque<T> {
         }
     }
 
-    /// Number of queued items.
     #[must_use]
     pub fn len(&self) -> usize {
         self.lock().len()
     }
 
-    /// Whether the deque is empty.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.lock().is_empty()
@@ -79,7 +57,6 @@ impl<T> Default for WorkerDeque<T> {
     }
 }
 
-/// The thief side of a work-stealing deque.
 #[derive(Debug)]
 pub struct Stealer<T> {
     queue: Arc<Mutex<VecDeque<T>>>,
@@ -94,7 +71,6 @@ impl<T> Clone for Stealer<T> {
 }
 
 impl<T> Stealer<T> {
-    /// Steals the oldest item from the top, if any.
     pub fn steal(&self) -> Option<T> {
         self.lock().pop_front()
     }
@@ -109,13 +85,11 @@ impl<T> Stealer<T> {
         queue.drain(..count).collect()
     }
 
-    /// Number of queued items.
     #[must_use]
     pub fn len(&self) -> usize {
         self.lock().len()
     }
 
-    /// Whether the deque is empty.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.lock().is_empty()

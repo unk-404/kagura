@@ -1,8 +1,4 @@
-//! Module decoding, validation, and metadata.
-//!
-//! Validation uses `wasmparser`; the feature gate is configurable and defaults
-//! to the MVP core specification plus floating-point operators. Metadata is
-//! then re-read from the same bytes to build the runtime-facing module.
+//! Module decoding/validation via `wasmparser`, plus runtime-facing metadata.
 
 use std::fmt;
 use std::ops::Range;
@@ -13,25 +9,12 @@ use crate::error::DecodeError;
 use crate::memory::{AddressWidth, MemoryType};
 use crate::value::{FuncType, ValType};
 
-/// Returns the default v1 validation feature gate.
-///
-/// The gate is the WebAssembly 1.0 (MVP) core specification plus floating-point
-/// operators. Post-MVP proposals (multi-value, bulk memory, reference types,
-/// SIMD, threads, exceptions, GC, memory64, ...) are disabled and rejected with
-/// a [`DecodeError`] whose [`DecodeError::missing_feature`] names the required
-/// capability. Call [`Module::decode_with_features`] with
-/// `default_features() | WasmFeatures::MEMORY64` (and an appropriate
-/// [`crate::MemoryCap`]) to opt into memory64.
+/// Default v1 gate: MVP plus floats. memory64 and other proposals stay off.
 pub fn default_features() -> WasmFeatures {
     // MVP 本身包含 f32/f64；wasmparser 把浮点指令拆成了独立开关。
     WasmFeatures::FLOATS
 }
 
-/// A function defined in the module.
-///
-/// Imported functions are not represented here; [`Module::imports`] exposes
-/// them separately. The MVP interpreter does not support imports yet, so an
-/// instance can only be created from a module without imports.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Function {
     type_index: u32,
@@ -41,42 +24,32 @@ pub struct Function {
 }
 
 impl Function {
-    /// Returns the index into [`Module::types`] for this function.
     pub fn type_index(&self) -> u32 {
         self.type_index
     }
 
-    /// Returns the local types declared after the parameters.
     pub fn locals(&self) -> &[ValType] {
         &self.locals
     }
 
-    /// Returns the byte range of the function body (locals plus operators).
     pub fn body_range(&self) -> Range<usize> {
         self.body.clone()
     }
 
-    /// Returns the byte range of the operator stream (after local declarations).
     pub fn operators_range(&self) -> Range<usize> {
         self.operators.clone()
     }
 }
 
-/// The kind of an exported item.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExportKind {
-    /// A function export.
     Func,
-    /// A table export.
     Table,
-    /// A linear memory export.
     Memory,
-    /// A global export.
     Global,
 }
 
 impl ExportKind {
-    /// Returns a stable lowercase name for diagnostics.
     pub const fn name(self) -> &'static str {
         match self {
             Self::Func => "func",
@@ -87,37 +60,23 @@ impl ExportKind {
     }
 }
 
-/// An export declared by a module.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Export {
-    /// Export name.
     pub name: String,
-    /// Export kind.
     pub kind: ExportKind,
-    /// Index into the corresponding index space.
     pub index: u32,
 }
 
-/// The kind of an imported item.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImportKind {
-    /// An imported function with its type index.
-    Func {
-        /// Index into the type section.
-        type_index: u32,
-    },
-    /// An imported table.
+    Func { type_index: u32 },
     Table,
-    /// An imported linear memory.
     Memory,
-    /// An imported global.
     Global,
-    /// An imported tag (exception handling).
     Tag,
 }
 
 impl ImportKind {
-    /// Returns a stable lowercase name for diagnostics.
     pub const fn name(self) -> &'static str {
         match self {
             Self::Func { .. } => "func",
@@ -129,49 +88,28 @@ impl ImportKind {
     }
 }
 
-/// An import declared by a module.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Import {
-    /// Import module name.
     pub module: String,
-    /// Import field name.
     pub name: String,
-    /// Import kind.
     pub kind: ImportKind,
 }
 
-/// Aggregate metadata about a decoded module.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ModuleStats {
-    /// Size of the encoded module in bytes.
     pub byte_len: usize,
-    /// Number of function types.
     pub type_count: u32,
-    /// Number of imported items.
     pub import_count: u32,
-    /// Number of functions defined by the code section.
     pub function_count: u32,
-    /// Number of defined linear memories.
     pub memory_count: u32,
-    /// Number of defined tables.
     pub table_count: u32,
-    /// Number of defined globals.
     pub global_count: u32,
-    /// Number of exports.
     pub export_count: u32,
-    /// Number of data segments.
     pub data_segment_count: u32,
-    /// Number of element segments.
     pub element_segment_count: u32,
-    /// Total size in bytes of all function bodies.
     pub code_bytes: usize,
 }
 
-/// A validated WebAssembly module.
-///
-/// `Module` owns a copy of the original binary so that decoding is safe to do
-/// from borrowed input. Validation happens once in [`Module::decode`]; the
-/// interpreter re-decodes function bodies lazily from the stored bytes.
 #[derive(Clone)]
 pub struct Module {
     bytes: Vec<u8>,
@@ -186,24 +124,12 @@ pub struct Module {
 }
 
 impl Module {
-    /// Decodes and validates a WebAssembly binary module with the default v1
-    /// feature gate.
-    ///
-    /// The default gate is the MVP core specification plus floating-point
-    /// operators; see [`default_features`]. Invalid binaries produce
-    /// [`DecodeError`] with a byte offset when the decoder reports one.
     pub fn decode(bytes: &[u8]) -> Result<Self, DecodeError> {
         Self::decode_with_features(bytes, default_features())
     }
 
-    /// Decodes and validates with an explicit `wasmparser` feature set.
-    ///
-    /// This is the capability gate for targets that support more than the v1
-    /// default. For example, enabling [`WasmFeatures::MEMORY64`] accepts 64-bit
-    /// linear memories; the resulting [`MemoryType::address_width`] is then
-    /// [`AddressWidth::W64`]. Runtime admission is still controlled by
-    /// [`crate::MemoryCap`], so accepting a module never commits its declared
-    /// memory.
+    /// Decode with an explicit capability gate. Enabling memory64 only admits
+    /// the module; [`crate::MemoryCap`] still governs actual memory admission.
     pub fn decode_with_features(bytes: &[u8], features: WasmFeatures) -> Result<Self, DecodeError> {
         // 第一遍：完整校验。非法模块与未启用的 capability 都在这里失败；
         // capability 错误会通过 DecodeError::missing_feature 暴露。
@@ -343,27 +269,22 @@ impl Module {
         Ok(module)
     }
 
-    /// Returns the WebAssembly binary version (currently 1).
     pub fn version(&self) -> u16 {
         self.version
     }
 
-    /// Returns the original encoded module bytes.
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
 
-    /// Returns the function types declared by the module.
     pub fn types(&self) -> &[FuncType] {
         &self.types
     }
 
-    /// Returns the functions defined by the code section.
     pub fn functions(&self) -> &[Function] {
         &self.functions
     }
 
-    /// Returns the linear memory types declared by the module.
     pub fn memories(&self) -> &[MemoryType] {
         &self.memories
     }
@@ -385,42 +306,34 @@ impl Module {
         }
     }
 
-    /// Returns the imports declared by the module.
     pub fn imports(&self) -> &[Import] {
         &self.imports
     }
 
-    /// Returns the exports declared by the module.
     pub fn exports(&self) -> &[Export] {
         &self.exports
     }
 
-    /// Returns the start function index, when present.
     pub fn start_function(&self) -> Option<u32> {
         self.start_function
     }
 
-    /// Returns aggregate module statistics.
     pub fn stats(&self) -> ModuleStats {
         self.stats
     }
 
-    /// Looks up a defined function by index.
     pub fn function(&self, index: u32) -> Option<&Function> {
         self.functions.get(index as usize)
     }
 
-    /// Resolves the [`FuncType`] of a defined function.
     pub fn function_type(&self, function: &Function) -> Option<&FuncType> {
         self.types.get(function.type_index as usize)
     }
 
-    /// Looks up an export by name.
     pub fn export(&self, name: &str) -> Option<&Export> {
         self.exports.iter().find(|export| export.name == name)
     }
 
-    /// Returns the decoded operator bytes for a defined function.
     pub fn operators_bytes(&self, function: &Function) -> &[u8] {
         &self.bytes[function.operators.clone()]
     }

@@ -1,4 +1,4 @@
-//! Instance creation and the self-written MVP bytecode interpreter.
+//! Instance creation and MVP bytecode interpreter.
 
 use wasmparser::{BinaryReader, Operator, OperatorsReader};
 
@@ -7,11 +7,6 @@ use crate::memory::{Memory, MemoryCap};
 use crate::module::{ExportKind, Module};
 use crate::value::{ValType, Value};
 
-/// A WebAssembly instance: a validated module plus its instantiated memories.
-///
-/// Instances borrow the module they were created from. Imports and start
-/// functions are rejected in this foundation; data and element segments are
-/// validated but not applied yet.
 #[derive(Debug)]
 pub struct Instance<'a> {
     module: &'a Module,
@@ -19,13 +14,8 @@ pub struct Instance<'a> {
 }
 
 impl<'a> Instance<'a> {
-    /// Creates an instance with the default memory budget for the module's
-    /// address width.
-    ///
-    /// wasm32 modules get the 1 GiB 32-bit-first default; memory64 modules get
-    /// the 4 GiB 64-bit default. Budgets are admission limits, not committed
-    /// memory, so creating a memory64 instance only allocates its declared
-    /// minimum pages.
+    /// Default admission cap for the module's address width; commits only the
+    /// declared minimum pages.
     pub fn new(module: &'a Module) -> Result<Self, InstantiateError> {
         Self::with_memory_cap(
             module,
@@ -33,11 +23,6 @@ impl<'a> Instance<'a> {
         )
     }
 
-    /// Creates an instance with an explicit per-memory cap.
-    ///
-    /// Every defined memory is instantiated with the same cap; a cap narrower
-    /// than a declared memory's address width is rejected. Host imports and
-    /// start functions are rejected rather than silently ignored.
     pub fn with_memory_cap(module: &'a Module, cap: MemoryCap) -> Result<Self, InstantiateError> {
         if let Some(import) = module.imports().first() {
             return Err(InstantiateError::UnsupportedImport {
@@ -56,27 +41,22 @@ impl<'a> Instance<'a> {
         Ok(Self { module, memories })
     }
 
-    /// Returns the module this instance was created from.
     pub fn module(&self) -> &Module {
         self.module
     }
 
-    /// Returns all instantiated linear memories.
     pub fn memories(&self) -> &[Memory] {
         &self.memories
     }
 
-    /// Returns a linear memory by index.
     pub fn memory(&self, index: u32) -> Option<&Memory> {
         self.memories.get(index as usize)
     }
 
-    /// Returns a mutable linear memory by index.
     pub fn memory_mut(&mut self, index: u32) -> Option<&mut Memory> {
         self.memories.get_mut(index as usize)
     }
 
-    /// Calls an exported function by name.
     pub fn invoke(&mut self, export_name: &str, args: &[Value]) -> Result<Vec<Value>, Trap> {
         let index = match self.module.export(export_name) {
             Some(export) => {
@@ -96,7 +76,6 @@ impl<'a> Instance<'a> {
         self.invoke_function(index, args)
     }
 
-    /// Calls a defined function by index.
     pub fn invoke_function(
         &mut self,
         function_index: u32,

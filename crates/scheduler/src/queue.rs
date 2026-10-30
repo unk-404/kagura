@@ -1,20 +1,8 @@
-//! Deterministic single-threaded job and microtask queues.
+//! Deterministic single-threaded job/microtask queue. `!Send` by design:
+//! cross-thread completions enter through [`crate::Injector`].
 //!
-//! This is the semantic core of the runtime: one FIFO **job** queue, one FIFO
-//! **microtask** queue, and an ECMAScript-shaped microtask checkpoint after
-//! each job. It is deliberately not `Send`: an agent event loop owns its queue
-//! on exactly one thread. Cross-thread work enters through
-//! [`crate::Injector`] instead.
-//!
-//! Ordering contract:
-//!
-//! 1. Jobs run in FIFO order, one at a time, to completion.
-//! 2. After each job the loop drains every queued microtask, including
-//!    microtasks enqueued while draining (always appended to the tail).
-//! 3. A microtask checkpoint is atomic with respect to pause: `pause()` is only
-//!    observed at the next job boundary, never in the middle of a checkpoint.
-//! 4. A failing job or microtask is recorded in the [`DrainReport`] and does
-//!    not stop later work; the embedder decides how to surface the failure.
+//! Ordering: FIFO jobs, full FIFO microtask checkpoint after each job, pause only
+//! at job boundaries, failures recorded without stopping later work.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -24,17 +12,13 @@ use std::rc::Rc;
 
 use crate::id::JobId;
 
-/// Whether a queued callback is a job (macrotask) or a microtask.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum JobClass {
-    /// A regular job: runs before the next checkpoint, one at a time.
     Job,
-    /// A microtask: runs inside the current checkpoint.
     Microtask,
 }
 
 impl JobClass {
-    /// Returns the stable name used in logs and failures.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
@@ -44,17 +28,12 @@ impl JobClass {
     }
 }
 
-/// A host error raised by a queued callback.
-///
-/// The message is kept host-readable; the VM embedding maps this to the
-/// appropriate JS exception or rejected Promise at the boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobError {
     message: String,
 }
 
 impl JobError {
-    /// Creates an error from a message.
     #[must_use]
     pub fn new(message: impl Into<String>) -> Self {
         Self {
@@ -62,7 +41,6 @@ impl JobError {
         }
     }
 
-    /// The error message.
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
@@ -90,25 +68,21 @@ impl JobFailure {
         Self { job, class, error }
     }
 
-    /// The id assigned when the callback was enqueued.
     #[must_use]
     pub const fn job(&self) -> JobId {
         self.job
     }
 
-    /// Whether the failing callback was a job or a microtask.
     #[must_use]
     pub const fn class(&self) -> JobClass {
         self.class
     }
 
-    /// The host error raised by the callback.
     #[must_use]
     pub const fn error(&self) -> &JobError {
         &self.error
     }
 
-    /// Consumes the failure and returns its error.
     #[must_use]
     pub fn into_error(self) -> JobError {
         self.error
@@ -127,7 +101,6 @@ impl fmt::Display for JobFailure {
     }
 }
 
-/// Summary of a [`JobQueue::drain`] or [`JobQueue::drain_microtasks`] call.
 #[derive(Debug, Default)]
 pub struct DrainReport {
     executed_jobs: usize,
@@ -138,19 +111,16 @@ pub struct DrainReport {
 }
 
 impl DrainReport {
-    /// Number of jobs that were executed.
     #[must_use]
     pub const fn executed_jobs(&self) -> usize {
         self.executed_jobs
     }
 
-    /// Number of microtasks that were executed.
     #[must_use]
     pub const fn executed_microtasks(&self) -> usize {
         self.executed_microtasks
     }
 
-    /// Total callbacks executed.
     #[must_use]
     pub const fn executed_total(&self) -> usize {
         self.executed_jobs + self.executed_microtasks
@@ -162,39 +132,26 @@ impl DrainReport {
         &self.failures
     }
 
-    /// Whether no callback failed.
     #[must_use]
     pub fn is_ok(&self) -> bool {
         self.failures.is_empty()
     }
 
-    /// The first failure, if any.
     #[must_use]
     pub fn first_failure(&self) -> Option<&JobFailure> {
         self.failures.first()
     }
 
-    /// Whether the queue was still paused when the drain returned.
     #[must_use]
     pub const fn is_paused(&self) -> bool {
         self.paused
     }
 
-    /// Whether this drain was rejected because another drain was in progress.
-    ///
-    /// A reentrant drain performs no work and returns an otherwise empty
-    /// report. This can only happen when an embedder wraps the queue in
-    /// `Rc`/`RefCell` and calls `drain` from inside a queued callback.
     #[must_use]
     pub const fn is_reentrant(&self) -> bool {
         self.reentrant
     }
 
-    /// Converts the report into a result, preserving all failures.
-    ///
-    /// # Errors
-    ///
-    /// Returns every recorded [`JobFailure`] when at least one callback failed.
     pub fn into_result(self) -> Result<Self, Vec<JobFailure>> {
         if self.failures.is_empty() {
             Ok(self)
@@ -211,7 +168,6 @@ impl DrainReport {
     }
 }
 
-/// Type-erased queued callback.
 type JobFn = Box<dyn FnOnce() -> Result<(), JobError>>;
 
 struct QueuedJob {
@@ -239,19 +195,12 @@ impl Drop for DispatchGuard {
     }
 }
 
-/// A cloneable, queue-only handle.
-///
-/// Handles deliberately cannot drain the queue. Jobs receive a handle to
-/// enqueue follow-up work, but they cannot recursively drive the event loop;
-/// that keeps run-to-completion intact. The handle is single-threaded (`Rc`),
-/// so it is not `Send`.
 #[derive(Clone)]
 pub struct QueueHandle {
     state: Rc<RefCell<QueueState>>,
 }
 
 impl QueueHandle {
-    /// Enqueues a job at the tail of the job queue.
     pub fn enqueue_job<F>(&self, job: F) -> JobId
     where
         F: FnOnce() -> Result<(), JobError> + 'static,
@@ -259,7 +208,6 @@ impl QueueHandle {
         self.enqueue(JobClass::Job, job)
     }
 
-    /// Enqueues a microtask at the tail of the microtask queue.
     pub fn enqueue_microtask<F>(&self, task: F) -> JobId
     where
         F: FnOnce() -> Result<(), JobError> + 'static,
@@ -267,29 +215,24 @@ impl QueueHandle {
         self.enqueue(JobClass::Microtask, task)
     }
 
-    /// Pauses the event loop at the next job boundary.
     pub fn pause(&self) {
         self.state.borrow_mut().paused = true;
     }
 
-    /// Clears the pause flag.
     pub fn resume(&self) {
         self.state.borrow_mut().paused = false;
     }
 
-    /// Whether pause has been requested.
     #[must_use]
     pub fn is_paused(&self) -> bool {
         self.state.borrow().paused
     }
 
-    /// Number of queued jobs.
     #[must_use]
     pub fn jobs_len(&self) -> usize {
         self.state.borrow().jobs.len()
     }
 
-    /// Number of queued microtasks.
     #[must_use]
     pub fn microtasks_len(&self) -> usize {
         self.state.borrow().microtasks.len()
@@ -327,7 +270,6 @@ pub struct JobQueue {
 }
 
 impl JobQueue {
-    /// Creates an empty, running (not paused) queue.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -341,7 +283,6 @@ impl JobQueue {
         }
     }
 
-    /// Creates a queue-only handle to enqueue work.
     #[must_use]
     pub fn handle(&self) -> QueueHandle {
         QueueHandle {
@@ -349,7 +290,6 @@ impl JobQueue {
         }
     }
 
-    /// Enqueues a job at the tail of the job queue.
     pub fn enqueue_job<F>(&self, job: F) -> JobId
     where
         F: FnOnce() -> Result<(), JobError> + 'static,
@@ -357,7 +297,6 @@ impl JobQueue {
         self.handle().enqueue_job(job)
     }
 
-    /// Enqueues a microtask at the tail of the microtask queue.
     pub fn enqueue_microtask<F>(&self, task: F) -> JobId
     where
         F: FnOnce() -> Result<(), JobError> + 'static,
@@ -420,35 +359,29 @@ impl JobQueue {
         report
     }
 
-    /// Pauses the event loop at the next job boundary.
     pub fn pause(&self) {
         self.handle().pause();
     }
 
-    /// Clears the pause flag.
     pub fn resume(&self) {
         self.handle().resume();
     }
 
-    /// Whether pause has been requested.
     #[must_use]
     pub fn is_paused(&self) -> bool {
         self.state.borrow().paused
     }
 
-    /// Number of queued jobs.
     #[must_use]
     pub fn jobs_len(&self) -> usize {
         self.state.borrow().jobs.len()
     }
 
-    /// Number of queued microtasks.
     #[must_use]
     pub fn microtasks_len(&self) -> usize {
         self.state.borrow().microtasks.len()
     }
 
-    /// Whether both queues are empty.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         let state = self.state.borrow();

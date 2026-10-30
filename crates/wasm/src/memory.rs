@@ -1,11 +1,5 @@
-//! Linear memory: a byte-buffer MVP implementation with a 32/64-bit-ready
-//! address model.
-//!
-//! All page counts, byte sizes, and offsets are canonical `u64` values. Host
-//! `usize` conversion happens only at allocation and bounds-check boundaries.
-//! The current storage commits pages eagerly into a `Vec<u8>`; the
-//! [`MemoryReservation`] interface is the replacement point for the future
-//! KMem reserve/commit implementation, including 64-bit address spaces.
+//! Linear memory: `u64` canonical sizes/offsets, explicit 32/64-bit address
+//! width, eager `Vec<u8>` storage until KMem reserve/commit replaces it.
 
 use std::fmt;
 
@@ -13,36 +7,25 @@ use thiserror::Error;
 
 use crate::value::ValType;
 
-/// Size of a WebAssembly page in bytes.
 pub const WASM_PAGE_SIZE: u64 = 65_536;
 
-/// Maximum number of pages in a 32-bit linear memory (4 GiB).
 pub const MAX_PAGES_32: u64 = 65_536;
 
-/// Maximum number of pages in a 64-bit linear memory (2^48 pages).
 pub const MAX_PAGES_64: u64 = 1 << 48;
 
-/// Default 32-bit per-memory budget: 1 GiB.
 pub const DEFAULT_MAX_PAGES_32: u64 = 16_384;
 
-/// Default 64-bit per-memory budget: 4 GiB.
 pub const DEFAULT_MAX_PAGES_64: u64 = 65_536;
 
-/// Address width of a linear memory.
-///
-/// `W32` is the v1 default for wasm32 memories. `W64` represents memory64 and
-/// is a first-class future target even though the v1 interpreter executes a
-/// 32-bit-default subset.
+/// Address width of a linear memory. `W32` is the v1 default; `W64` is
+/// memory64, a first-class future target.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AddressWidth {
-    /// 32-bit memory index (`i32` addresses); at most 4 GiB.
     W32,
-    /// 64-bit memory index (`i64` addresses); up to 2^48 pages.
     W64,
 }
 
 impl AddressWidth {
-    /// Returns the index type used by this address width.
     pub const fn index_type(self) -> ValType {
         match self {
             Self::W32 => ValType::I32,
@@ -50,7 +33,6 @@ impl AddressWidth {
         }
     }
 
-    /// Returns the address width in bits.
     pub const fn bits(self) -> u32 {
         match self {
             Self::W32 => 32,
@@ -58,7 +40,6 @@ impl AddressWidth {
         }
     }
 
-    /// Returns the maximum page count addressable by this width.
     pub const fn max_pages(self) -> u64 {
         match self {
             Self::W32 => MAX_PAGES_32,
@@ -66,10 +47,7 @@ impl AddressWidth {
         }
     }
 
-    /// Returns the maximum byte count addressable by this width.
-    ///
-    /// The 64-bit result is `2^64`, which is exactly one past `u64::MAX`; use
-    /// [`MemoryCap`] for a byte budget that must fit in `u64`.
+    /// Maximum byte count, as `u128` because the W64 result is `2^64`.
     pub const fn max_bytes(self) -> u128 {
         match self {
             Self::W32 => 1u128 << 32,
@@ -87,13 +65,8 @@ impl fmt::Display for AddressWidth {
     }
 }
 
-/// An upper bound on the number of bytes a single linear memory may commit.
-///
-/// The cap carries an explicit [`AddressWidth`] so a 64-bit memory cannot be
-/// constrained by an accidentally narrower 32-bit budget. Unlike the address
-/// width's theoretical range, the cap itself is a `u64` byte budget; the
-/// 2^64-byte top of the memory64 address space is not representable and will
-/// be reported as a size overflow rather than silently truncated.
+/// Admission budget for one linear memory. `u64` bytes plus an explicit
+/// [`AddressWidth`], so a W32 cap can never constrain a W64 memory.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MemoryCap {
     max_bytes: u64,
@@ -116,9 +89,6 @@ impl MemoryCap {
         }
     }
 
-    /// Creates a cap from a byte budget in the given address space.
-    ///
-    /// 32-bit caps are clamped to 4 GiB; 64-bit caps may be 4 GiB or larger.
     pub const fn from_bytes(bytes: u64, address_width: AddressWidth) -> Self {
         let max_bytes = match address_width {
             AddressWidth::W32 if bytes > (1u64 << 32) => 1u64 << 32,
@@ -151,17 +121,14 @@ impl MemoryCap {
         }
     }
 
-    /// Returns the capped byte count.
     pub const fn bytes(self) -> u64 {
         self.max_bytes
     }
 
-    /// Returns the capped page count (byte budget rounded down).
     pub const fn pages(self) -> u64 {
         self.max_bytes / WASM_PAGE_SIZE
     }
 
-    /// Returns the address width this cap applies to.
     pub const fn address_width(self) -> AddressWidth {
         self.address_width
     }
@@ -173,27 +140,19 @@ impl Default for MemoryCap {
     }
 }
 
-/// The limits declared for a linear memory in a module.
-///
-/// Page counts are canonical `u64` values so wasm32 and memory64 memories use
-/// the same type. `u64` page counts can express the full memory64 limit.
+/// Memory limits declared in a module. Page counts are `u64` for both widths.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MemoryType {
-    /// Initial number of pages.
     pub min_pages: u64,
-    /// Optional declared maximum number of pages.
     pub max_pages: Option<u64>,
-    /// Address width declared by the module.
     pub address_width: AddressWidth,
 }
 
 impl MemoryType {
-    /// Creates a 32-bit linear memory type.
     pub const fn new(min_pages: u64, max_pages: Option<u64>) -> Self {
         Self::with_address_width(min_pages, max_pages, AddressWidth::W32)
     }
 
-    /// Creates a linear memory type with an explicit address width.
     pub const fn with_address_width(
         min_pages: u64,
         max_pages: Option<u64>,
@@ -214,7 +173,6 @@ impl MemoryType {
         self.min_pages.checked_mul(WASM_PAGE_SIZE)
     }
 
-    /// Returns the declared maximum byte size, if present and representable.
     pub const fn max_bytes(self) -> Option<u64> {
         match self.max_pages {
             Some(pages) => pages.checked_mul(WASM_PAGE_SIZE),
@@ -223,64 +181,31 @@ impl MemoryType {
     }
 }
 
-/// Error returned when linear memory cannot be reserved or committed.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum MemoryError {
-    /// The memory's address width is wider than the cap's address width.
     #[error("linear memory address width {memory} exceeds the cap address width {cap}")]
     AddressWidthMismatch {
-        /// Address width declared by the memory.
         memory: AddressWidth,
-        /// Address width of the configured cap.
         cap: AddressWidth,
     },
-    /// The declared page count exceeds the address width's page limit.
     #[error(
         "linear memory size of {pages} pages exceeds the {address_width} limit of {limit} pages"
     )]
     PageLimitExceeded {
-        /// Page count that was rejected.
         pages: u64,
-        /// Maximum page count for the address width.
         limit: u64,
-        /// Address width whose limit was exceeded.
         address_width: AddressWidth,
     },
-    /// The initial memory size exceeds the configured per-memory cap.
     #[error("linear memory minimum of {min_pages} pages exceeds the {cap_pages}-page cap")]
-    MinimumExceedsCap {
-        /// Initial page count declared by the module.
-        min_pages: u64,
-        /// Page count allowed by the cap.
-        cap_pages: u64,
-    },
-    /// The declared maximum is smaller than the declared minimum.
+    MinimumExceedsCap { min_pages: u64, cap_pages: u64 },
     #[error("linear memory maximum of {max_pages} pages is below the minimum of {min_pages} pages")]
-    MaximumBelowMinimum {
-        /// Initial page count declared by the module.
-        min_pages: u64,
-        /// Declared maximum page count.
-        max_pages: u64,
-    },
-    /// The byte size does not fit in the host address space.
+    MaximumBelowMinimum { min_pages: u64, max_pages: u64 },
     #[error("linear memory size overflows the host address space")]
     SizeOverflow,
-    /// The initial memory allocation failed.
     #[error("linear memory allocation of {bytes} bytes failed")]
-    AllocationFailed {
-        /// Number of bytes that could not be allocated.
-        bytes: u64,
-    },
+    AllocationFailed { bytes: u64 },
 }
 
-/// A draft linear-memory reservation.
-///
-/// The KMem-backed design reserves virtual address space up front (32-bit or
-/// 64-bit) and commits pages as the module grows. This foundation keeps the
-/// validated limits, cap, and admission result in the reservation;
-/// [`MemoryReservation::commit`] then allocates the initial pages in a byte
-/// buffer. Replacing the storage with a KMem `Reservation` is intentionally a
-/// local change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MemoryReservation {
     limits: MemoryType,
@@ -290,7 +215,6 @@ pub struct MemoryReservation {
 }
 
 impl MemoryReservation {
-    /// Validates limits against a cap without committing any pages.
     pub fn new(limits: MemoryType, cap: MemoryCap) -> Result<Self, MemoryError> {
         // 32 位预算不得约束 64 位 memory；反向（64 位预算约束 wasm32 memory）允许，
         // 因为同一 target 可以同时承载 wasm32 与 memory64 模块。
@@ -343,37 +267,27 @@ impl MemoryReservation {
         })
     }
 
-    /// Returns the declared limits.
     pub const fn limits(self) -> MemoryType {
         self.limits
     }
 
-    /// Returns the configured cap.
     pub const fn cap(self) -> MemoryCap {
         self.cap
     }
 
-    /// Returns the effective maximum page count after applying the cap.
     pub const fn max_pages(self) -> u64 {
         self.max_pages
     }
 
-    /// Returns the number of bytes the initial commit will allocate.
     pub const fn committed_bytes(self) -> u64 {
         self.initial_bytes
     }
 
-    /// Commits the initial pages and produces a usable linear memory.
     pub fn commit(self) -> Result<Memory, MemoryError> {
         Memory::allocate(self.limits, self.cap, self.max_pages, self.initial_bytes)
     }
 }
 
-/// A WebAssembly linear memory backed by a zero-initialized byte buffer.
-///
-/// The buffer only covers committed pages. `grow` appends zeroed pages up to
-/// the effective maximum, which is the minimum of the module maximum, the
-/// configured [`MemoryCap`], and the address width's limit.
 pub struct Memory {
     bytes: Vec<u8>,
     cap: MemoryCap,
@@ -382,12 +296,10 @@ pub struct Memory {
 }
 
 impl Memory {
-    /// Creates a linear memory, committing the declared initial pages.
     pub fn new(limits: MemoryType, cap: MemoryCap) -> Result<Self, MemoryError> {
         MemoryReservation::new(limits, cap)?.commit()
     }
 
-    /// Reserves linear memory limits under a cap without committing pages.
     pub fn reserve(limits: MemoryType, cap: MemoryCap) -> Result<MemoryReservation, MemoryError> {
         MemoryReservation::new(limits, cap)
     }
@@ -415,40 +327,30 @@ impl Memory {
         })
     }
 
-    /// Returns the configured memory cap.
     pub const fn cap(&self) -> MemoryCap {
         self.cap
     }
 
-    /// Returns the memory's address width.
     pub const fn address_width(&self) -> AddressWidth {
         self.address_width
     }
 
-    /// Returns the effective maximum page count.
     pub const fn max_pages(&self) -> u64 {
         self.max_pages
     }
 
-    /// Returns the currently committed page count.
     pub fn pages(&self) -> u64 {
         self.bytes.len() as u64 / WASM_PAGE_SIZE
     }
 
-    /// Returns the committed bytes as an immutable slice.
     pub fn data(&self) -> &[u8] {
         &self.bytes
     }
 
-    /// Returns the committed bytes as a mutable slice.
     pub fn data_mut(&mut self) -> &mut [u8] {
         &mut self.bytes
     }
 
-    /// Returns a committed byte range, or `None` if it is out of bounds.
-    ///
-    /// `offset` and `len` are canonical `u64` values; the host `usize`
-    /// conversion is checked here so wasm64 modules do not silently truncate.
     pub fn read_bytes(&self, offset: u64, len: u64) -> Option<&[u8]> {
         let start = usize::try_from(offset).ok()?;
         let len = usize::try_from(len).ok()?;
@@ -456,7 +358,6 @@ impl Memory {
         self.bytes.get(start..end)
     }
 
-    /// Writes bytes into the committed range, returning `false` if out of bounds.
     pub fn write_bytes(&mut self, offset: u64, bytes: &[u8]) -> bool {
         let Ok(start) = usize::try_from(offset) else {
             return false;
@@ -471,33 +372,24 @@ impl Memory {
         true
     }
 
-    /// Reads a little-endian `u32`, returning `None` if it is out of bounds.
     pub fn read_u32_le(&self, offset: u64) -> Option<u32> {
         let bytes: [u8; 4] = self.read_bytes(offset, 4)?.try_into().ok()?;
         Some(u32::from_le_bytes(bytes))
     }
 
-    /// Writes a little-endian `u32`, returning `false` if it is out of bounds.
     pub fn write_u32_le(&mut self, offset: u64, value: u32) -> bool {
         self.write_bytes(offset, &value.to_le_bytes())
     }
 
-    /// Reads a little-endian `u64`, returning `None` if it is out of bounds.
     pub fn read_u64_le(&self, offset: u64) -> Option<u64> {
         let bytes: [u8; 8] = self.read_bytes(offset, 8)?.try_into().ok()?;
         Some(u64::from_le_bytes(bytes))
     }
 
-    /// Writes a little-endian `u64`, returning `false` if it is out of bounds.
     pub fn write_u64_le(&mut self, offset: u64, value: u64) -> bool {
         self.write_bytes(offset, &value.to_le_bytes())
     }
 
-    /// Grows the memory by `delta_pages`, returning the previous page count.
-    ///
-    /// Mirrors `memory.grow`: `None` is the WebAssembly `-1` result when the
-    /// new size would exceed the effective maximum or the host address space,
-    /// or when allocation fails.
     pub fn grow(&mut self, delta_pages: u64) -> Option<u64> {
         let previous_pages = self.pages();
         if delta_pages == 0 {
