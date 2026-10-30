@@ -1275,7 +1275,16 @@ impl<'a> Interpreter<'a> {
                             roots.push(Value::object(global.index()));
                         }
                         roots.extend(self.builtin_cache.values().copied());
-                        self.objects.collect(&roots);
+                        let stats = self.objects.collect(&roots);
+                        if std::env::var_os("KAGURA_GC_TRACE").is_some() {
+                            eprintln!(
+                                "gc live_before={} live_after={} freed_objects={} freed_arrays={}",
+                                stats.live_bytes_before,
+                                stats.live_bytes_after,
+                                stats.freed_objects,
+                                stats.freed_arrays
+                            );
+                        }
                     }
                 }
                 Op::Pop => {
