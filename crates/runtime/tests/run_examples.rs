@@ -996,6 +996,19 @@ fn supports_destructuring_parameters() {
 }
 
 #[test]
+fn supports_destructuring_assignment_and_multiple_declarators() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var a, b, c, d; [a, b] = [1, 2]; ({ x: c, y: d } = { x: 3, y: 4 }); console.log(a, b, c, d); var p = 0, q = 0; [p, q = 9] = [5]; console.log(p, q);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "1 2 3 4\n5 9\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

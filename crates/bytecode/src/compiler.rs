@@ -49,6 +49,19 @@ impl Compiler {
                 Stmt::Func(decl) => {
                     script.predeclare_or_error(&decl.name, true, decl.span, false)?;
                 }
+                Stmt::VarList(decls) => {
+                    for decl in decls {
+                        script.predeclare_or_error(
+                            &decl.name,
+                            matches!(
+                                decl.kind,
+                                kagura_ast::VarKind::Var | kagura_ast::VarKind::Let
+                            ),
+                            decl.span,
+                            matches!(decl.kind, kagura_ast::VarKind::Var),
+                        )?;
+                    }
+                }
                 _ => {}
             }
         }
@@ -294,6 +307,12 @@ impl<'a> FunctionCompiler<'a> {
         }
         match stmt {
             Stmt::Var(decl) => self.compile_var(decl),
+            Stmt::VarList(decls) => {
+                for decl in decls {
+                    self.compile_var(decl)?;
+                }
+                Ok(())
+            }
             Stmt::Destructure(decl) => self.compile_destructure(decl),
             Stmt::Func(decl) => {
                 if self.strict && matches!(decl.name.as_str(), "eval" | "arguments") {
@@ -895,7 +914,7 @@ impl<'a> FunctionCompiler<'a> {
         let source = self.hidden_local(decl.span);
         self.compile_expr(&decl.init)?;
         self.emit_u16(Op::StoreLocal, source, decl.span);
-        self.bind_pattern(&decl.pattern, source, decl.kind, decl.span)
+        self.bind_pattern(&decl.pattern, source, decl.kind, decl.span, false)
     }
 
     fn bind_pattern(
@@ -904,11 +923,22 @@ impl<'a> FunctionCompiler<'a> {
         source: u16,
         kind: kagura_ast::VarKind,
         span: Span,
+        assign: bool,
     ) -> Result<(), CompileError> {
         match pattern {
             Pattern::Ident(name) => {
                 let mutable = !matches!(kind, kagura_ast::VarKind::Const);
-                let slot = if matches!(kind, kagura_ast::VarKind::Var) {
+                let slot = if assign {
+                    match self.resolve(name) {
+                        Some(Resolved::Local { slot, .. }) => slot,
+                        _ => {
+                            return Err(CompileError::new(
+                                format!("unknown variable '{name}'"),
+                                span,
+                            ));
+                        }
+                    }
+                } else if matches!(kind, kagura_ast::VarKind::Var) {
                     if let Some(Resolved::Local { slot, .. }) = self.resolve(name) {
                         slot
                     } else {
@@ -933,7 +963,7 @@ impl<'a> FunctionCompiler<'a> {
                         self.emit(Op::ArrayRest, span);
                         let value = self.hidden_local(span);
                         self.emit_u16(Op::StoreLocal, value, span);
-                        self.bind_pattern(inner, value, kind, span)?;
+                        self.bind_pattern(inner, value, kind, span, assign)?;
                         break;
                     }
                     self.emit_u16(Op::LoadLocal, source, span);
@@ -941,7 +971,7 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit(Op::GetIndex, span);
                     let value = self.hidden_local(span);
                     self.emit_u16(Op::StoreLocal, value, span);
-                    self.bind_pattern(element, value, kind, span)?;
+                    self.bind_pattern(element, value, kind, span, assign)?;
                 }
             }
             Pattern::Object { properties, rest } => {
@@ -951,7 +981,7 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit_u32(Op::GetProp, index, span);
                     let value = self.hidden_local(span);
                     self.emit_u16(Op::StoreLocal, value, span);
-                    self.bind_pattern(element, value, kind, span)?;
+                    self.bind_pattern(element, value, kind, span, assign)?;
                 }
                 if let Some(rest) = rest {
                     self.emit_u16(Op::LoadLocal, source, span);
@@ -964,7 +994,7 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit_u32(Op::ObjectRest, index, span);
                     let value = self.hidden_local(span);
                     self.emit_u16(Op::StoreLocal, value, span);
-                    self.bind_pattern(rest, value, kind, span)?;
+                    self.bind_pattern(rest, value, kind, span, assign)?;
                 }
             }
             Pattern::Default { pattern, default } => {
@@ -980,7 +1010,7 @@ impl<'a> FunctionCompiler<'a> {
                 self.patch_jump(end, self.code.len());
                 let value = self.hidden_local(span);
                 self.emit_u16(Op::StoreLocal, value, span);
-                self.bind_pattern(pattern, value, kind, span)?;
+                self.bind_pattern(pattern, value, kind, span, assign)?;
             }
             Pattern::Rest(_) => {
                 return Err(CompileError::new(
@@ -1109,7 +1139,7 @@ impl<'a> FunctionCompiler<'a> {
         compiler.compile_rest_param(params)?;
         let patterns = compiler.parameter_patterns.clone();
         for (slot, pattern) in patterns {
-            compiler.bind_pattern(&pattern, slot, kagura_ast::VarKind::Let, span)?;
+            compiler.bind_pattern(&pattern, slot, kagura_ast::VarKind::Let, span, false)?;
         }
         for stmt in body {
             compiler.compile_stmt(stmt)?;
@@ -1314,6 +1344,17 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit(Op::SetIndexValue, *span);
                 }
             },
+            Expr::DestructureAssign {
+                pattern,
+                value,
+                span,
+            } => {
+                let source = self.hidden_local(*span);
+                self.compile_expr(value)?;
+                self.emit_u16(Op::StoreLocal, source, *span);
+                self.bind_pattern(pattern, source, kagura_ast::VarKind::Var, *span, true)?;
+                self.emit_u16(Op::LoadLocal, source, *span);
+            }
             Expr::Update {
                 target,
                 prefix,

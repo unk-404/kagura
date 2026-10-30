@@ -65,6 +65,7 @@ pub struct DestructureDecl {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     Var(VarDecl),
+    VarList(Vec<VarDecl>),
     Destructure(DestructureDecl),
     Func(FuncDecl),
     Block(Vec<Stmt>),
@@ -140,6 +141,10 @@ impl Stmt {
     pub fn span(&self) -> Span {
         match self {
             Self::Var(decl) => decl.span,
+            Self::VarList(decls) => decls
+                .last()
+                .map(|decl| decl.span)
+                .unwrap_or_else(|| Span::empty(0)),
             Self::Destructure(decl) => decl.span,
             Self::Func(decl) => decl.span,
             Self::Block(body) => body

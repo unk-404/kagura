@@ -76,8 +76,9 @@ The current P1 slice adds:
 - `JSON.parse` backed by `serde_json`; `JSON.stringify` uses the existing
   object/array serializer
 - array/object destructuring declarations (`var [a,b]`, `var {x,y}`),
-  including nested, renamed, default-valued, array rest, object rest, and
-  destructuring parameters
+  including nested, renamed, default-valued, array rest, object rest,
+  destructuring parameters, and destructuring assignment expressions
+- multiple declarators in one `var`/`let`/`const` statement
 - object spread in object literals (`{ ...source }`) and array literals
   (`[...source]`)
 - `globalThis` global object and stable script `this`
@@ -160,8 +161,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 21572 executed, 4622 passed, 16950 failed, 32457 skipped
-oracle node: 4622 checked, 4617 matched, 5 mismatched
+54029 selected, 21707 executed, 4789 passed, 16918 failed, 32322 skipped
+oracle node: 4789 checked, 4784 matched, 5 mismatched
 ```
 
 The five Node mismatches are tracked as differential warnings, not hidden:

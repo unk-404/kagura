@@ -64,7 +64,48 @@ impl Parser {
                         span: start.merge(end),
                     }))
                 } else {
-                    Ok(Stmt::Var(self.parse_var_decl(kind, true)?))
+                    let start = self.advance().span;
+                    let mut declarations = Vec::new();
+                    loop {
+                        let name_token = self.expect_ident("expected variable name")?;
+                        let name = match name_token.kind {
+                            TokenKind::Ident(name) => name,
+                            _ => unreachable!(),
+                        };
+                        let ty = if self.eat(&TokenKind::Colon) {
+                            Some(self.parse_type()?)
+                        } else {
+                            None
+                        };
+                        let init = if self.eat(&TokenKind::Assign) {
+                            Some(self.parse_expr()?)
+                        } else {
+                            None
+                        };
+                        if matches!(kind, VarKind::Const) && init.is_none() {
+                            return Err(ParseError::new(
+                                "const declaration requires an initializer",
+                                name_token.span,
+                            ));
+                        }
+                        let end = init.as_ref().map(Expr::span).unwrap_or(name_token.span);
+                        declarations.push(VarDecl {
+                            kind,
+                            name,
+                            ty,
+                            init,
+                            span: start.merge(end),
+                        });
+                        if !self.eat(&TokenKind::Comma) {
+                            break;
+                        }
+                    }
+                    self.expect(&TokenKind::Semi, "expected ';' after declaration")?;
+                    if declarations.len() == 1 {
+                        Ok(Stmt::Var(declarations.remove(0)))
+                    } else {
+                        Ok(Stmt::VarList(declarations))
+                    }
                 }
             }
             TokenKind::Function => Ok(Stmt::Func(self.parse_func_decl()?)),
@@ -555,6 +596,14 @@ impl Parser {
         if self.eat(&TokenKind::Assign) {
             let value = self.parse_expr()?;
             let span = left.span().merge(value.span());
+            if matches!(&left, Expr::Array { .. } | Expr::Object { .. }) {
+                let pattern = self.expr_to_pattern(left)?;
+                return Ok(Expr::DestructureAssign {
+                    pattern: Box::new(pattern),
+                    value: Box::new(value),
+                    span,
+                });
+            }
             return match left {
                 Expr::Ident { name, .. } => Ok(Expr::Assign {
                     target: AssignTarget::Ident(name),
@@ -586,6 +635,60 @@ impl Parser {
             });
         }
         Ok(left)
+    }
+
+    fn expr_to_pattern(&mut self, expr: Expr) -> Result<Pattern, ParseError> {
+        match expr {
+            Expr::Ident { name, .. } => Ok(Pattern::Ident(name)),
+            Expr::Assign {
+                target: AssignTarget::Ident(name),
+                value,
+                ..
+            } => Ok(Pattern::Default {
+                pattern: Box::new(Pattern::Ident(name)),
+                default: *value,
+            }),
+            Expr::Array {
+                elements, spreads, ..
+            } => {
+                let mut patterns = Vec::with_capacity(elements.len());
+                for (index, element) in elements.into_iter().enumerate() {
+                    if spreads.get(index).copied().unwrap_or(false) {
+                        let Some(element) = element else {
+                            continue;
+                        };
+                        patterns.push(Some(Pattern::Rest(Box::new(
+                            self.expr_to_pattern(element)?,
+                        ))));
+                    } else if let Some(element) = element {
+                        patterns.push(Some(self.expr_to_pattern(element)?));
+                    } else {
+                        patterns.push(None);
+                    }
+                }
+                Ok(Pattern::Array(patterns))
+            }
+            Expr::Object { properties, .. } => {
+                let mut result = Vec::new();
+                for property in properties {
+                    if property.spread {
+                        return Err(ParseError::new(
+                            "object spread is not valid in an assignment pattern",
+                            property.span,
+                        ));
+                    }
+                    result.push((property.key, self.expr_to_pattern(property.value)?));
+                }
+                Ok(Pattern::Object {
+                    properties: result,
+                    rest: None,
+                })
+            }
+            other => Err(ParseError::new(
+                "invalid destructuring assignment target",
+                other.span(),
+            )),
+        }
     }
 
     fn parse_or(&mut self) -> Result<Expr, ParseError> {

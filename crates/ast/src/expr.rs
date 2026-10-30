@@ -52,6 +52,11 @@ pub enum Expr {
         value: Box<Expr>,
         span: Span,
     },
+    DestructureAssign {
+        pattern: Box<crate::Pattern>,
+        value: Box<Expr>,
+        span: Span,
+    },
     Update {
         target: AssignTarget,
         prefix: bool,
@@ -140,6 +145,7 @@ impl Expr {
             | Self::Binary { span, .. }
             | Self::Conditional { span, .. }
             | Self::Assign { span, .. }
+            | Self::DestructureAssign { span, .. }
             | Self::Update { span, .. }
             | Self::Call { span, .. }
             | Self::New { span, .. }
