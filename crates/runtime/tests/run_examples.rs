@@ -214,6 +214,17 @@ fn named_function_expression_is_recursive() {
 }
 
 #[test]
+fn captured_tdz_errors_before_initialization() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    let result = runtime.run(
+        "function read() { return value; } read(); let value = 1;",
+        &mut host,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
 fn reads_and_writes_array_length() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

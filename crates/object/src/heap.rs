@@ -257,6 +257,15 @@ impl ObjectHeap {
     }
 
     pub fn array_get(&self, object: ObjectId, index: u32) -> Result<Value, ObjectHeapError> {
+        let value = self.array_get_raw(object, index)?;
+        if value.is_hole() {
+            Ok(Value::undefined())
+        } else {
+            Ok(value)
+        }
+    }
+
+    pub fn array_get_raw(&self, object: ObjectId, index: u32) -> Result<Value, ObjectHeapError> {
         if !self.is_array(object)? {
             return Err(ObjectHeapError::NotArray);
         }
@@ -272,12 +281,7 @@ impl ObjectHeap {
         }
         let raw = read_u32(&self.arena, block + BLOCK_HEADER + index * 4)
             .ok_or(ObjectHeapError::InvalidArray)?;
-        let value = Value::from_raw(raw);
-        if value.is_hole() {
-            Ok(Value::undefined())
-        } else {
-            Ok(value)
-        }
+        Ok(Value::from_raw(raw))
     }
 
     pub fn array_has(&self, object: ObjectId, index: u32) -> Result<bool, ObjectHeapError> {

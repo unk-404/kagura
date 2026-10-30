@@ -91,10 +91,10 @@ impl<'a> Interpreter<'a> {
                 .allocate_array(self.shapes.root())
                 .map_err(|error| RuntimeError::runtime(error.to_string(), Span::empty(0)))?;
             for (slot, value) in locals.iter().enumerate() {
+                let value = if defined[slot] { *value } else { Value::hole() };
                 self.objects
-                    .array_push(env, *value)
+                    .array_push(env, value)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), Span::empty(0)))?;
-                let _ = slot;
             }
             let parent = closure_env
                 .map(|parent| Value::object(parent.index()))
@@ -343,8 +343,14 @@ impl<'a> Interpreter<'a> {
                     let env = self.capture_env(env, level, span)?;
                     let value = self
                         .objects
-                        .array_get(env, slot as u32)
+                        .array_get_raw(env, slot as u32)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if value.is_hole() {
+                        return Err(RuntimeError::reference(
+                            "cannot access captured variable before initialization",
+                            span,
+                        ));
+                    }
                     push(&mut stack, value, span)?;
                 }
                 Op::StoreCapture => {
