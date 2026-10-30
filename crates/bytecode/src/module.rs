@@ -30,7 +30,7 @@ pub struct Module {
 }
 
 pub const MAGIC: [u8; 4] = *b"KGB1";
-pub const VERSION: u16 = 4;
+pub const VERSION: u16 = 1;
 pub const MIN_VERSION: u16 = 1;
 
 impl Module {

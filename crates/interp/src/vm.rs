@@ -420,10 +420,10 @@ impl<'a> Interpreter<'a> {
                 .objects
                 .get_slot(id, slot)
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
-            Some(PropertyLocation::PropertyArray(_)) => Err(RuntimeError::runtime(
-                "property arrays are not implemented yet",
-                span,
-            )),
+            Some(PropertyLocation::PropertyArray(index)) => self
+                .objects
+                .get_property_array(id, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
             None => Ok(Value::undefined()),
         }
     }
@@ -468,10 +468,10 @@ impl<'a> Interpreter<'a> {
                 .objects
                 .set_slot(id, slot, value)
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
-            PropertyLocation::PropertyArray(_) => Err(RuntimeError::runtime(
-                "property arrays are not implemented yet",
-                span,
-            )),
+            PropertyLocation::PropertyArray(index) => self
+                .objects
+                .set_property_array(id, index, value)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
         }
     }
 

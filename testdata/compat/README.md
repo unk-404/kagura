@@ -1,9 +1,9 @@
 # Bytecode compatibility fixtures
 
-`bytecode/v1/*.kbc` are frozen artifacts produced by the original M0
-compiler. `bytecode/v2/*.kbc` use the v2 `CallHost` FFI opcode.
-`bytecode/v3/*.kbc` use the v3 object literal/property opcodes.
-`bytecode/v4/*.kbc` use the v4 member-assignment opcode.
+`bytecode/v1/*.kbc` are current pre-release bytecode artifacts.
+They are **not** a published compatibility promise yet; the format stays v1
+until the first runtime release. After 0.0.1 is published, v1 becomes frozen
+and future changes require a new version.
 
-They are inputs for the permanent reader/executor tests; do not regenerate
-or replace existing fixtures. New format versions get a new directory.
+They are inputs for reader/executor regression tests; regenerate only while
+pre-release.

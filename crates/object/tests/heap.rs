@@ -23,6 +23,27 @@ fn allocates_objects_in_kmem() {
 }
 
 #[test]
+fn grows_property_array_without_realloc() {
+    let shapes = ShapeTable::new();
+    let mut heap = ObjectHeap::new(4096);
+    let object = heap.allocate(shapes.root()).unwrap();
+    for index in 0..12 {
+        heap.set_property_array(object, index, Value::smi(index as i32))
+            .unwrap();
+    }
+    for index in 0..12 {
+        assert_eq!(
+            heap.get_property_array(object, index).unwrap(),
+            Value::smi(index as i32)
+        );
+    }
+    assert_eq!(
+        heap.get_property_array(object, 12).unwrap(),
+        Value::undefined()
+    );
+}
+
+#[test]
 fn rejects_slot_outside_record() {
     let shapes = ShapeTable::new();
     let mut heap = ObjectHeap::new(4096);

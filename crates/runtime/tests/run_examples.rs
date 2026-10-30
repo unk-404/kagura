@@ -5,6 +5,7 @@ const HELLO: &str = include_str!("../../../examples/hello.ts");
 const FIB: &str = include_str!("../../../examples/fib.ts");
 const OBJECTS: &str = include_str!("../../../examples/objects.ts");
 const OBJECTS_WRITE: &str = include_str!("../../../examples/objects_write.ts");
+const OBJECTS_MANY: &str = include_str!("../../../examples/objects_many.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -36,6 +37,14 @@ fn writes_object_properties() {
     let mut runtime = Runtime::default();
     runtime.run(OBJECTS_WRITE, &mut host).unwrap();
     assert_eq!(host.output(), "7\n");
+}
+
+#[test]
+fn grows_property_arrays() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(OBJECTS_MANY, &mut host).unwrap();
+    assert_eq!(host.output(), "9\n");
 }
 
 #[test]
