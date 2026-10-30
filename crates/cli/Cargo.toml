@@ -12,6 +12,7 @@ path = "src/main.rs"
 clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
 kagura-bindgen = { version = "0.1.0", path = "../bindgen" }
 kagura-bytecode = { version = "0.1.0", path = "../bytecode" }
+kagura-conformance = { version = "0.1.0", path = "../conformance" }
 kagura-diagnostics = { version = "0.1.0", path = "../diagnostics" }
 kagura-parser = { version = "0.1.0", path = "../parser" }
 kagura-runtime = { version = "0.1.0", path = "../runtime" }

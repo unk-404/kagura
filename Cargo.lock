@@ -267,6 +267,7 @@ dependencies = [
  "clap",
  "kagura-bindgen",
  "kagura-bytecode",
+ "kagura-conformance",
  "kagura-diagnostics",
  "kagura-parser",
  "kagura-runtime",
@@ -280,6 +281,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "kagura-bindgen",
+ "kagura-parser",
  "kagura-runtime",
  "kagura-value",
 ]

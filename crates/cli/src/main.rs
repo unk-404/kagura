@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 use kagura_bindgen::{Bindings, HostCall, HostError};
 use kagura_bytecode::compile;
+use kagura_conformance::typescript;
 use kagura_diagnostics::{Diagnostic, render};
 use kagura_parser::parse;
 use kagura_runtime::Runtime;
@@ -40,6 +41,9 @@ enum Command {
         #[arg(long)]
         trace: bool,
     },
+    Typescript {
+        path: PathBuf,
+    },
 }
 
 fn main() {
@@ -53,6 +57,7 @@ fn main() {
         } => run_file(file, print_ast, print_bytecode, trace),
         Command::Build { file, output } => build_file(file, output),
         Command::RunBytecode { file, trace } => run_bytecode(file, trace),
+        Command::Typescript { path } => run_typescript(path),
     };
     std::process::exit(code);
 }
@@ -189,6 +194,19 @@ fn read_error(path: &Path, error: &std::io::Error) -> i32 {
 fn report(source: &str, path: &str, diagnostic: &Diagnostic) -> i32 {
     eprintln!("{}", render(source, path, diagnostic));
     1
+}
+
+fn run_typescript(path: PathBuf) -> i32 {
+    match typescript::run(&path) {
+        Ok(report) => {
+            print!("{report}");
+            if report.failed == 0 { 0 } else { 1 }
+        }
+        Err(error) => {
+            eprintln!("kagura: cannot read {}: {error}", path.display());
+            2
+        }
+    }
 }
 
 #[cfg(feature = "debug")]

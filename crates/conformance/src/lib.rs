@@ -1,6 +1,7 @@
 mod host;
 mod metadata;
 mod runner;
+pub mod typescript;
 
 pub use host::Test262Host;
 pub use metadata::{Metadata, Negative, parse_metadata};
