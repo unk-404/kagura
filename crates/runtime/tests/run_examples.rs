@@ -76,6 +76,19 @@ fn collects_script_objects_after_run() {
 }
 
 #[test]
+fn gc_runs_during_script_allocations() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::new(64 * 1024);
+    runtime
+        .run(
+            "for (let i = 0; i < 2000; i = i + 1) { let o = { x: i }; }",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(runtime.object_live_bytes(), 0);
+}
+
+#[test]
 fn reports_syntax_errors() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

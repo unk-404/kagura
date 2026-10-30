@@ -11,6 +11,7 @@ use crate::host::{Host, HostCall, HostFunctionId};
 
 const MAX_CALL_DEPTH: usize = 256;
 const MAX_STACK: usize = 4096;
+const GC_THRESHOLD: u32 = 32 * 1024;
 
 pub struct Interpreter<'a> {
     module: &'a Module,
@@ -315,7 +316,6 @@ impl<'a> Interpreter<'a> {
                     let value = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
                     self.set_property(object, &key, value, span)?;
-                    push(&mut stack, object, span)?;
                 }
                 Op::SetPropValue => {
                     let index = read_u32(&function.code, &mut pc, span)?;
@@ -368,6 +368,18 @@ impl<'a> Interpreter<'a> {
                         .array_set(id, index, value)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                     push(&mut stack, value, span)?;
+                }
+                Op::GcCheck => {
+                    if self.objects.live_bytes() >= GC_THRESHOLD {
+                        let mut roots = Vec::with_capacity(locals.len() + stack.len());
+                        for (value, is_defined) in locals.iter().zip(defined.iter()) {
+                            if *is_defined {
+                                roots.push(*value);
+                            }
+                        }
+                        roots.extend_from_slice(&stack);
+                        self.objects.collect(&roots);
+                    }
                 }
                 Op::Pop => {
                     pop(&mut stack, span)?;

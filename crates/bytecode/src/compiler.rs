@@ -34,7 +34,7 @@ impl Compiler {
             }
         }
 
-        let script = FunctionCompiler::new("<script>", &[], &mut self.constants);
+        let script = FunctionCompiler::new("<script>", &[], true, &mut self.constants);
         let mut script = script;
         for stmt in &program.body {
             if matches!(stmt, Stmt::Func(_)) {
@@ -69,7 +69,7 @@ fn compile_function(
             ));
         }
     }
-    let mut compiler = FunctionCompiler::new(&decl.name, &decl.params, constants);
+    let mut compiler = FunctionCompiler::new(&decl.name, &decl.params, false, constants);
     for stmt in &decl.body {
         compiler.compile_stmt(stmt)?;
     }
@@ -97,11 +97,12 @@ struct FunctionCompiler<'a> {
     locals: Vec<Local>,
     scopes: Vec<usize>,
     loops: Vec<LoopContext>,
+    gc_safe: bool,
     constants: &'a mut Vec<Const>,
 }
 
 impl<'a> FunctionCompiler<'a> {
-    fn new(name: &str, params: &[Param], constants: &'a mut Vec<Const>) -> Self {
+    fn new(name: &str, params: &[Param], gc_safe: bool, constants: &'a mut Vec<Const>) -> Self {
         let mut compiler = Self {
             name: name.to_owned(),
             param_count: params.len() as u16,
@@ -110,6 +111,7 @@ impl<'a> FunctionCompiler<'a> {
             locals: Vec::new(),
             scopes: vec![0],
             loops: Vec::new(),
+            gc_safe,
             constants,
         };
         for param in params {
@@ -131,6 +133,9 @@ impl<'a> FunctionCompiler<'a> {
     }
 
     fn compile_stmt(&mut self, stmt: &Stmt) -> Result<(), CompileError> {
+        if self.gc_safe {
+            self.emit(Op::GcCheck, stmt.span());
+        }
         match stmt {
             Stmt::Var(decl) => self.compile_var(decl),
             Stmt::Func(decl) => Err(CompileError::new(

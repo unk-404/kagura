@@ -37,6 +37,7 @@ pub enum Op {
     ArrayPush = 33,
     GetIndex = 34,
     SetIndexValue = 35,
+    GcCheck = 36,
 }
 
 impl Op {
@@ -78,6 +79,7 @@ impl Op {
             33 => Self::ArrayPush,
             34 => Self::GetIndex,
             35 => Self::SetIndexValue,
+            36 => Self::GcCheck,
             _ => return None,
         })
     }
