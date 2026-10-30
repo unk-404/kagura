@@ -15,6 +15,20 @@ impl<'a> Interpreter<'a> {
         args: &[Value],
         span: Span,
     ) -> Result<Option<Value>, RuntimeError> {
+        if matches!(
+            path,
+            "Error"
+                | "TypeError"
+                | "RangeError"
+                | "ReferenceError"
+                | "SyntaxError"
+                | "EvalError"
+                | "URIError"
+                | "Test262Error"
+                | "Array"
+        ) {
+            return self.new_name(path, args, span).map(Some);
+        }
         if path == "Array.isArray" {
             let array = args.first().copied().is_some_and(|value| {
                 value.object_offset().is_some_and(|offset| {
@@ -199,6 +213,89 @@ impl<'a> Interpreter<'a> {
                 }
             }
             return Ok(Some(Value::object(array.index())));
+        }
+        if path == "String" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            let text = if value.is_undefined() {
+                String::new()
+            } else {
+                self.heap.to_js_string(value)
+            };
+            return Ok(Some(self.heap.string(&text)));
+        }
+        if path == "Number" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            let number = self.heap.to_number(value).unwrap_or(f64::NAN);
+            return Ok(Some(self.heap.number(number)));
+        }
+        if path == "Boolean" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            return Ok(Some(Value::boolean(self.heap.truthy(value))));
+        }
+        if path == "parseInt" {
+            let text = self
+                .heap
+                .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+            let radix = args
+                .get(1)
+                .and_then(|value| self.heap.as_number(*value))
+                .filter(|radix| *radix >= 2.0 && *radix <= 36.0)
+                .unwrap_or(10.0) as u32;
+            let text = text.trim_start();
+            let (sign, digits) = if let Some(rest) = text.strip_prefix('-') {
+                (-1.0, rest)
+            } else if let Some(rest) = text.strip_prefix('+') {
+                (1.0, rest)
+            } else {
+                (1.0, text)
+            };
+            let mut end = 0usize;
+            for (index, ch) in digits.char_indices() {
+                if ch.to_digit(radix).is_none() {
+                    break;
+                }
+                end = index + ch.len_utf8();
+            }
+            if end == 0 {
+                return Ok(Some(self.heap.number(f64::NAN)));
+            }
+            let parsed = i64::from_str_radix(&digits[..end], radix)
+                .map(|value| value as f64 * sign)
+                .unwrap_or(f64::NAN);
+            return Ok(Some(self.heap.number(parsed)));
+        }
+        if path == "parseFloat" {
+            let text = self
+                .heap
+                .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+            let parsed = parse_float_prefix(&text);
+            return Ok(Some(self.heap.number(parsed)));
+        }
+        if path == "isNaN" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            let number = self.heap.to_number(value).unwrap_or(f64::NAN);
+            return Ok(Some(Value::boolean(number.is_nan())));
+        }
+        if path == "isFinite" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            let number = self.heap.to_number(value).unwrap_or(f64::NAN);
+            return Ok(Some(Value::boolean(number.is_finite())));
+        }
+        if let Some(operation) = path.strip_prefix("Math.") {
+            return self.call_math(operation, args, span).map(Some);
+        }
+        if path == "JSON.stringify" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            return match self.json_stringify(value, span)? {
+                Some(text) => Ok(Some(self.heap.string(&text))),
+                None => Ok(Some(Value::undefined())),
+            };
+        }
+        if path == "JSON.parse" {
+            return Err(RuntimeError::runtime(
+                "JSON.parse is not supported yet",
+                span,
+            ));
         }
         if path == "Object.create" {
             let Some(prototype) = args.first().copied() else {
@@ -730,6 +827,147 @@ impl<'a> Interpreter<'a> {
         Ok(true)
     }
 
+    fn json_stringify(&mut self, value: Value, span: Span) -> Result<Option<String>, RuntimeError> {
+        if value.is_undefined() || value.is_hole() {
+            return Ok(None);
+        }
+        if value.is_null() {
+            return Ok(Some("null".into()));
+        }
+        if let Some(boolean) = value.as_boolean() {
+            return Ok(Some(boolean.to_string()));
+        }
+        if let Some(number) = self.heap.as_number(value) {
+            if number.is_nan() || number.is_infinite() {
+                return Ok(Some("null".into()));
+            }
+            return Ok(Some(if number.fract() == 0.0 {
+                format!("{number:.0}")
+            } else {
+                number.to_string()
+            }));
+        }
+        if let Some(text) = self.heap.as_str(value) {
+            return Ok(Some(json_quote(text)));
+        }
+        let Some(id) = value.object_offset().map(ObjectId::new) else {
+            return Ok(None);
+        };
+        if self
+            .objects
+            .is_function(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Ok(None);
+        }
+        if self
+            .objects
+            .is_array(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            let length = self
+                .objects
+                .array_length(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let mut parts = Vec::with_capacity(length as usize);
+            for index in 0..length {
+                let item = self
+                    .objects
+                    .array_get(id, index)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                parts.push(
+                    self.json_stringify(item, span)?
+                        .unwrap_or_else(|| "null".into()),
+                );
+            }
+            return Ok(Some(format!("[{}]", parts.join(","))));
+        }
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let keys = own_property_keys(self.shapes, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let mut parts = Vec::new();
+        for key in keys {
+            let descriptor = self
+                .shapes
+                .lookup(shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if !descriptor.is_some_and(|descriptor| descriptor.attributes.enumerable) {
+                continue;
+            }
+            let key_text = match &key {
+                PropertyKey::String(key) => key.clone(),
+                PropertyKey::Index(index) => index.to_string(),
+                PropertyKey::Symbol(_) => continue,
+            };
+            let item = self.get_property(value, &key_text, span)?;
+            if let Some(text) = self.json_stringify(item, span)? {
+                parts.push(format!("{}:{text}", json_quote(&key_text)));
+            }
+        }
+        Ok(Some(format!("{{{}}}", parts.join(","))))
+    }
+
+    fn call_math(
+        &mut self,
+        operation: &str,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let number = |heap: &kagura_value::Heap, index: usize| {
+            heap.to_number(args.get(index).copied().unwrap_or_else(Value::undefined))
+                .unwrap_or(f64::NAN)
+        };
+        let value = match operation {
+            "abs" => number(self.heap, 0).abs(),
+            "floor" => number(self.heap, 0).floor(),
+            "ceil" => number(self.heap, 0).ceil(),
+            "trunc" => number(self.heap, 0).trunc(),
+            "round" => (number(self.heap, 0) + 0.5).floor(),
+            "sqrt" => number(self.heap, 0).sqrt(),
+            "pow" => number(self.heap, 0).powf(number(self.heap, 1)),
+            "sign" => {
+                let value = number(self.heap, 0);
+                if value.is_nan() {
+                    f64::NAN
+                } else if value == 0.0 {
+                    value
+                } else {
+                    value.signum()
+                }
+            }
+            "min" | "max" => {
+                let mut result = if operation == "min" {
+                    f64::INFINITY
+                } else {
+                    f64::NEG_INFINITY
+                };
+                for index in 0..args.len() {
+                    let value = number(self.heap, index);
+                    if value.is_nan() {
+                        result = f64::NAN;
+                        break;
+                    }
+                    result = if operation == "min" {
+                        result.min(value)
+                    } else {
+                        result.max(value)
+                    };
+                }
+                result
+            }
+            _ => {
+                return Err(RuntimeError::runtime(
+                    format!("Math.{operation} is not supported"),
+                    span,
+                ));
+            }
+        };
+        Ok(self.heap.number(value))
+    }
+
     pub(super) fn construct(
         &mut self,
         callee: Value,
@@ -787,7 +1025,7 @@ impl<'a> Interpreter<'a> {
     ) -> Result<Value, RuntimeError> {
         match name {
             "Error" | "TypeError" | "RangeError" | "ReferenceError" | "SyntaxError"
-            | "Test262Error" => {
+            | "EvalError" | "URIError" | "Test262Error" => {
                 let object = self
                     .objects
                     .allocate(self.shapes.root())
@@ -817,10 +1055,23 @@ impl<'a> Interpreter<'a> {
                     .objects
                     .allocate_array(self.shapes.root())
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                for value in args {
-                    self.objects
-                        .array_push(array, *value)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                if args.len() == 1
+                    && let Some(length) = self.heap.as_number(args[0])
+                    && length >= 0.0
+                    && length.fract() == 0.0
+                    && length <= 1024.0
+                {
+                    for _ in 0..length as u32 {
+                        self.objects
+                            .array_push(array, Value::hole())
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                } else {
+                    for value in args {
+                        self.objects
+                            .array_push(array, *value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
                 }
                 Ok(Value::object(array.index()))
             }
@@ -973,6 +1224,34 @@ impl<'a> Interpreter<'a> {
     }
 
     pub(super) fn load_builtin(&mut self, name: &str, span: Span) -> Result<Value, RuntimeError> {
+        if name == "Math" {
+            let object = self
+                .objects
+                .allocate(self.shapes.root())
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let object = Value::object(object.index());
+            for (key, value) in [
+                ("PI", std::f64::consts::PI),
+                ("E", std::f64::consts::E),
+                ("LN2", std::f64::consts::LN_2),
+                ("LN10", std::f64::consts::LN_10),
+                ("LOG2E", std::f64::consts::LOG2_E),
+                ("LOG10E", std::f64::consts::LOG10_E),
+                ("SQRT2", std::f64::consts::SQRT_2),
+                ("SQRT1_2", std::f64::consts::FRAC_1_SQRT_2),
+            ] {
+                let value = self.heap.number(value);
+                self.set_property(object, key, value, span)?;
+            }
+            return Ok(object);
+        }
+        if name == "JSON" {
+            let object = self
+                .objects
+                .allocate(self.shapes.root())
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            return Ok(Value::object(object.index()));
+        }
         let object = self
             .objects
             .allocate_function(
@@ -2258,4 +2537,64 @@ impl<'a> Interpreter<'a> {
             _ => return Ok(None),
         }))
     }
+}
+
+fn parse_float_prefix(value: &str) -> f64 {
+    let value = value.trim_start();
+    if value.starts_with("Infinity") {
+        return f64::INFINITY;
+    }
+    if value.starts_with("-Infinity") {
+        return f64::NEG_INFINITY;
+    }
+    let bytes = value.as_bytes();
+    let mut index = usize::from(matches!(bytes.first(), Some(b'+') | Some(b'-')));
+    let mut digits = 0usize;
+    let mut dot = false;
+    let mut exponent = false;
+    let mut end = 0usize;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if byte.is_ascii_digit() {
+            digits += 1;
+            end = index + 1;
+            index += 1;
+        } else if byte == b'.' && !dot && !exponent {
+            dot = true;
+            index += 1;
+        } else if matches!(byte, b'e' | b'E') && digits > 0 && !exponent {
+            exponent = true;
+            end = index + 1;
+            index += 1;
+            if matches!(bytes.get(index), Some(b'+') | Some(b'-')) {
+                index += 1;
+            }
+        } else {
+            break;
+        }
+    }
+    if digits == 0 {
+        return f64::NAN;
+    }
+    value[..end].parse::<f64>().unwrap_or(f64::NAN)
+}
+
+fn json_quote(value: &str) -> String {
+    let mut result = String::with_capacity(value.len() + 2);
+    result.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => result.push_str("\\\""),
+            '\\' => result.push_str("\\\\"),
+            '\n' => result.push_str("\\n"),
+            '\r' => result.push_str("\\r"),
+            '\t' => result.push_str("\\t"),
+            ch if (ch as u32) < 0x20 => {
+                result.push_str(&format!("\\u{:04x}", ch as u32));
+            }
+            ch => result.push(ch),
+        }
+    }
+    result.push('"');
+    result
 }

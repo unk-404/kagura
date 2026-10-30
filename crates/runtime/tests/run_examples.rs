@@ -69,6 +69,7 @@ const EXTENSIBILITY: &str = include_str!("../../../examples/extensibility.ts");
 const STRING_REPLACE: &str = include_str!("../../../examples/string_replace.ts");
 const NEW_ERRORS: &str = include_str!("../../../examples/new_errors.ts");
 const NEW_CONSTRUCTOR: &str = include_str!("../../../examples/new_constructor.ts");
+const GLOBALS_MATH: &str = include_str!("../../../examples/globals_math.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -685,6 +686,14 @@ fn constructs_user_objects() {
     let mut runtime = Runtime::default();
     runtime.run(NEW_CONSTRUCTOR, &mut host).unwrap();
     assert_eq!(host.output(), "5\n2\n");
+}
+
+#[test]
+fn runs_global_conversions_and_math() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(GLOBALS_MATH, &mut host).unwrap();
+    assert_eq!(host.output(), "1 3\n1 3 1\n42 255 1.5\ntrue true\n");
 }
 
 #[test]

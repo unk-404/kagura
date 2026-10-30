@@ -911,6 +911,14 @@ impl<'a> FunctionCompiler<'a> {
                     }
                     return Ok(());
                 }
+                if matches!(op, UnaryOp::TypeOf)
+                    && let Expr::Ident { name, .. } = expr.as_ref()
+                    && self.resolve(name).is_none()
+                    && !is_builtin_global(name)
+                {
+                    self.emit_const(Const::String("undefined".into()), *span);
+                    return Ok(());
+                }
                 self.compile_expr(expr)?;
                 match op {
                     UnaryOp::Neg => self.emit(Op::Neg, *span),
@@ -1312,8 +1320,15 @@ fn is_builtin_global(name: &str) -> bool {
             | "ReferenceError"
             | "SyntaxError"
             | "Test262Error"
+            | "EvalError"
+            | "URIError"
             | "Object"
             | "Array"
+            | "Math"
+            | "JSON"
+            | "Number"
+            | "String"
+            | "Boolean"
     )
 }
 

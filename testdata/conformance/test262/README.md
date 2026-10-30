@@ -80,6 +80,8 @@ The current P1 slice adds:
 - user-function `new` construction and generic `new` on resolved values
 - undeclared assignments throw a runtime `ReferenceError`
 - a supported-feature whitelist instead of skipping every non-empty feature list
+- global `String`/`Number`/`Boolean`/`parseInt`/`parseFloat`/`isNaN`/`isFinite`
+- basic `Math` methods and constants, `JSON.stringify`, `typeof` of unresolved names
 
 These changes do not mean the skipped features are implemented; they just stop
 hiding runnable cases behind harness gaps.
@@ -113,8 +115,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18845 executed, 1903 passed, 16942 failed, 35184 skipped
-oracle node: 1903 checked, 1901 matched, 2 mismatched
+54029 selected, 18845 executed, 1991 passed, 16854 failed, 35184 skipped
+oracle node: 1991 checked, 1989 matched, 2 mismatched
 ```
 
 The two Node mismatches are tracked differential warnings, not hidden Kagura

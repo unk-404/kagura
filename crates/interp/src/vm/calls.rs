@@ -90,7 +90,7 @@ impl<'a> Interpreter<'a> {
     pub(super) fn call_name(
         &mut self,
         name: &str,
-        index: usize,
+        _index: usize,
         args: &[Value],
         span: Span,
         caller_roots: &[Value],
@@ -98,8 +98,16 @@ impl<'a> Interpreter<'a> {
         if let Some(function) = self.module.find_function(name) {
             return self.call(function, args, caller_roots, None, None, None);
         }
-        let id = self.resolve_host(name, index, span)?;
-        self.invoke_host(id, args, span)
+        if let Some(id) = self.host.resolve(name) {
+            return self.invoke_host(id, args, span);
+        }
+        if let Some(value) = self.call_global(name, args, span)? {
+            return Ok(value);
+        }
+        Err(RuntimeError::reference(
+            format!("{name} is not defined"),
+            span,
+        ))
     }
 
     pub(super) fn resolve_host(
