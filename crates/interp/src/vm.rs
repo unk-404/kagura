@@ -976,6 +976,23 @@ impl<'a> Interpreter<'a> {
                     let object = pop(&mut stack, span)?;
                     try_op!(self.set_non_enumerable_property(object, &key, value, span));
                 }
+                Op::SetPrototype => {
+                    let prototype = pop(&mut stack, span)?;
+                    let object = pop(&mut stack, span)?;
+                    let object_id = self.object_id(object, span)?;
+                    let shape = self
+                        .objects
+                        .shape(object_id)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let prototype = prototype.object_offset().map(ObjectId::new);
+                    let shape = self
+                        .shapes
+                        .with_prototype(shape, prototype)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    self.objects
+                        .set_shape(object_id, shape)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
                 Op::SetPropValue => {
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let key = match self.module.constants.get(index as usize) {

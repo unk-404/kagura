@@ -85,6 +85,7 @@ pub enum Stmt {
     VarList(Vec<VarDecl>),
     Class {
         name: String,
+        super_class: Option<Expr>,
         fields: Vec<ClassField>,
         methods: Vec<ClassMethod>,
         span: Span,

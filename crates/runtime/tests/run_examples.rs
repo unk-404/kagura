@@ -1061,6 +1061,19 @@ fn runs_public_class_fields() {
 }
 
 #[test]
+fn supports_default_derived_class_constructors() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "class A { constructor(x) { this.x = x; } value() { return this.x; } } class B extends A { doubled() { return this.x * 2; } } var b = new B(4); console.log(b.doubled(), b.value(), b instanceof B, b instanceof A);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "8 4 true true\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

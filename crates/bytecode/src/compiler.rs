@@ -319,10 +319,11 @@ impl<'a> FunctionCompiler<'a> {
             Stmt::Destructure(decl) => self.compile_destructure(decl),
             Stmt::Class {
                 name,
+                super_class,
                 fields,
                 methods,
                 span,
-            } => self.compile_class(name, fields, methods, *span),
+            } => self.compile_class(name, super_class.as_ref(), fields, methods, *span),
             Stmt::Func(decl) => {
                 if self.strict && matches!(decl.name.as_str(), "eval" | "arguments") {
                     return Err(CompileError::new(
@@ -1011,6 +1012,7 @@ impl<'a> FunctionCompiler<'a> {
     fn compile_class(
         &mut self,
         name: &str,
+        super_class: Option<&Expr>,
         fields: &[kagura_ast::ClassField],
         methods: &[kagura_ast::ClassMethod],
         span: Span,
@@ -1067,6 +1069,32 @@ impl<'a> FunctionCompiler<'a> {
             self.compile_closure(name, &[], &constructor_body, None, span)?;
         }
         self.emit_u16(Op::StoreLocal, slot, span);
+        let has_constructor = methods.iter().any(|method| method.name == "constructor");
+        let super_slot = if let Some(super_class) = super_class {
+            let super_slot = self.hidden_local(span);
+            self.compile_expr(super_class)?;
+            self.emit_u16(Op::StoreLocal, super_slot, span);
+            self.emit_u16(Op::LoadLocal, slot, span);
+            let prototype_key = self.add_const(Const::String("prototype".into()));
+            self.emit_u32(Op::GetProp, prototype_key, span);
+            self.emit_u16(Op::LoadLocal, super_slot, span);
+            self.emit_u32(Op::GetProp, prototype_key, span);
+            self.emit(Op::SetPrototype, span);
+            self.emit_u16(Op::LoadLocal, slot, span);
+            self.emit_u16(Op::LoadLocal, super_slot, span);
+            self.emit(Op::SetPrototype, span);
+            Some(super_slot)
+        } else {
+            None
+        };
+        if let Some(super_slot) = super_slot
+            && !has_constructor
+        {
+            self.emit_u16(Op::LoadLocal, slot, span);
+            self.emit_u16(Op::LoadLocal, super_slot, span);
+            let key = self.add_const(Const::String("__kaguraDefaultCtor".into()));
+            self.emit_u32(Op::SetProp, key, span);
+        }
         for field in fields.iter().filter(|field| field.is_static) {
             self.emit_u16(Op::LoadLocal, slot, span);
             if let Some(value) = &field.value {

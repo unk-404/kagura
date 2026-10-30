@@ -72,6 +72,7 @@ pub enum Op {
     ArrayRest = 68,
     ObjectRest = 69,
     SetPropNonEnum = 70,
+    SetPrototype = 71,
 }
 
 impl Op {
@@ -148,6 +149,7 @@ impl Op {
             68 => Self::ArrayRest,
             69 => Self::ObjectRest,
             70 => Self::SetPropNonEnum,
+            71 => Self::SetPrototype,
             _ => return None,
         })
     }

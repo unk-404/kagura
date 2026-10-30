@@ -133,12 +133,13 @@ impl Parser {
             TokenKind::Ident(name) => name,
             _ => unreachable!(),
         };
-        if matches!(&self.peek().kind, TokenKind::Ident(word) if word == "extends") {
-            return Err(ParseError::new(
-                "class extends is not implemented yet",
-                self.peek().span,
-            ));
-        }
+        let super_class = if matches!(&self.peek().kind, TokenKind::Ident(word) if word == "extends")
+        {
+            self.advance();
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
         self.expect(&TokenKind::LBrace, "expected '{' after class name")?;
         let mut fields = Vec::new();
         let mut methods = Vec::new();
@@ -190,6 +191,7 @@ impl Parser {
         let end = self.expect(&TokenKind::RBrace, "expected '}' after class body")?;
         Ok(Stmt::Class {
             name,
+            super_class,
             fields,
             methods,
             span: start.merge(end.span),
