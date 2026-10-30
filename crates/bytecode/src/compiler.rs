@@ -434,7 +434,10 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit(Op::NewArray, *span);
                 for element in elements {
                     self.emit(Op::Dup, *span);
-                    self.compile_expr(element)?;
+                    match element {
+                        Some(element) => self.compile_expr(element)?,
+                        None => self.emit_const(Const::Undefined, *span),
+                    }
                     self.emit(Op::ArrayPush, *span);
                 }
             }

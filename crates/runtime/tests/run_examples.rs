@@ -9,6 +9,7 @@ const OBJECTS_MANY: &str = include_str!("../../../examples/objects_many.ts");
 const ARRAYS: &str = include_str!("../../../examples/arrays.ts");
 const ARRAYS_LENGTH: &str = include_str!("../../../examples/arrays_length.ts");
 const STRINGS: &str = include_str!("../../../examples/strings.ts");
+const ARRAYS_HOLES: &str = include_str!("../../../examples/arrays_holes.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -64,6 +65,14 @@ fn rewrites_string_length_and_index() {
     let mut runtime = Runtime::default();
     runtime.run(STRINGS, &mut host).unwrap();
     assert_eq!(host.output(), "3\nb\nundefined\n");
+}
+
+#[test]
+fn preserves_array_holes() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARRAYS_HOLES, &mut host).unwrap();
+    assert_eq!(host.output(), "3\nundefined\n1\n");
 }
 
 #[test]

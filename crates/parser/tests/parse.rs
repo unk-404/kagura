@@ -65,6 +65,21 @@ fn rejects_lexical_declaration_in_statement_position() {
 }
 
 #[test]
+fn parses_array_holes() {
+    let program = parse("let values = [1, , 3];").unwrap();
+    let kagura_ast::Stmt::Var(decl) = &program.body[0] else {
+        panic!("expected var declaration");
+    };
+    let Some(kagura_ast::Expr::Array { elements, .. }) = &decl.init else {
+        panic!("expected array literal");
+    };
+    assert_eq!(elements.len(), 3);
+    assert!(elements[0].is_some());
+    assert!(elements[1].is_none());
+    assert!(elements[2].is_some());
+}
+
+#[test]
 fn rejects_unterminated_string() {
     let error = parse("let value = \"oops;").unwrap_err();
     assert!(error.message.contains("unterminated string"));

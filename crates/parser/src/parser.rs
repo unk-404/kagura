@@ -617,7 +617,15 @@ impl Parser {
         let mut elements = Vec::new();
         if !self.at(&TokenKind::RBracket) {
             loop {
-                elements.push(self.parse_expr()?);
+                if self.at(&TokenKind::Comma) {
+                    elements.push(None);
+                    self.advance();
+                    if self.at(&TokenKind::RBracket) {
+                        break;
+                    }
+                    continue;
+                }
+                elements.push(Some(self.parse_expr()?));
                 if !self.eat(&TokenKind::Comma) || self.at(&TokenKind::RBracket) {
                     break;
                 }
