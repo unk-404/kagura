@@ -306,6 +306,49 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub(super) fn array_rest(
+        &mut self,
+        source: Value,
+        start: u32,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let shape = self.array_shape(span)?;
+        let result = self
+            .objects
+            .allocate_array(shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let Some(source_id) = source.object_offset().map(kagura_object::ObjectId::new) else {
+            return Ok(Value::object(result.index()));
+        };
+        if !self
+            .objects
+            .is_array(source_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Ok(Value::object(result.index()));
+        }
+        let length = self
+            .objects
+            .array_length(source_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for index in start..length {
+            if self
+                .objects
+                .array_has(source_id, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                let value = self
+                    .objects
+                    .array_get(source_id, index)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                self.objects
+                    .array_push(result, value)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            }
+        }
+        Ok(Value::object(result.index()))
+    }
+
     pub(super) fn spread_array_into(
         &mut self,
         target: Value,

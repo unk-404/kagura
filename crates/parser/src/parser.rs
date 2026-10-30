@@ -109,7 +109,11 @@ impl Parser {
                     elements.push(None);
                     continue;
                 }
-                elements.push(Some(self.parse_binding_pattern()?));
+                if self.eat(&TokenKind::DotDotDot) {
+                    elements.push(Some(Pattern::Rest(Box::new(self.parse_binding_pattern()?))));
+                } else {
+                    elements.push(Some(self.parse_binding_element()?));
+                }
                 if !self.eat(&TokenKind::Comma) {
                     break;
                 }
@@ -132,9 +136,10 @@ impl Parser {
                     }
                 };
                 let pattern = if self.eat(&TokenKind::Colon) {
-                    self.parse_binding_pattern()?
+                    self.parse_binding_element()?
                 } else {
-                    Pattern::Ident(key.clone())
+                    let pattern = Pattern::Ident(key.clone());
+                    self.parse_pattern_default(pattern)?
                 };
                 properties.push((key, pattern));
                 if !self.eat(&TokenKind::Comma) {
@@ -149,6 +154,22 @@ impl Parser {
             unreachable!()
         };
         Ok(Pattern::Ident(name))
+    }
+
+    fn parse_binding_element(&mut self) -> Result<Pattern, ParseError> {
+        let pattern = self.parse_binding_pattern()?;
+        self.parse_pattern_default(pattern)
+    }
+
+    fn parse_pattern_default(&mut self, pattern: Pattern) -> Result<Pattern, ParseError> {
+        if self.eat(&TokenKind::Assign) {
+            let default = self.parse_expr()?;
+            return Ok(Pattern::Default {
+                pattern: Box::new(pattern),
+                default,
+            });
+        }
+        Ok(pattern)
     }
 
     fn parse_var_decl(&mut self, kind: VarKind, expect_semi: bool) -> Result<VarDecl, ParseError> {

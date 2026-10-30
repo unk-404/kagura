@@ -957,6 +957,19 @@ fn binds_array_and_object_destructuring_patterns() {
 }
 
 #[test]
+fn supports_destructuring_defaults_and_rest() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var [a = 1, b = 2] = [5]; var { x = 3, y = 4 } = { x: undefined }; var [first, ...rest] = [1, 2, 3, 4]; console.log(a, b, x, y, first, rest.join(','));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "5 2 3 4 1 2,3,4\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

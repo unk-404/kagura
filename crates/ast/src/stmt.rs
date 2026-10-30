@@ -44,6 +44,11 @@ pub enum Pattern {
     Ident(String),
     Array(Vec<Option<Pattern>>),
     Object(Vec<(String, Pattern)>),
+    Default {
+        pattern: Box<Pattern>,
+        default: Expr,
+    },
+    Rest(Box<Pattern>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

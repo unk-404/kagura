@@ -922,6 +922,15 @@ impl<'a> FunctionCompiler<'a> {
                     let Some(element) = element else {
                         continue;
                     };
+                    if let Pattern::Rest(inner) = element {
+                        self.emit_u16(Op::LoadLocal, source, span);
+                        self.emit_const(Const::Number(index as f64), span);
+                        self.emit(Op::ArrayRest, span);
+                        let value = self.hidden_local(span);
+                        self.emit_u16(Op::StoreLocal, value, span);
+                        self.bind_pattern(inner, value, kind, span)?;
+                        break;
+                    }
                     self.emit_u16(Op::LoadLocal, source, span);
                     self.emit_const(Const::Number(index as f64), span);
                     self.emit(Op::GetIndex, span);
@@ -939,6 +948,27 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit_u16(Op::StoreLocal, value, span);
                     self.bind_pattern(element, value, kind, span)?;
                 }
+            }
+            Pattern::Default { pattern, default } => {
+                self.emit_u16(Op::LoadLocal, source, span);
+                self.emit(Op::Dup, span);
+                self.emit_const(Const::Undefined, span);
+                self.emit(Op::StrictEq, span);
+                let not_undefined = self.emit_jump(Op::JumpIfFalse, span);
+                self.emit(Op::Pop, span);
+                self.compile_expr(default)?;
+                let end = self.emit_jump(Op::Jump, span);
+                self.patch_jump(not_undefined, self.code.len());
+                self.patch_jump(end, self.code.len());
+                let value = self.hidden_local(span);
+                self.emit_u16(Op::StoreLocal, value, span);
+                self.bind_pattern(pattern, value, kind, span)?;
+            }
+            Pattern::Rest(_) => {
+                return Err(CompileError::new(
+                    "rest pattern is only valid inside an array or object pattern",
+                    span,
+                ));
             }
         }
         Ok(())

@@ -69,6 +69,7 @@ pub enum Op {
     Pow = 65,
     SpreadObject = 66,
     SpreadArray = 67,
+    ArrayRest = 68,
 }
 
 impl Op {
@@ -142,6 +143,7 @@ impl Op {
             65 => Self::Pow,
             66 => Self::SpreadObject,
             67 => Self::SpreadArray,
+            68 => Self::ArrayRest,
             _ => return None,
         })
     }
