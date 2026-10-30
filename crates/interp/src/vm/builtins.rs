@@ -220,6 +220,81 @@ impl<'a> Interpreter<'a> {
         Ok(Some(Value::object(result.index())))
     }
 
+    pub(super) fn invoke_bound(
+        &mut self,
+        callee: Value,
+        args: &[Value],
+        caller_roots: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let mut current = callee;
+        let mut bound_this = Value::undefined();
+        let mut levels = Vec::new();
+        loop {
+            let object = self.object_id(current, span)?;
+            if !self
+                .objects
+                .is_bound(object)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                break;
+            }
+            let (this_value, arguments, target) = self
+                .objects
+                .bound_data(object)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            bound_this = this_value;
+            let arguments = self.object_id(arguments, span)?;
+            let length = self
+                .objects
+                .array_length(arguments)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let mut level = Vec::with_capacity(length as usize);
+            for index in 0..length {
+                level.push(
+                    self.objects
+                        .array_get(arguments, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+                );
+            }
+            levels.push(level);
+            current = target;
+        }
+        let object = self.object_id(current, span)?;
+        let (function, env_value) = self
+            .objects
+            .function_data(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let closure_env = env_value.object_offset().map(ObjectId::new);
+        let receiver = if self
+            .module
+            .functions
+            .get(function as usize)
+            .is_some_and(|proto| proto.name == "<arrow>")
+        {
+            Some(
+                self.objects
+                    .function_this(object)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+            )
+        } else {
+            Some(bound_this)
+        };
+        let mut all_args = Vec::new();
+        for level in levels.into_iter().rev() {
+            all_args.extend(level);
+        }
+        all_args.extend_from_slice(args);
+        self.call(
+            function as usize,
+            &all_args,
+            caller_roots,
+            closure_env,
+            Some(current),
+            receiver,
+        )
+    }
+
     pub(super) fn invoke_callable(
         &mut self,
         callee: Value,
@@ -234,6 +309,13 @@ impl<'a> Interpreter<'a> {
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
         {
             return Err(RuntimeError::type_error("value is not callable", span));
+        }
+        if self
+            .objects
+            .is_bound(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return self.invoke_bound(callee, args, caller_roots, span);
         }
         let (function, env_value) = self
             .objects
@@ -397,6 +479,13 @@ impl<'a> Interpreter<'a> {
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
         {
             return Err(RuntimeError::type_error("value is not callable", span));
+        }
+        if self
+            .objects
+            .is_bound(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return self.invoke_bound(callee, args, caller_roots, span);
         }
         let (function, env_value) = self
             .objects
@@ -575,6 +664,34 @@ impl<'a> Interpreter<'a> {
             .objects
             .is_function(object_id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if is_function && key == "bind" {
+            let receiver = args.first().copied().unwrap_or_else(Value::undefined);
+            let array = self
+                .objects
+                .allocate_array(self.shapes.root())
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            for argument in args.get(1..).unwrap_or_default() {
+                self.objects
+                    .array_push(array, *argument)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            }
+            let (function, env_value) = self
+                .objects
+                .function_data(object_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let bound = self
+                .objects
+                .allocate_bound_function(
+                    self.shapes.root(),
+                    function,
+                    env_value,
+                    receiver,
+                    Value::object(array.index()),
+                    object,
+                )
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            return Ok(Some(Value::object(bound.index())));
+        }
         if is_function && (key == "call" || key == "apply") {
             let receiver = args.first().copied().unwrap_or_else(Value::undefined);
             let rest = if key == "call" {

@@ -56,6 +56,7 @@ const FINALLY_NESTED_LOOPS: &str = include_str!("../../../examples/finally_neste
 const BUILTIN_EXTRAS: &str = include_str!("../../../examples/builtin_extras.ts");
 const ARRAY_SORT: &str = include_str!("../../../examples/array_sort.ts");
 const FUNCTION_CALL_APPLY: &str = include_str!("../../../examples/function_call_apply.ts");
+const FUNCTION_BIND: &str = include_str!("../../../examples/function_bind.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -562,6 +563,14 @@ fn calls_functions_with_call_and_apply() {
     let mut runtime = Runtime::default();
     runtime.run(FUNCTION_CALL_APPLY, &mut host).unwrap();
     assert_eq!(host.output(), "13\n17\n10\ntrue\n");
+}
+
+#[test]
+fn binds_this_and_partial_arguments() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(FUNCTION_BIND, &mut host).unwrap();
+    assert_eq!(host.output(), "Hello Ada!\nHello Ada?\n3\nHi A!\n");
 }
 
 #[test]

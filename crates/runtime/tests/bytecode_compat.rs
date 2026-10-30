@@ -63,6 +63,8 @@ const BUILTIN_EXTRAS: &[u8] =
 const ARRAY_SORT: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/array_sort.kbc");
 const FUNCTION_CALL_APPLY: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/function_call_apply.kbc");
+const FUNCTION_BIND: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/function_bind.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -409,4 +411,12 @@ fn executes_v1_call_apply_bytecode() {
         .run_bytecode(FUNCTION_CALL_APPLY, &mut host)
         .unwrap();
     assert_eq!(host.output(), "13\n17\n10\ntrue\n");
+}
+
+#[test]
+fn executes_v1_bind_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(FUNCTION_BIND, &mut host).unwrap();
+    assert_eq!(host.output(), "Hello Ada!\nHello Ada?\n3\nHi A!\n");
 }

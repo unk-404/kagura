@@ -20,6 +20,7 @@ const BLOCK_CAPACITY_OFFSET: u32 = 8;
 const FLAG_ARRAY: u32 = 1;
 const FLAG_MARK: u32 = 2;
 const FLAG_FUNCTION: u32 = 4;
+const FLAG_BOUND: u32 = 8;
 const NO_BLOCK: u32 = u32::MAX;
 const MIN_ARRAY_CAPACITY: u32 = 4;
 
@@ -142,6 +143,46 @@ impl ObjectHeap {
             return Err(ObjectHeapError::InvalidObject);
         }
         self.get_slot(object, 2)
+    }
+
+    pub fn allocate_bound_function(
+        &mut self,
+        shape: ShapeId,
+        function_index: u32,
+        env: Value,
+        bound_this: Value,
+        bound_args: Value,
+        target: Value,
+    ) -> Result<ObjectId, ObjectHeapError> {
+        let object = self.allocate(shape)?;
+        write_u32(
+            &mut self.arena,
+            object.index() + FLAGS_OFFSET,
+            FLAG_FUNCTION | FLAG_BOUND,
+        );
+        self.set_slot(object, 0, Value::smi(function_index as i32))?;
+        self.set_slot(object, 1, env)?;
+        self.set_slot(object, 2, bound_this)?;
+        self.set_slot(object, 3, bound_args)?;
+        self.set_slot(object, 4, target)?;
+        Ok(object)
+    }
+
+    pub fn is_bound(&self, object: ObjectId) -> Result<bool, ObjectHeapError> {
+        let flags = read_u32(&self.arena, object.index() + FLAGS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        Ok(flags & (FLAG_FUNCTION | FLAG_BOUND) == (FLAG_FUNCTION | FLAG_BOUND))
+    }
+
+    pub fn bound_data(&self, object: ObjectId) -> Result<(Value, Value, Value), ObjectHeapError> {
+        if !self.is_bound(object)? {
+            return Err(ObjectHeapError::InvalidObject);
+        }
+        Ok((
+            self.get_slot(object, 2)?,
+            self.get_slot(object, 3)?,
+            self.get_slot(object, 4)?,
+        ))
     }
 
     pub fn shape(&self, object: ObjectId) -> Result<ShapeId, ObjectHeapError> {
