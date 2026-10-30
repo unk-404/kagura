@@ -86,6 +86,26 @@ impl ShapeTable {
         ShapeId::new(0)
     }
 
+    pub fn function_shape(&mut self) -> ShapeId {
+        self.shape_with_slots(3)
+    }
+
+    pub fn bound_function_shape(&mut self) -> ShapeId {
+        self.shape_with_slots(4)
+    }
+
+    fn shape_with_slots(&mut self, slots: u16) -> ShapeId {
+        let mut shape = self.get(self.root()).expect("root shape exists").clone();
+        shape.id = ShapeId::new(self.shapes.len() as u32);
+        shape.instance_size = object_size_32(slots);
+        shape.in_object_slots = slots;
+        shape.descriptors.clear();
+        shape.transitions = FastHashMap::default();
+        let id = shape.id;
+        self.shapes.push(shape);
+        id
+    }
+
     pub fn with_prototype(
         &mut self,
         shape: ShapeId,

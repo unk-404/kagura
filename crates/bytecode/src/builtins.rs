@@ -37,6 +37,9 @@ define_builtins! {
     6 => ParseFloat, "parseFloat",
     7 => IsNaN, "isNaN",
     8 => IsFinite, "isFinite",
+    50 => DateNow, "Date.now",
+    51 => DateParse, "Date.parse",
+    52 => DateUtc, "Date.UTC",
 
     20 => MathAbs, "Math.abs",
     21 => MathAcos, "Math.acos",

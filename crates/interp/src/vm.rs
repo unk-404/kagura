@@ -614,7 +614,7 @@ impl<'a> Interpreter<'a> {
                     let object = self
                         .objects
                         .allocate_function(
-                            self.shapes.root(),
+                            self.shapes.function_shape(),
                             function,
                             Value::object(env.index()),
                             captured_this,
@@ -691,6 +691,43 @@ impl<'a> Interpreter<'a> {
                     }
                     roots.push(object);
                     roots.extend_from_slice(&args);
+                    if object.is_object()
+                        && (key == "call" || key == "apply")
+                        && self
+                            .objects
+                            .is_function(ObjectId::new(object.object_offset().unwrap_or(0)))
+                            .unwrap_or(false)
+                    {
+                        let this_value = args.first().copied().unwrap_or_else(Value::undefined);
+                        let call_args = if key == "call" {
+                            args.get(1..).unwrap_or(&[]).to_vec()
+                        } else {
+                            let array = args.get(1).copied().unwrap_or_else(Value::undefined);
+                            if array.is_undefined() {
+                                Vec::new()
+                            } else {
+                                let array_id = try_op!(self.object_id(array, span));
+                                let length =
+                                    try_op!(self.objects.array_length(array_id).map_err(|error| {
+                                        RuntimeError::runtime(error.to_string(), span)
+                                    }));
+                                let mut values = Vec::with_capacity(length as usize);
+                                for index in 0..length {
+                                    values.push(try_op!(
+                                        self.objects.array_get(array_id, index).map_err(|error| {
+                                            RuntimeError::runtime(error.to_string(), span)
+                                        })
+                                    ));
+                                }
+                                values
+                            }
+                        };
+                        let value = try_op!(
+                            self.call_with_this(object, this_value, &call_args, &roots, span)
+                        );
+                        push(&mut stack, value, span)?;
+                        continue;
+                    }
                     let method = if object.is_object() {
                         try_op!(self.get_property(object, &key, span))
                     } else {
@@ -702,7 +739,22 @@ impl<'a> Interpreter<'a> {
                             .is_function(ObjectId::new(method.object_offset().unwrap_or(0)))
                             .unwrap_or(false)
                     {
-                        try_op!(self.invoke_method(method, &args, &roots, object, span))
+                        let method_id = ObjectId::new(method.object_offset().unwrap_or(0));
+                        let (function, _) = try_op!(
+                            self.objects
+                                .function_data(method_id)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                        );
+                        if function == u32::MAX {
+                            try_op!(
+                                self.call_builtin(object, &key, &args, span, &roots)
+                                    .and_then(|value| value.ok_or_else(|| {
+                                        RuntimeError::type_error("method is not supported", span)
+                                    }))
+                            )
+                        } else {
+                            try_op!(self.invoke_method(method, &args, &roots, object, span))
+                        }
                     } else {
                         try_op!(
                             self.call_builtin(object, &key, &args, span, &roots)
@@ -1041,6 +1093,12 @@ impl<'a> Interpreter<'a> {
                         for frame in &iteration_frames {
                             roots.push(Value::object(frame.env.index()));
                         }
+                        if let Some(prototype) = self.array_prototype {
+                            roots.push(Value::object(prototype.index()));
+                        }
+                        if let Some(prototype) = self.object_prototype {
+                            roots.push(Value::object(prototype.index()));
+                        }
                         self.objects.collect(&roots);
                     }
                 }
@@ -1068,6 +1126,9 @@ impl<'a> Interpreter<'a> {
     }
 
     fn array_shape(&mut self, span: Span) -> Result<ShapeId, RuntimeError> {
+        if self.array_prototype.is_none() {
+            self.load_builtin("Array", span)?;
+        }
         if let Some(prototype) = self.array_prototype {
             self.shapes
                 .with_prototype(self.shapes.root(), Some(prototype))
@@ -1078,6 +1139,9 @@ impl<'a> Interpreter<'a> {
     }
 
     fn object_shape(&mut self, span: Span) -> Result<ShapeId, RuntimeError> {
+        if self.object_prototype.is_none() {
+            self.load_builtin("Object", span)?;
+        }
         if let Some(prototype) = self.object_prototype {
             self.shapes
                 .with_prototype(self.shapes.root(), Some(prototype))

@@ -1275,6 +1275,10 @@ impl<'a> FunctionCompiler<'a> {
                     let host_path = member_path(callee).filter(|path| {
                         let root = path.split('.').next().unwrap_or_default();
                         self.resolve(root).is_none()
+                            && !path.contains(".prototype")
+                            && !path.ends_with(".call")
+                            && !path.ends_with(".apply")
+                            && !path.ends_with(".bind")
                     });
                     if let Some(path) = host_path {
                         if let Some(id) = crate::builtins::BuiltinId::from_path(&path) {

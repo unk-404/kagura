@@ -76,6 +76,7 @@ const DATE_BASIC: &str = include_str!("../../../examples/date_basic.ts");
 const ARRAY_INDEX: &str = include_str!("../../../examples/array_index.ts");
 const ARRAY_METHODS: &str = include_str!("../../../examples/array_methods.ts");
 const DUPLICATE_VAR: &str = include_str!("../../../examples/duplicate_var.ts");
+const FUNCTION_CALL: &str = include_str!("../../../examples/function_call.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -757,6 +758,17 @@ fn allows_duplicate_var_and_array_prototype_lookup() {
     let mut runtime = Runtime::default();
     runtime.run(DUPLICATE_VAR, &mut host).unwrap();
     assert_eq!(host.output(), "2 7 7\n");
+}
+
+#[test]
+fn runs_function_call_and_array_prototype_methods() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(FUNCTION_CALL, &mut host).unwrap();
+    assert_eq!(
+        host.output(),
+        "1,2 2\ntrue\n[object Array]\n[object Array]\n"
+    );
 }
 
 #[test]

@@ -590,6 +590,40 @@ impl<'a> Interpreter<'a> {
         )
     }
 
+    pub(super) fn call_with_this(
+        &mut self,
+        target: Value,
+        this_value: Value,
+        args: &[Value],
+        caller_roots: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.object_id(target, span)?;
+        if !self
+            .objects
+            .is_function(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Err(RuntimeError::type_error("value is not callable", span));
+        }
+        let (function, _) = self
+            .objects
+            .function_data(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if function == u32::MAX {
+            let name = self.get_property(target, "name", span)?;
+            let name = self
+                .heap
+                .as_str(name)
+                .ok_or_else(|| RuntimeError::type_error("invalid builtin function", span))?
+                .to_owned();
+            return self
+                .call_builtin(this_value, &name, args, span, caller_roots)?
+                .ok_or_else(|| RuntimeError::type_error("method is not supported", span));
+        }
+        self.invoke_method(target, args, caller_roots, this_value, span)
+    }
+
     pub(super) fn invoke_callable(
         &mut self,
         callee: Value,
@@ -1516,6 +1550,14 @@ impl<'a> Interpreter<'a> {
                     .unwrap_or(f64::NAN);
                 Ok(Value::boolean(number.is_finite()))
             }
+            BuiltinId::DateNow => Ok(self.heap.number(date::now_millis())),
+            BuiltinId::DateParse => {
+                let text = self
+                    .heap
+                    .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+                Ok(self.heap.number(date::parse(&text)))
+            }
+            BuiltinId::DateUtc => Ok(self.heap.number(date::utc(args, self.heap))),
         }
     }
 
@@ -1542,6 +1584,9 @@ impl<'a> Interpreter<'a> {
             return Ok(object);
         }
         if name == "Object" || name == "Array" {
+            if name == "Array" && self.object_prototype.is_none() {
+                self.load_builtin("Object", span)?;
+            }
             let prototype = if name == "Object" {
                 self.object_prototype
             } else {
@@ -1609,7 +1654,7 @@ impl<'a> Interpreter<'a> {
                 let function = self
                     .objects
                     .allocate_function(
-                        self.shapes.root(),
+                        self.shapes.function_shape(),
                         u32::MAX,
                         Value::undefined(),
                         Value::undefined(),
@@ -1618,12 +1663,12 @@ impl<'a> Interpreter<'a> {
                 let function = Value::object(function.index());
                 let name_value = self.heap.string(method);
                 self.set_property(function, "name", name_value, span)?;
-                self.set_property(prototype_value, method, function, span)?;
+                self.set_non_enumerable_property(prototype_value, method, function, span)?;
             }
             let object = self
                 .objects
                 .allocate_function(
-                    self.shapes.root(),
+                    self.shapes.function_shape(),
                     u32::MAX,
                     Value::undefined(),
                     Value::undefined(),
@@ -1646,7 +1691,7 @@ impl<'a> Interpreter<'a> {
             let object = self
                 .objects
                 .allocate_function(
-                    self.shapes.root(),
+                    self.shapes.function_shape(),
                     u32::MAX,
                     Value::undefined(),
                     Value::undefined(),
@@ -1688,7 +1733,7 @@ impl<'a> Interpreter<'a> {
                 let function = self
                     .objects
                     .allocate_function(
-                        self.shapes.root(),
+                        self.shapes.function_shape(),
                         u32::MAX,
                         Value::undefined(),
                         Value::undefined(),
@@ -1697,7 +1742,7 @@ impl<'a> Interpreter<'a> {
                 let function = Value::object(function.index());
                 let name_value = self.heap.string(method);
                 self.set_property(function, "name", name_value, span)?;
-                self.set_property(prototype, method, function, span)?;
+                self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             self.set_property(value, "prototype", prototype, span)?;
             return Ok(value);
@@ -1705,7 +1750,7 @@ impl<'a> Interpreter<'a> {
         let object = self
             .objects
             .allocate_function(
-                self.shapes.root(),
+                self.shapes.function_shape(),
                 u32::MAX,
                 Value::undefined(),
                 Value::undefined(),
@@ -1888,6 +1933,25 @@ impl<'a> Interpreter<'a> {
             push(self.heap, self.objects, &key_string)?;
         }
         Ok(Value::object(array.index()))
+    }
+
+    fn set_non_enumerable_property(
+        &mut self,
+        target: Value,
+        key: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let descriptor = self
+            .objects
+            .allocate(self.shapes.root())
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let descriptor = Value::object(descriptor.index());
+        self.set_property(descriptor, "value", value, span)?;
+        self.set_property(descriptor, "writable", Value::boolean(true), span)?;
+        self.set_property(descriptor, "enumerable", Value::boolean(false), span)?;
+        self.set_property(descriptor, "configurable", Value::boolean(true), span)?;
+        self.define_property(target, key, descriptor, span)
     }
 
     fn define_property(
@@ -2482,7 +2546,7 @@ impl<'a> Interpreter<'a> {
             let bound = self
                 .objects
                 .allocate_bound_function(
-                    self.shapes.root(),
+                    self.shapes.bound_function_shape(),
                     function,
                     env_value,
                     receiver,
@@ -2539,6 +2603,52 @@ impl<'a> Interpreter<'a> {
                 .has_own_property(object, &key, span)
                 .map(|own| Some(Value::boolean(own)));
         }
+        if key == "isPrototypeOf" {
+            let mut value = args.first().copied().unwrap_or_else(Value::undefined);
+            while let Some(offset) = value.object_offset() {
+                let id = ObjectId::new(offset);
+                let shape = self
+                    .objects
+                    .shape(id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let Some(prototype) = self
+                    .shapes
+                    .get(shape)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    .prototype
+                else {
+                    break;
+                };
+                if prototype == object_id {
+                    return Ok(Some(Value::boolean(true)));
+                }
+                value = Value::object(prototype.index());
+            }
+            return Ok(Some(Value::boolean(false)));
+        }
+        if key == "propertyIsEnumerable" {
+            let key = self
+                .heap
+                .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+            let shape = self
+                .objects
+                .shape(object_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let descriptor = self
+                .shapes
+                .lookup(shape, &PropertyKey::from_string(&key))
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            return Ok(Some(Value::boolean(
+                descriptor.is_some_and(|descriptor| descriptor.attributes.enumerable),
+            )));
+        }
+        if key == "valueOf" {
+            return Ok(Some(object));
+        }
+        if key == "toString" {
+            let tag = self.object_to_string_tag(object, span)?;
+            return Ok(Some(self.heap.string(&format!("[object {tag}]"))));
+        }
         if !self
             .objects
             .is_array(object_id)
@@ -2547,6 +2657,25 @@ impl<'a> Interpreter<'a> {
             return Ok(None);
         }
         Ok(Some(match key {
+            "toString" | "toLocaleString" => {
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let mut parts = Vec::with_capacity(length as usize);
+                for index in 0..length {
+                    let value = self
+                        .objects
+                        .array_get(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if value.is_undefined() || value.is_null() {
+                        parts.push(String::new());
+                    } else {
+                        parts.push(self.heap.to_js_string(value));
+                    }
+                }
+                self.heap.string(&parts.join(","))
+            }
             "push" => {
                 let frozen = self
                     .objects
