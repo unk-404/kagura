@@ -302,6 +302,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kagura-object"
+version = "0.1.0"
+dependencies = [
+ "kagura-support",
+ "thiserror",
+]
+
+[[package]]
 name = "kagura-parser"
 version = "0.1.0"
 dependencies = [
