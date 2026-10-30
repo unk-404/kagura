@@ -696,7 +696,10 @@ fn runs_global_conversions_and_math() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
     runtime.run(GLOBALS_MATH, &mut host).unwrap();
-    assert_eq!(host.output(), "1 3\n1 3 1\n42 255 1.5\ntrue true\n");
+    assert_eq!(
+        host.output(),
+        "1 3\n1 3 1\n42 255 1.5\ntrue true\n5 31 6 3\n"
+    );
 }
 
 #[test]

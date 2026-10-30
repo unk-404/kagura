@@ -79,6 +79,8 @@ The current P1 slice adds:
   `getTime`, `valueOf`, and `toISOString` (via `chrono`; local-time getters are
   currently UTC)
 - `Object.prototype.toString.call` and `Object.prototype.hasOwnProperty.call`
+- `Math` basics plus `hypot`, `imul`, `clz32`, `cbrt`, `fround`, `log2`,
+  `log10`, `acos`, `asin`, `atan`, `atan2`, `sin`, `cos`, `tan`, `exp`
 - `--filter` selects a path substring before applying `--limit`
 - `var` declarations, prefix/postfix `++`/`--`, `instanceof`, `for...in`, `switch`
 - object computed access (`object[key]`) for string keys
@@ -125,8 +127,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18845 executed, 2984 passed, 15861 failed, 35184 skipped
-oracle node: 2984 checked, 2983 matched, 1 mismatched
+54029 selected, 18845 executed, 3008 passed, 15837 failed, 35184 skipped
+oracle node: 3008 checked, 3007 matched, 1 mismatched
 ```
 
 The single Node mismatch is tracked as a differential warning, not hidden:

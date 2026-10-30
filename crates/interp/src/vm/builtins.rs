@@ -321,36 +321,7 @@ impl<'a> Interpreter<'a> {
         }
         if path == "Object.prototype.toString.call" {
             let value = args.first().copied().unwrap_or_else(Value::undefined);
-            let tag = if value.is_undefined() || value.is_hole() {
-                "Undefined"
-            } else if value.is_null() {
-                "Null"
-            } else if value.as_boolean().is_some() {
-                "Boolean"
-            } else if value.is_number() {
-                "Number"
-            } else if value.is_string() {
-                "String"
-            } else if let Some(offset) = value.object_offset() {
-                let id = ObjectId::new(offset);
-                if self
-                    .objects
-                    .is_array(id)
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-                {
-                    "Array"
-                } else if self
-                    .objects
-                    .is_function(id)
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-                {
-                    "Function"
-                } else {
-                    "Object"
-                }
-            } else {
-                "Object"
-            };
+            let tag = self.object_to_string_tag(value, span)?;
             return Ok(Some(self.heap.string(&format!("[object {tag}]"))));
         }
         if path == "Object.prototype.hasOwnProperty.call" {
@@ -1143,15 +1114,32 @@ impl<'a> Interpreter<'a> {
             "round" => (number(self.heap, 0) + 0.5).floor(),
             "sqrt" => number(self.heap, 0).sqrt(),
             "pow" => number(self.heap, 0).powf(number(self.heap, 1)),
-            "sign" => {
-                let value = number(self.heap, 0);
-                if value.is_nan() {
-                    f64::NAN
-                } else if value == 0.0 {
-                    value
-                } else {
-                    value.signum()
+            "acos" => number(self.heap, 0).acos(),
+            "asin" => number(self.heap, 0).asin(),
+            "atan" => number(self.heap, 0).atan(),
+            "atan2" => number(self.heap, 0).atan2(number(self.heap, 1)),
+            "cos" => number(self.heap, 0).cos(),
+            "sin" => number(self.heap, 0).sin(),
+            "tan" => number(self.heap, 0).tan(),
+            "exp" => number(self.heap, 0).exp(),
+            "log" => number(self.heap, 0).ln(),
+            "log2" => number(self.heap, 0).log2(),
+            "log10" => number(self.heap, 0).log10(),
+            "cbrt" => number(self.heap, 0).cbrt(),
+            "fround" => number(self.heap, 0) as f32 as f64,
+            "clz32" => (number(self.heap, 0) as u32).leading_zeros() as f64,
+            "imul" => {
+                let left = number(self.heap, 0) as i32;
+                let right = number(self.heap, 1) as i32;
+                left.wrapping_mul(right) as f64
+            }
+            "hypot" => {
+                let mut sum = 0.0;
+                for index in 0..args.len() {
+                    let value = number(self.heap, index);
+                    sum += value * value;
                 }
+                sum.sqrt()
             }
             "min" | "max" => {
                 let mut result = if operation == "min" {
@@ -1459,6 +1447,72 @@ impl<'a> Interpreter<'a> {
                     Some(text) => Ok(self.heap.string(&text)),
                     None => Ok(Value::undefined()),
                 }
+            }
+            BuiltinId::ObjectProtoToStringCall => {
+                let value = args.first().copied().unwrap_or_else(Value::undefined);
+                let tag = self.object_to_string_tag(value, span)?;
+                Ok(self.heap.string(&format!("[object {tag}]")))
+            }
+            BuiltinId::ObjectProtoHasOwnCall => {
+                let target = args.first().copied().unwrap_or_else(Value::undefined);
+                let key = self
+                    .heap
+                    .to_js_string(args.get(1).copied().unwrap_or_else(Value::undefined));
+                let own = self.has_own_property(target, &key, span)?;
+                Ok(Value::boolean(own))
+            }
+            BuiltinId::MathAbs
+            | BuiltinId::MathAcos
+            | BuiltinId::MathAsin
+            | BuiltinId::MathAtan
+            | BuiltinId::MathAtan2
+            | BuiltinId::MathCeil
+            | BuiltinId::MathClz32
+            | BuiltinId::MathCos
+            | BuiltinId::MathExp
+            | BuiltinId::MathFloor
+            | BuiltinId::MathFround
+            | BuiltinId::MathHypot
+            | BuiltinId::MathImul
+            | BuiltinId::MathLog
+            | BuiltinId::MathLog10
+            | BuiltinId::MathLog2
+            | BuiltinId::MathMax
+            | BuiltinId::MathMin
+            | BuiltinId::MathPow
+            | BuiltinId::MathRound
+            | BuiltinId::MathSign
+            | BuiltinId::MathSin
+            | BuiltinId::MathSqrt
+            | BuiltinId::MathTan
+            | BuiltinId::MathTrunc
+            | BuiltinId::MathCbrt => {
+                let operation = math_operation(id).expect("math builtin operation");
+                self.call_math(operation, args, span)
+            }
+            BuiltinId::ParseInt => {
+                let parsed = parse_int_value(self.heap, args);
+                Ok(self.heap.number(parsed))
+            }
+            BuiltinId::ParseFloat => {
+                let text = self
+                    .heap
+                    .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+                Ok(self.heap.number(parse_float_prefix(&text)))
+            }
+            BuiltinId::IsNaN => {
+                let number = self
+                    .heap
+                    .to_number(args.first().copied().unwrap_or_else(Value::undefined))
+                    .unwrap_or(f64::NAN);
+                Ok(Value::boolean(number.is_nan()))
+            }
+            BuiltinId::IsFinite => {
+                let number = self
+                    .heap
+                    .to_number(args.first().copied().unwrap_or_else(Value::undefined))
+                    .unwrap_or(f64::NAN);
+                Ok(Value::boolean(number.is_finite()))
             }
         }
     }
@@ -1953,6 +2007,43 @@ impl<'a> Interpreter<'a> {
             self.assign_property(target, &key_string, value, span)?;
         }
         Ok(())
+    }
+
+    fn object_to_string_tag(
+        &mut self,
+        value: Value,
+        span: Span,
+    ) -> Result<&'static str, RuntimeError> {
+        if value.is_undefined() || value.is_hole() {
+            Ok("Undefined")
+        } else if value.is_null() {
+            Ok("Null")
+        } else if value.as_boolean().is_some() {
+            Ok("Boolean")
+        } else if value.is_number() {
+            Ok("Number")
+        } else if value.is_string() {
+            Ok("String")
+        } else if let Some(offset) = value.object_offset() {
+            let id = ObjectId::new(offset);
+            if self
+                .objects
+                .is_array(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                Ok("Array")
+            } else if self
+                .objects
+                .is_function(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                Ok("Function")
+            } else {
+                Ok("Object")
+            }
+        } else {
+            Ok("Object")
+        }
     }
 
     fn has_own_property(
@@ -2846,6 +2937,69 @@ impl<'a> Interpreter<'a> {
             _ => return Ok(None),
         }))
     }
+}
+
+fn parse_int_value(heap: &kagura_value::Heap, args: &[Value]) -> f64 {
+    let text = heap.to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+    let radix = args
+        .get(1)
+        .and_then(|value| heap.as_number(*value))
+        .filter(|radix| *radix >= 2.0 && *radix <= 36.0)
+        .unwrap_or(10.0) as u32;
+    let text = text.trim_start();
+    let (sign, digits) = if let Some(rest) = text.strip_prefix('-') {
+        (-1.0, rest)
+    } else if let Some(rest) = text.strip_prefix('+') {
+        (1.0, rest)
+    } else {
+        (1.0, text)
+    };
+    let mut end = 0usize;
+    for (index, ch) in digits.char_indices() {
+        if ch.to_digit(radix).is_none() {
+            break;
+        }
+        end = index + ch.len_utf8();
+    }
+    if end == 0 {
+        return f64::NAN;
+    }
+    i64::from_str_radix(&digits[..end], radix)
+        .map(|value| value as f64 * sign)
+        .unwrap_or(f64::NAN)
+}
+
+fn math_operation(id: kagura_bytecode::builtins::BuiltinId) -> Option<&'static str> {
+    use kagura_bytecode::builtins::BuiltinId;
+    Some(match id {
+        BuiltinId::MathAbs => "abs",
+        BuiltinId::MathAcos => "acos",
+        BuiltinId::MathAsin => "asin",
+        BuiltinId::MathAtan => "atan",
+        BuiltinId::MathAtan2 => "atan2",
+        BuiltinId::MathCeil => "ceil",
+        BuiltinId::MathClz32 => "clz32",
+        BuiltinId::MathCos => "cos",
+        BuiltinId::MathExp => "exp",
+        BuiltinId::MathFloor => "floor",
+        BuiltinId::MathFround => "fround",
+        BuiltinId::MathHypot => "hypot",
+        BuiltinId::MathImul => "imul",
+        BuiltinId::MathLog => "log",
+        BuiltinId::MathLog10 => "log10",
+        BuiltinId::MathLog2 => "log2",
+        BuiltinId::MathMax => "max",
+        BuiltinId::MathMin => "min",
+        BuiltinId::MathPow => "pow",
+        BuiltinId::MathRound => "round",
+        BuiltinId::MathSign => "sign",
+        BuiltinId::MathSin => "sin",
+        BuiltinId::MathSqrt => "sqrt",
+        BuiltinId::MathTan => "tan",
+        BuiltinId::MathTrunc => "trunc",
+        BuiltinId::MathCbrt => "cbrt",
+        _ => return None,
+    })
 }
 
 fn parse_float_prefix(value: &str) -> f64 {

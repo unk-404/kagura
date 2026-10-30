@@ -1253,6 +1253,10 @@ impl<'a> FunctionCompiler<'a> {
                         self.compile_args(args)?;
                         self.emit(Op::CallValue, *span);
                         self.emit_u8_raw(args.len(), *span);
+                    } else if let Some(id) = crate::builtins::BuiltinId::from_path(name) {
+                        self.compile_args(args)?;
+                        self.emit_u16(Op::CallBuiltin, id as u16, *span);
+                        self.emit_u8_raw(args.len(), *span);
                     } else {
                         self.compile_args(args)?;
                         let index = self.add_const(Const::String(name.clone()));
