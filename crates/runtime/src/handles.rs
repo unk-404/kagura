@@ -95,6 +95,7 @@ struct WeakSlot {
 #[derive(Default)]
 pub struct WeakHandleTable {
     slots: Vec<WeakSlot>,
+    cleared: Vec<WeakHandle>,
 }
 
 impl WeakHandleTable {
@@ -119,13 +120,20 @@ impl WeakHandleTable {
     }
 
     pub fn retain_live(&mut self, is_live: impl Fn(Value) -> bool) {
-        for slot in &mut self.slots {
+        for (index, slot) in self.slots.iter_mut().enumerate() {
             if let Some(value) = slot.value
                 && !is_live(value)
             {
                 slot.value = None;
+                self.cleared.push(WeakHandle {
+                    index: index as u32,
+                });
             }
         }
+    }
+
+    pub fn take_cleared(&mut self) -> Vec<WeakHandle> {
+        std::mem::take(&mut self.cleared)
     }
 
     pub fn len(&self) -> usize {

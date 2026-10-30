@@ -1323,6 +1323,17 @@ fn weak_handles_do_not_root_their_target() {
 }
 
 #[test]
+fn weak_handles_are_enqueued_for_finalization() {
+    let mut runtime = Runtime::new(64 * 1024);
+    let value = runtime.allocate_object().expect("plain object");
+    let weak = runtime.create_weak_handle(value);
+    runtime.collect_garbage(&[]);
+    let cleared = runtime.take_cleared_weak_handles();
+    assert_eq!(cleared, vec![weak]);
+    assert!(runtime.take_cleared_weak_handles().is_empty());
+}
+
+#[test]
 fn weak_handle_follows_strong_handle_lifetime() {
     let mut runtime = Runtime::new(64 * 1024);
     let value = runtime.allocate_object().expect("plain object");

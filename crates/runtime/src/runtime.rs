@@ -85,6 +85,10 @@ impl Runtime {
         self.weak_handles.len()
     }
 
+    pub fn take_cleared_weak_handles(&mut self) -> Vec<WeakHandle> {
+        self.weak_handles.take_cleared()
+    }
+
     /// Allocates a plain object owned by the embedder, not by a script.
     pub fn allocate_object(&mut self) -> Option<Value> {
         self.objects
