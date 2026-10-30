@@ -41,4 +41,5 @@ pub enum UnaryOp {
     Plus,
     TypeOf,
     Void,
+    Delete,
 }

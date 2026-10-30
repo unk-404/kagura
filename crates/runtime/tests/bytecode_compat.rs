@@ -74,6 +74,8 @@ const OBJECT_SEAL: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/
 const ARRAY_STATIC: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/array_static.kbc");
 const CONFIGURABLE_PROPERTY: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/configurable_property.kbc");
+const DELETE_OPERATOR: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/delete_operator.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -480,4 +482,15 @@ fn executes_v1_configurable_property_bytecode() {
         .run_bytecode(CONFIGURABLE_PROPERTY, &mut host)
         .unwrap();
     assert_eq!(host.output(), "locked\n1\nsame\n");
+}
+
+#[test]
+fn executes_v1_delete_operator_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(DELETE_OPERATOR, &mut host).unwrap();
+    assert_eq!(
+        host.output(),
+        "true\nundefined\nfalse\nfalse\ntrue\n,2\n2\n"
+    );
 }

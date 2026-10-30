@@ -57,6 +57,8 @@ pub enum Op {
     LoadThis = 53,
     Rest = 54,
     Arguments = 55,
+    DeleteProp = 56,
+    DeleteIndex = 57,
 }
 
 impl Op {
@@ -118,6 +120,8 @@ impl Op {
             53 => Self::LoadThis,
             54 => Self::Rest,
             55 => Self::Arguments,
+            56 => Self::DeleteProp,
+            57 => Self::DeleteIndex,
             _ => return None,
         })
     }

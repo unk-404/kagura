@@ -811,6 +811,60 @@ impl<'a> Interpreter<'a> {
                     );
                     push(&mut stack, value, span)?;
                 }
+                Op::DeleteProp => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let key = match self.module.constants.get(index as usize) {
+                        Some(Const::String(key)) => key.clone(),
+                        _ => return Err(RuntimeError::runtime("invalid property key", span)),
+                    };
+                    let object = pop(&mut stack, span)?;
+                    let deleted = try_op!(self.delete_property(object, &key, span));
+                    push(&mut stack, Value::boolean(deleted), span)?;
+                }
+                Op::DeleteIndex => {
+                    let index = pop(&mut stack, span)?;
+                    let object = pop(&mut stack, span)?;
+                    let id = try_op!(self.object_id(object, span));
+                    let blocked = try_op!(
+                        self.objects
+                            .is_frozen(id)
+                            .map_err(|error| { RuntimeError::runtime(error.to_string(), span) })
+                    ) || try_op!(
+                        self.objects
+                            .is_sealed(id)
+                            .map_err(|error| { RuntimeError::runtime(error.to_string(), span) })
+                    );
+                    if blocked {
+                        push(&mut stack, Value::boolean(false), span)?;
+                        continue;
+                    }
+                    if try_op!(
+                        self.objects
+                            .is_array(id)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                    ) {
+                        let index = try_op!(self.index_value(index, span));
+                        let length = try_op!(
+                            self.objects
+                                .array_length(id)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                        );
+                        if index < length {
+                            try_op!(
+                                self.objects
+                                    .array_set(id, index, Value::hole())
+                                    .map_err(|error| RuntimeError::runtime(
+                                        error.to_string(),
+                                        span
+                                    ))
+                            );
+                        }
+                    } else {
+                        let key = self.heap.to_js_string(index);
+                        try_op!(self.delete_property(object, &key, span));
+                    }
+                    push(&mut stack, Value::boolean(true), span)?;
+                }
                 Op::GcCheck => {
                     if self.objects.live_bytes() >= GC_THRESHOLD {
                         let mut roots =

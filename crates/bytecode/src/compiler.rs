@@ -886,6 +886,28 @@ impl<'a> FunctionCompiler<'a> {
                 }
             },
             Expr::Unary { op, expr, span } => {
+                if matches!(op, UnaryOp::Delete) {
+                    match expr.as_ref() {
+                        Expr::Member {
+                            object, property, ..
+                        } => {
+                            self.compile_expr(object)?;
+                            let index = self.add_const(Const::String(property.clone()));
+                            self.emit_u32(Op::DeleteProp, index, *span);
+                        }
+                        Expr::Index { object, index, .. } => {
+                            self.compile_expr(object)?;
+                            self.compile_expr(index)?;
+                            self.emit(Op::DeleteIndex, *span);
+                        }
+                        other => {
+                            self.compile_expr(other)?;
+                            self.emit(Op::Pop, *span);
+                            self.emit_const(Const::True, *span);
+                        }
+                    }
+                    return Ok(());
+                }
                 self.compile_expr(expr)?;
                 match op {
                     UnaryOp::Neg => self.emit(Op::Neg, *span),
@@ -896,6 +918,7 @@ impl<'a> FunctionCompiler<'a> {
                         self.emit(Op::Pop, *span);
                         self.emit_const(Const::Undefined, *span);
                     }
+                    UnaryOp::Delete => unreachable!(),
                 }
             }
             Expr::Binary {

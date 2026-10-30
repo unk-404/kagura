@@ -131,6 +131,26 @@ impl ShapeTable {
         Ok(id)
     }
 
+    pub fn remove_property(
+        &mut self,
+        shape: ShapeId,
+        key: &PropertyKey,
+    ) -> Result<ShapeId, ShapeError> {
+        let mut next = self.get(shape)?.clone();
+        let index = next
+            .descriptors
+            .iter()
+            .position(|descriptor| &descriptor.key == key)
+            .ok_or(ShapeError::UnknownShape)?;
+        next.descriptors.remove(index);
+        next.id = ShapeId::new(self.shapes.len() as u32);
+        next.parent = Some(shape);
+        next.transitions = FastHashMap::default();
+        let id = next.id;
+        self.shapes.push(next);
+        Ok(id)
+    }
+
     pub fn is_non_extensible(&self, shape: ShapeId) -> Result<bool, ShapeError> {
         Ok(self.get(shape)?.flags & 1 != 0)
     }

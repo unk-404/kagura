@@ -1,0 +1,10 @@
+let object = { a: 1, b: 2 };
+console.log(delete object.a);
+console.log(object.a);
+console.log("a" in object);
+Object.defineProperty(object, "fixed", { value: 1, configurable: false });
+console.log(delete object.fixed);
+let array = [1, 2];
+console.log(delete array[0]);
+console.log(array.join(","));
+console.log(array.length);

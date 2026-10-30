@@ -150,6 +150,49 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub(super) fn delete_property(
+        &mut self,
+        object: Value,
+        key: &str,
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        let id = self.object_id(object, span)?;
+        if self
+            .objects
+            .is_frozen(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            || self
+                .objects
+                .is_sealed(id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Ok(false);
+        }
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let property = PropertyKey::from_string(key);
+        let Some(descriptor) = self
+            .shapes
+            .lookup(shape, &property)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        else {
+            return Ok(true);
+        };
+        if !descriptor.attributes.configurable {
+            return Ok(false);
+        }
+        let shape = self
+            .shapes
+            .remove_property(shape, &property)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        self.objects
+            .set_shape(id, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        Ok(true)
+    }
+
     pub(super) fn has_property(
         &mut self,
         key: Value,

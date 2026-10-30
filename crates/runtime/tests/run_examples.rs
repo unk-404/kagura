@@ -63,6 +63,7 @@ const ARRAY_FREEZE: &str = include_str!("../../../examples/array_freeze.ts");
 const OBJECT_SEAL: &str = include_str!("../../../examples/object_seal.ts");
 const ARRAY_STATIC: &str = include_str!("../../../examples/array_static.ts");
 const CONFIGURABLE_PROPERTY: &str = include_str!("../../../examples/configurable_property.ts");
+const DELETE_OPERATOR: &str = include_str!("../../../examples/delete_operator.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -625,6 +626,17 @@ fn enforces_non_configurable_properties() {
     let mut runtime = Runtime::default();
     runtime.run(CONFIGURABLE_PROPERTY, &mut host).unwrap();
     assert_eq!(host.output(), "locked\n1\nsame\n");
+}
+
+#[test]
+fn runs_delete_operator() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(DELETE_OPERATOR, &mut host).unwrap();
+    assert_eq!(
+        host.output(),
+        "true\nundefined\nfalse\nfalse\ntrue\n,2\n2\n"
+    );
 }
 
 #[test]
