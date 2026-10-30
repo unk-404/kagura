@@ -112,6 +112,22 @@ impl<'a> Interpreter<'a> {
                 .has_own_property(target, &key, span)
                 .map(|own| Some(Value::boolean(own)));
         }
+        if path == "Object.defineProperties" {
+            let target = args.first().copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.defineProperties requires a target", span)
+            })?;
+            let properties = args.get(1).copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.defineProperties requires a descriptor map", span)
+            })?;
+            self.define_properties(target, properties, span)?;
+            return Ok(Some(target));
+        }
+        if path == "Object.getOwnPropertyNames" {
+            let target = args.first().copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.getOwnPropertyNames requires a target", span)
+            })?;
+            return self.get_own_property_names(target, span).map(Some);
+        }
         if path == "Array.of" {
             let array = self
                 .objects
@@ -183,7 +199,13 @@ impl<'a> Interpreter<'a> {
                 .objects
                 .allocate(shape)
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            return Ok(Some(Value::object(object.index())));
+            let object = Value::object(object.index());
+            if let Some(properties) = args.get(1).copied()
+                && !properties.is_undefined()
+            {
+                self.define_properties(object, properties, span)?;
+            }
+            return Ok(Some(object));
         }
         if path == "Object.getPrototypeOf" {
             let Some(target) = args.first().copied() else {
@@ -630,6 +652,90 @@ impl<'a> Interpreter<'a> {
             }
         }
         Ok(true)
+    }
+
+    fn define_properties(
+        &mut self,
+        target: Value,
+        properties: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let properties_id = self.object_id(properties, span)?;
+        let shape = self
+            .objects
+            .shape(properties_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let keys = own_property_keys(self.shapes, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for key in keys {
+            let descriptor = self
+                .shapes
+                .lookup(shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if !descriptor.is_some_and(|descriptor| descriptor.attributes.enumerable) {
+                continue;
+            }
+            let key_string = match &key {
+                PropertyKey::Index(index) => index.to_string(),
+                PropertyKey::String(key) => key.clone(),
+                PropertyKey::Symbol(_) => continue,
+            };
+            let descriptor = self.get_property(properties, &key_string, span)?;
+            self.define_property(target, &key_string, descriptor, span)?;
+        }
+        Ok(())
+    }
+
+    fn get_own_property_names(&mut self, target: Value, span: Span) -> Result<Value, RuntimeError> {
+        let target_id = self.object_id(target, span)?;
+        let array = self
+            .objects
+            .allocate_array(self.shapes.root())
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let push = |heap: &mut kagura_value::Heap,
+                    objects: &mut kagura_object::ObjectHeap,
+                    text: &str|
+         -> Result<(), RuntimeError> {
+            let value = heap.string(text);
+            objects
+                .array_push(array, value)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+        };
+        if self
+            .objects
+            .is_array(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            let length = self
+                .objects
+                .array_length(target_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            for index in 0..length {
+                if self
+                    .objects
+                    .array_has(target_id, index)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                {
+                    push(self.heap, self.objects, &index.to_string())?;
+                }
+            }
+            push(self.heap, self.objects, "length")?;
+        }
+        let shape = self
+            .objects
+            .shape(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let keys = own_property_keys(self.shapes, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for key in keys {
+            let key_string = match &key {
+                PropertyKey::Index(index) => index.to_string(),
+                PropertyKey::String(key) => key.clone(),
+                PropertyKey::Symbol(_) => continue,
+            };
+            push(self.heap, self.objects, &key_string)?;
+        }
+        Ok(Value::object(array.index()))
     }
 
     fn define_property(

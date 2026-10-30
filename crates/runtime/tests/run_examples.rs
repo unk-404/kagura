@@ -64,6 +64,7 @@ const OBJECT_SEAL: &str = include_str!("../../../examples/object_seal.ts");
 const ARRAY_STATIC: &str = include_str!("../../../examples/array_static.ts");
 const CONFIGURABLE_PROPERTY: &str = include_str!("../../../examples/configurable_property.ts");
 const DELETE_OPERATOR: &str = include_str!("../../../examples/delete_operator.ts");
+const OWN_PROPERTIES: &str = include_str!("../../../examples/own_properties.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -637,6 +638,14 @@ fn runs_delete_operator() {
         host.output(),
         "true\nundefined\nfalse\nfalse\ntrue\n,2\n2\n"
     );
+}
+
+#[test]
+fn reads_and_defines_own_properties() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(OWN_PROPERTIES, &mut host).unwrap();
+    assert_eq!(host.output(), "hidden\n2\na\n1\n2\n");
 }
 
 #[test]

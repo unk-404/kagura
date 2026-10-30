@@ -94,6 +94,7 @@ impl ShapeTable {
         let mut next = self.get(shape)?.clone();
         next.id = ShapeId::new(self.shapes.len() as u32);
         next.prototype = prototype;
+        next.transitions = FastHashMap::default();
         let id = next.id;
         self.shapes.push(next);
         Ok(id)
