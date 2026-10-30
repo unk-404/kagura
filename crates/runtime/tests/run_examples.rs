@@ -65,6 +65,7 @@ const ARRAY_STATIC: &str = include_str!("../../../examples/array_static.ts");
 const CONFIGURABLE_PROPERTY: &str = include_str!("../../../examples/configurable_property.ts");
 const DELETE_OPERATOR: &str = include_str!("../../../examples/delete_operator.ts");
 const OWN_PROPERTIES: &str = include_str!("../../../examples/own_properties.ts");
+const EXTENSIBILITY: &str = include_str!("../../../examples/extensibility.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -646,6 +647,14 @@ fn reads_and_defines_own_properties() {
     let mut runtime = Runtime::default();
     runtime.run(OWN_PROPERTIES, &mut host).unwrap();
     assert_eq!(host.output(), "hidden\n2\na\n1\n2\n");
+}
+
+#[test]
+fn runs_extensibility_and_descriptor_map() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(EXTENSIBILITY, &mut host).unwrap();
+    assert_eq!(host.output(), "undefined\nfalse\ntrue\n1\ntrue\n");
 }
 
 #[test]

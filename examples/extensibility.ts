@@ -1,0 +1,11 @@
+let object = { a: 1 };
+Object.preventExtensions(object);
+object.b = 2;
+console.log(object.b);
+console.log(Object.isExtensible(object));
+console.log(Object.isExtensible({}));
+let source = {};
+Object.defineProperty(source, "x", { value: 1, enumerable: true });
+let descriptors = Object.getOwnPropertyDescriptors(source);
+console.log(descriptors.x.value);
+console.log(descriptors.x.enumerable);

@@ -100,6 +100,27 @@ impl<'a> Interpreter<'a> {
                 .is_sealed(target, span)
                 .map(|sealed| Some(Value::boolean(sealed)));
         }
+        if path == "Object.preventExtensions" {
+            let target = args.first().copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.preventExtensions requires a target", span)
+            })?;
+            self.prevent_extensions(target, span)?;
+            return Ok(Some(target));
+        }
+        if path == "Object.isExtensible" {
+            let target = args.first().copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.isExtensible requires a target", span)
+            })?;
+            return self
+                .is_extensible(target, span)
+                .map(|extensible| Some(Value::boolean(extensible)));
+        }
+        if path == "Object.getOwnPropertyDescriptors" {
+            let target = args.first().copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.getOwnPropertyDescriptors requires a target", span)
+            })?;
+            return self.get_own_property_descriptors(target, span).map(Some);
+        }
         if path == "Object.hasOwn" {
             let target = args
                 .first()
@@ -562,6 +583,61 @@ impl<'a> Interpreter<'a> {
             }
         }
         Ok(true)
+    }
+
+    fn prevent_extensions(&mut self, target: Value, span: Span) -> Result<(), RuntimeError> {
+        let target_id = self.object_id(target, span)?;
+        let shape = self
+            .objects
+            .shape(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let shape = self
+            .shapes
+            .set_non_extensible(shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        self.objects
+            .set_shape(target_id, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+    }
+
+    fn is_extensible(&mut self, target: Value, span: Span) -> Result<bool, RuntimeError> {
+        let target_id = self.object_id(target, span)?;
+        let shape = self
+            .objects
+            .shape(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        self.shapes
+            .is_non_extensible(shape)
+            .map(|non_extensible| !non_extensible)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+    }
+
+    fn get_own_property_descriptors(
+        &mut self,
+        target: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let names = self.get_own_property_names(target, span)?;
+        let names_id = self.object_id(names, span)?;
+        let length = self
+            .objects
+            .array_length(names_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let result = self
+            .objects
+            .allocate(self.shapes.root())
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let result = Value::object(result.index());
+        for index in 0..length {
+            let key = self
+                .objects
+                .array_get(names_id, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let key = self.heap.as_str(key).unwrap_or_default().to_owned();
+            let descriptor = self.own_property_descriptor(target, &key, span)?;
+            self.set_property(result, &key, descriptor, span)?;
+        }
+        Ok(result)
     }
 
     fn seal_object(&mut self, target: Value, span: Span) -> Result<(), RuntimeError> {
