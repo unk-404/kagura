@@ -1,4 +1,4 @@
-﻿use kagura_ast::Stmt;
+use kagura_ast::Stmt;
 
 use crate::error::ParseError;
 use crate::token::TokenKind;
@@ -35,7 +35,7 @@ impl Parser {
         } else {
             None
         };
-        if catch_block.is_none() {
+        if catch_block.is_none() && finally_block.is_none() {
             return Err(ParseError::new(
                 "try requires a catch or finally block",
                 start,

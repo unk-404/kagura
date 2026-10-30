@@ -49,6 +49,7 @@ const DEFAULT_PARAMS: &str = include_str!("../../../examples/default_params.ts")
 const REST_PARAMS: &str = include_str!("../../../examples/rest_params.ts");
 const ARGUMENTS: &str = include_str!("../../../examples/arguments.ts");
 const OBJECT_CHECKS: &str = include_str!("../../../examples/object_checks.ts");
+const FINALLY_RETURN: &str = include_str!("../../../examples/finally_return.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -504,6 +505,14 @@ fn runs_object_checks() {
     let mut runtime = Runtime::default();
     runtime.run(OBJECT_CHECKS, &mut host).unwrap();
     assert_eq!(host.output(), "false\ntrue\ntrue\nfalse\ntrue\nfalse\n");
+}
+
+#[test]
+fn runs_finally_on_return_and_throw() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(FINALLY_RETURN, &mut host).unwrap();
+    assert_eq!(host.output(), "a\n1\n3\nc\n4\ninner\nboom\nbody\nfinally\n");
 }
 
 #[test]

@@ -123,6 +123,12 @@ struct LoopContext {
     continue_target: Option<usize>,
 }
 
+struct FinallyContext {
+    return_slot: u16,
+    flag_slot: u16,
+    return_patches: Vec<usize>,
+}
+
 struct FunctionCompiler<'a> {
     name: String,
     param_count: u16,
@@ -135,6 +141,7 @@ struct FunctionCompiler<'a> {
     uses_env: bool,
     self_slot: Option<u16>,
     arguments_slot: Option<u16>,
+    finallys: Vec<FinallyContext>,
     iterations: Vec<IterationScope>,
     outer: Vec<Vec<Local>>,
     constants: &'a mut Vec<Const>,
@@ -162,6 +169,7 @@ impl<'a> FunctionCompiler<'a> {
             uses_env: body_has_closure(body) || params_have_closure(params),
             self_slot: None,
             arguments_slot: None,
+            finallys: Vec::new(),
             iterations: Vec::new(),
             outer: Vec::new(),
             constants,
@@ -184,6 +192,34 @@ impl<'a> FunctionCompiler<'a> {
             self.emit_u16(Op::StoreLocal, slot, span);
         }
         Ok(())
+    }
+
+    fn hidden_local(&mut self, _span: Span) -> u16 {
+        let slot = self.locals.len() as u16;
+        self.locals.push(Local {
+            name: format!("$hidden_{slot}"),
+            mutable: true,
+            predeclared: false,
+            active: true,
+        });
+        slot
+    }
+
+    fn emit_return(&mut self, span: Span) {
+        if let Some(context) = self.finallys.last() {
+            let (return_slot, flag_slot) = (context.return_slot, context.flag_slot);
+            self.emit_u16(Op::StoreLocal, return_slot, span);
+            self.emit_const(Const::True, span);
+            self.emit_u16(Op::StoreLocal, flag_slot, span);
+            let patch = self.emit_jump(Op::Jump, span);
+            self.finallys
+                .last_mut()
+                .expect("finally context")
+                .return_patches
+                .push(patch);
+        } else {
+            self.emit(Op::Return, span);
+        }
     }
 
     fn compile_param_defaults(&mut self, params: &[Param]) -> Result<(), CompileError> {
@@ -423,7 +459,7 @@ impl<'a> FunctionCompiler<'a> {
                 } else {
                     self.emit_const(Const::Undefined, *span);
                 }
-                self.emit(Op::Return, *span);
+                self.emit_return(*span);
                 Ok(())
             }
             Stmt::Throw { value, span } => {
@@ -438,13 +474,41 @@ impl<'a> FunctionCompiler<'a> {
                 finally_block,
                 span,
             } => {
+                let mut finally_state = None;
+                if finally_block.is_some() {
+                    let return_slot = self.hidden_local(*span);
+                    let flag_slot = self.hidden_local(*span);
+                    self.emit_const(Const::False, *span);
+                    self.emit_u16(Op::StoreLocal, flag_slot, *span);
+                    self.finallys.push(FinallyContext {
+                        return_slot,
+                        flag_slot,
+                        return_patches: Vec::new(),
+                    });
+                    finally_state = Some((return_slot, flag_slot));
+                }
+                let rethrow = if finally_block.is_some() && catch_block.is_none() {
+                    let error_slot = self.hidden_local(*span);
+                    let threw_slot = self.hidden_local(*span);
+                    self.emit_const(Const::False, *span);
+                    self.emit_u16(Op::StoreLocal, threw_slot, *span);
+                    Some((error_slot, threw_slot))
+                } else {
+                    None
+                };
                 let catch_patch = self.emit_jump(Op::TryBegin, *span);
                 self.compile_block_body(block)?;
                 self.emit(Op::TryEnd, *span);
                 let end_patch = self.emit_jump(Op::Jump, *span);
                 let catch_pc = self.code.len();
                 self.patch_jump(catch_patch, catch_pc);
-                if let Some(catch_block) = catch_block {
+                let mut handler_jump = None;
+                if let Some((error_slot, threw_slot)) = rethrow {
+                    self.emit_u16(Op::StoreLocal, error_slot, *span);
+                    self.emit_const(Const::True, *span);
+                    self.emit_u16(Op::StoreLocal, threw_slot, *span);
+                    handler_jump = Some(self.emit_jump(Op::Jump, *span));
+                } else if let Some(catch_block) = catch_block {
                     let base = self.locals.len();
                     self.scopes.push(base);
                     let slot = catch_param
@@ -462,7 +526,34 @@ impl<'a> FunctionCompiler<'a> {
                 }
                 let finally_pc = self.code.len();
                 self.patch_jump(end_patch, finally_pc);
-                if let Some(finally_block) = finally_block {
+                if let Some(handler_jump) = handler_jump {
+                    self.patch_jump(handler_jump, finally_pc);
+                }
+                if let Some((return_slot, flag_slot)) = finally_state {
+                    let context = self.finallys.pop().expect("finally context");
+                    for patch in context.return_patches {
+                        self.patch_jump(patch, finally_pc);
+                    }
+                    if let Some(finally_block) = finally_block {
+                        self.compile_block_body(finally_block)?;
+                    }
+                    if let Some((error_slot, threw_slot)) = rethrow {
+                        self.emit_u16(Op::LoadLocal, threw_slot, *span);
+                        self.emit_const(Const::True, *span);
+                        self.emit(Op::StrictEq, *span);
+                        let no_throw = self.emit_jump(Op::JumpIfFalse, *span);
+                        self.emit_u16(Op::LoadLocal, error_slot, *span);
+                        self.emit(Op::Throw, *span);
+                        self.patch_jump(no_throw, self.code.len());
+                    }
+                    self.emit_u16(Op::LoadLocal, flag_slot, *span);
+                    self.emit_const(Const::True, *span);
+                    self.emit(Op::StrictEq, *span);
+                    let no_return = self.emit_jump(Op::JumpIfFalse, *span);
+                    self.emit_u16(Op::LoadLocal, return_slot, *span);
+                    self.emit_return(*span);
+                    self.patch_jump(no_return, self.code.len());
+                } else if let Some(finally_block) = finally_block {
                     self.compile_block_body(finally_block)?;
                 }
                 Ok(())
