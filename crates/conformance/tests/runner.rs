@@ -23,6 +23,19 @@ fn parses_test262_frontmatter() {
 }
 
 #[test]
+fn parses_multiline_metadata_lists() {
+    let metadata = parse_metadata(
+        "/*---\nflags: [\n  noStrict\n]\nfeatures: [\n  Array.prototype.map,\n  Symbol.iterator\n]\nincludes: [\n  assert.js\n]\n---*/\n",
+    );
+    assert_eq!(metadata.flags, ["noStrict"]);
+    assert_eq!(
+        metadata.features,
+        ["Array.prototype.map", "Symbol.iterator"]
+    );
+    assert_eq!(metadata.includes, ["assert.js"]);
+}
+
+#[test]
 fn skips_unsupported_harness_and_flags() {
     let mut metadata = Metadata::default();
     assert_eq!(skip_reason(&metadata), None);

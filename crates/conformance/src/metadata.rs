@@ -22,11 +22,11 @@ pub fn parse_metadata(source: &str) -> Metadata {
     while index < lines.len() {
         let line = lines[index].trim();
         if let Some(value) = line.strip_prefix("flags:") {
-            metadata.flags = parse_list(value);
+            metadata.flags = read_list(&lines, &mut index, value);
         } else if let Some(value) = line.strip_prefix("features:") {
-            metadata.features = parse_list(value);
+            metadata.features = read_list(&lines, &mut index, value);
         } else if let Some(value) = line.strip_prefix("includes:") {
-            metadata.includes = parse_list(value);
+            metadata.includes = read_list(&lines, &mut index, value);
         } else if line == "negative:" {
             let mut phase = String::new();
             let mut kind = String::new();
@@ -56,6 +56,16 @@ fn metadata_block(source: &str) -> Option<&str> {
     let rest = &source[start..];
     let end = rest.find("---*/")?;
     Some(&rest[..end])
+}
+
+fn read_list(lines: &[&str], index: &mut usize, first: &str) -> Vec<String> {
+    let mut text = first.trim().to_owned();
+    while !text.contains(']') && *index + 1 < lines.len() {
+        *index += 1;
+        text.push(' ');
+        text.push_str(lines[*index].trim());
+    }
+    parse_list(&text)
 }
 
 fn parse_list(value: &str) -> Vec<String> {
