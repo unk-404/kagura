@@ -12,6 +12,7 @@ const STRINGS: &str = include_str!("../../../examples/strings.ts");
 const ARRAYS_HOLES: &str = include_str!("../../../examples/arrays_holes.ts");
 const ARRAYS_IN: &str = include_str!("../../../examples/arrays_in.ts");
 const TYPEOF: &str = include_str!("../../../examples/typeof.ts");
+const VOID: &str = include_str!("../../../examples/void.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -94,6 +95,14 @@ fn runs_typeof_operator() {
         host.output(),
         "undefined\nobject\nboolean\nnumber\nstring\nobject\nobject\n"
     );
+}
+
+#[test]
+fn runs_void_operator() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(VOID, &mut host).unwrap();
+    assert_eq!(host.output(), "undefined\nundefined\nundefined\n");
 }
 
 #[test]

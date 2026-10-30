@@ -24,6 +24,7 @@ pub(crate) enum TokenKind {
     As,
     In,
     TypeOf,
+    Void,
     LParen,
     RParen,
     LBrace,

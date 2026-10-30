@@ -11,6 +11,7 @@ const ARRAYS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/array
 const ARRAYS_HOLES: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/arrays_holes.kbc");
 const ARRAYS_IN: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/arrays_in.kbc");
 const TYPEOF: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/typeof.kbc");
+const VOID: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/void.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -87,6 +88,14 @@ fn executes_v1_typeof_bytecode() {
         host.output(),
         "undefined\nobject\nboolean\nnumber\nstring\nobject\nobject\n"
     );
+}
+
+#[test]
+fn executes_v1_void_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(VOID, &mut host).unwrap();
+    assert_eq!(host.output(), "undefined\nundefined\nundefined\n");
 }
 
 #[test]
