@@ -72,6 +72,7 @@ pub struct Interpreter<'a> {
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     builtin_cache: FastHashMap<String, Value>,
+    feedback: Vec<PropertyFeedback>,
     property_feedback: Vec<Vec<PropertyFeedback>>,
     property_ic_hits: u64,
     property_ic_misses: u64,
@@ -103,6 +104,7 @@ impl<'a> Interpreter<'a> {
             host,
             host_cache: vec![None; module.constants.len()],
             builtin_cache: FastHashMap::default(),
+            feedback: vec![PropertyFeedback::Empty; module.feedback.len()],
             property_feedback: module
                 .functions
                 .iter()
@@ -1109,6 +1111,19 @@ impl<'a> Interpreter<'a> {
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                     push(&mut stack, Value::object(object.index()), span)?;
                 }
+                Op::GetPropIC => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let feedback = read_u32(&function.code, &mut pc, span)?;
+                    let key = match self.module.constants.get(index as usize) {
+                        Some(Const::String(key)) => key.clone(),
+                        _ => {
+                            return Err(RuntimeError::runtime("invalid property key", span));
+                        }
+                    };
+                    let object = pop(&mut stack, span)?;
+                    let value = try_op!(self.get_property_feedback(object, feedback, &key, span));
+                    push(&mut stack, value, span)?;
+                }
                 Op::GetProp => {
                     let site = pc.saturating_sub(1) as u32;
                     let index = read_u32(&function.code, &mut pc, span)?;
@@ -1163,6 +1178,20 @@ impl<'a> Interpreter<'a> {
                     self.objects
                         .set_shape(object_id, shape)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                Op::SetPropValueIC => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let feedback = read_u32(&function.code, &mut pc, span)?;
+                    let key = match self.module.constants.get(index as usize) {
+                        Some(Const::String(key)) => key.clone(),
+                        _ => {
+                            return Err(RuntimeError::runtime("invalid property key", span));
+                        }
+                    };
+                    let value = pop(&mut stack, span)?;
+                    let object = pop(&mut stack, span)?;
+                    try_op!(self.set_property_feedback(object, feedback, &key, value, span));
+                    push(&mut stack, value, span)?;
                 }
                 Op::SetPropValue => {
                     let site = pc.saturating_sub(1) as u32;

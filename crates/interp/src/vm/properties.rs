@@ -92,6 +92,109 @@ impl<'a> Interpreter<'a> {
         Ok(value)
     }
 
+    pub(super) fn get_property_feedback(
+        &mut self,
+        object: Value,
+        feedback_index: u32,
+        key: &str,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if !object.is_object() || key == "length" {
+            self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+            return self.get_property(object, key, span);
+        }
+        let id = self.object_id(object, span)?;
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(PropertyFeedback::OwnData {
+            shape: cached_shape,
+            location,
+            ..
+        }) = self.feedback.get(feedback_index as usize).copied()
+            && cached_shape == shape
+        {
+            self.property_ic_hits = self.property_ic_hits.saturating_add(1);
+            return self.load_property_location(id, location, span);
+        }
+        self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+        let value = self.get_property(object, key, span)?;
+        let descriptor = self
+            .shapes
+            .lookup(shape, &PropertyKey::from_string(key))
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(slot) = self.feedback.get_mut(feedback_index as usize) {
+            *slot = match descriptor {
+                Some(descriptor) => PropertyFeedback::OwnData {
+                    shape,
+                    location: descriptor.location,
+                    writable: descriptor.attributes.writable,
+                },
+                None => PropertyFeedback::Empty,
+            };
+        }
+        Ok(value)
+    }
+
+    pub(super) fn set_property_feedback(
+        &mut self,
+        object: Value,
+        feedback_index: u32,
+        key: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        if !object.is_object() || key == "length" {
+            self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+            return self.set_property(object, key, value, span);
+        }
+        let id = self.object_id(object, span)?;
+        if self
+            .objects
+            .is_frozen(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+            return self.set_property(object, key, value, span);
+        }
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(PropertyFeedback::OwnData {
+            shape: cached_shape,
+            location,
+            writable: true,
+        }) = self.feedback.get(feedback_index as usize).copied()
+            && cached_shape == shape
+        {
+            self.property_ic_hits = self.property_ic_hits.saturating_add(1);
+            return self.store_property_location(id, location, value, span);
+        }
+        self.property_ic_misses = self.property_ic_misses.saturating_add(1);
+        self.set_property(object, key, value, span)?;
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let descriptor = self
+            .shapes
+            .lookup(shape, &PropertyKey::from_string(key))
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(slot) = self.feedback.get_mut(feedback_index as usize) {
+            *slot = match descriptor {
+                Some(descriptor) if descriptor.attributes.writable => PropertyFeedback::OwnData {
+                    shape,
+                    location: descriptor.location,
+                    writable: true,
+                },
+                _ => PropertyFeedback::Empty,
+            };
+        }
+        Ok(())
+    }
+
     pub(super) fn set_property_ic(
         &mut self,
         object: Value,

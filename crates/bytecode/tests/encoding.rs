@@ -16,6 +16,7 @@ fn round_trips_current_bytecode() {
     let decoded = Module::decode(&bytes).unwrap();
     assert_eq!(decoded.version, VERSION);
     assert_eq!(decoded.constants, module.constants);
+    assert_eq!(decoded.feedback, module.feedback);
     assert_eq!(decoded.entry, module.entry);
     assert_eq!(decoded.functions.len(), module.functions.len());
     for (left, right) in decoded.functions.iter().zip(&module.functions) {

@@ -13,6 +13,23 @@ pub enum Const {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FeedbackKind {
+    PropertyLoad = 0,
+    PropertyStore = 1,
+}
+
+impl FeedbackKind {
+    fn from_byte(byte: u8) -> Option<Self> {
+        match byte {
+            0 => Some(Self::PropertyLoad),
+            1 => Some(Self::PropertyStore),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Safepoint {
     pub pc: u32,
     pub local_count: u16,
@@ -36,11 +53,12 @@ pub struct Module {
     pub version: u16,
     pub constants: Vec<Const>,
     pub functions: Vec<FunctionProto>,
+    pub feedback: Vec<FeedbackKind>,
     pub entry: usize,
 }
 
 pub const MAGIC: [u8; 4] = *b"KGB1";
-pub const VERSION: u16 = 2;
+pub const VERSION: u16 = 3;
 pub const MIN_VERSION: u16 = 1;
 
 impl Module {
@@ -111,6 +129,12 @@ impl Module {
                 }
             }
         }
+        if self.version >= 3 {
+            write_u32(&mut out, self.feedback.len() as u32);
+            for kind in &self.feedback {
+                out.push(*kind as u8);
+            }
+        }
         out
     }
 
@@ -177,6 +201,15 @@ impl Module {
                 safepoints,
             });
         }
+        let mut feedback = Vec::new();
+        if version >= 3 {
+            let feedback_count = reader.u32()? as usize;
+            for _ in 0..feedback_count {
+                let byte = reader.u8()?;
+                feedback
+                    .push(FeedbackKind::from_byte(byte).ok_or(DecodeError::InvalidFeedback(byte))?);
+            }
+        }
         if reader.remaining() != 0 {
             return Err(DecodeError::TrailingBytes);
         }
@@ -187,6 +220,7 @@ impl Module {
             version,
             constants,
             functions,
+            feedback,
             entry,
         })
     }

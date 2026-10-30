@@ -7,7 +7,7 @@ use kagura_ast::{
 use kagura_support::{FastHashSet, Span};
 
 use crate::error::CompileError;
-use crate::module::{Const, FunctionProto, Module, Safepoint, VERSION};
+use crate::module::{Const, FeedbackKind, FunctionProto, Module, Safepoint, VERSION};
 use crate::op::Op;
 use analysis::{
     body_has_closure, collect_iteration_locals, loop_has_closure, member_path, params_have_closure,
@@ -21,6 +21,7 @@ pub fn compile(program: &Program) -> Result<Module, CompileError> {
 struct Compiler {
     constants: Vec<Const>,
     functions: Vec<FunctionProto>,
+    feedback: Vec<FeedbackKind>,
     entry: usize,
 }
 
@@ -34,6 +35,7 @@ impl Compiler {
             has_use_strict(&program.body),
             &mut self.constants,
             &mut self.functions,
+            &mut self.feedback,
         );
         for stmt in &program.body {
             match stmt {
@@ -96,6 +98,7 @@ impl Compiler {
             version: VERSION,
             constants: std::mem::take(&mut self.constants),
             functions: std::mem::take(&mut self.functions),
+            feedback: std::mem::take(&mut self.feedback),
             entry: self.entry,
         })
     }
@@ -184,9 +187,11 @@ struct FunctionCompiler<'a> {
     outer: Vec<Vec<Local>>,
     constants: &'a mut Vec<Const>,
     functions: &'a mut Vec<FunctionProto>,
+    feedback: &'a mut Vec<FeedbackKind>,
 }
 
 impl<'a> FunctionCompiler<'a> {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         name: &str,
         params: &[Param],
@@ -195,6 +200,7 @@ impl<'a> FunctionCompiler<'a> {
         strict: bool,
         constants: &'a mut Vec<Const>,
         functions: &'a mut Vec<FunctionProto>,
+        feedback: &'a mut Vec<FeedbackKind>,
     ) -> Self {
         let mut compiler = Self {
             name: name.to_owned(),
@@ -217,6 +223,7 @@ impl<'a> FunctionCompiler<'a> {
             outer: Vec::new(),
             constants,
             functions,
+            feedback,
         };
         for param in params {
             let slot = compiler.declare_parameter(&param.name);
@@ -671,7 +678,7 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit_u16(Op::LoadLocal, index_slot, *span);
                 self.emit_u16(Op::LoadLocal, keys_slot, *span);
                 let length_key = self.add_const(Const::String("length".into()));
-                self.emit_u32(Op::GetProp, length_key, *span);
+                self.emit_get_prop(length_key, *span);
                 self.emit(Op::Lt, *span);
                 let end_jump = self.emit_jump(Op::JumpIfFalse, *span);
                 self.emit_u16(Op::LoadLocal, keys_slot, *span);
@@ -760,7 +767,7 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit_u16(Op::LoadLocal, index_slot, *span);
                 self.emit_u16(Op::LoadLocal, iterable_slot, *span);
                 let length_key = self.add_const(Const::String("length".into()));
-                self.emit_u32(Op::GetProp, length_key, *span);
+                self.emit_get_prop(length_key, *span);
                 self.emit(Op::Lt, *span);
                 let end_jump = self.emit_jump(Op::JumpIfFalse, *span);
                 self.emit_u16(Op::LoadLocal, iterable_slot, *span);
@@ -1208,9 +1215,9 @@ impl<'a> FunctionCompiler<'a> {
             self.emit_u16(Op::StoreLocal, super_slot, span);
             self.emit_u16(Op::LoadLocal, slot, span);
             let prototype_key = self.add_const(Const::String("prototype".into()));
-            self.emit_u32(Op::GetProp, prototype_key, span);
+            self.emit_get_prop(prototype_key, span);
             self.emit_u16(Op::LoadLocal, super_slot, span);
-            self.emit_u32(Op::GetProp, prototype_key, span);
+            self.emit_get_prop(prototype_key, span);
             self.emit(Op::SetPrototype, span);
             self.emit_u16(Op::LoadLocal, slot, span);
             self.emit_u16(Op::LoadLocal, super_slot, span);
@@ -1248,7 +1255,7 @@ impl<'a> FunctionCompiler<'a> {
             self.emit_u16(Op::LoadLocal, slot, span);
             if !method.is_static {
                 let prototype_key = self.add_const(Const::String("prototype".into()));
-                self.emit_u32(Op::GetProp, prototype_key, span);
+                self.emit_get_prop(prototype_key, span);
             }
             self.compile_closure(
                 &method.name,
@@ -1331,7 +1338,7 @@ impl<'a> FunctionCompiler<'a> {
                 for (key, element) in properties {
                     self.emit_u16(Op::LoadLocal, source, span);
                     let index = self.add_const(Const::String(key.clone()));
-                    self.emit_u32(Op::GetProp, index, span);
+                    self.emit_get_prop(index, span);
                     let value = self.hidden_local(span);
                     self.emit_u16(Op::StoreLocal, value, span);
                     self.bind_pattern(element, value, kind, span, assign)?;
@@ -1480,6 +1487,7 @@ impl<'a> FunctionCompiler<'a> {
             strict,
             self.constants,
             self.functions,
+            self.feedback,
         );
         compiler.outer = outer;
         compiler.hoist_function_scope(body);
@@ -1699,13 +1707,13 @@ impl<'a> FunctionCompiler<'a> {
                         self.emit_u16(Op::StoreLocal, value_slot, *span);
                         let key = self.add_const(Const::String(property.clone()));
                         self.emit_u16(Op::LoadLocal, object_slot, *span);
-                        self.emit_u32(Op::GetProp, key, *span);
+                        self.emit_get_prop(key, *span);
                         self.emit_u16(Op::LoadLocal, value_slot, *span);
                         self.emit(op, *span);
                         self.emit_u16(Op::StoreLocal, result_slot, *span);
                         self.emit_u16(Op::LoadLocal, object_slot, *span);
                         self.emit_u16(Op::LoadLocal, result_slot, *span);
-                        self.emit_u32(Op::SetPropValue, key, *span);
+                        self.emit_set_prop_value(key, *span);
                         self.emit(Op::Pop, *span);
                         self.emit_u16(Op::LoadLocal, result_slot, *span);
                     }
@@ -1788,7 +1796,7 @@ impl<'a> FunctionCompiler<'a> {
                     self.compile_expr(object)?;
                     self.compile_expr(value)?;
                     let index = self.add_const(Const::String(property.clone()));
-                    self.emit_u32(Op::SetPropValue, index, *span);
+                    self.emit_set_prop_value(index, *span);
                 }
                 AssignTarget::Index { object, index } => {
                     self.compile_expr(object)?;
@@ -1811,9 +1819,9 @@ impl<'a> FunctionCompiler<'a> {
             Expr::SuperCall { args, span } => {
                 self.compile_expr(&Expr::This { span: *span })?;
                 let class_key = self.add_const(Const::String("__kaguraClass".into()));
-                self.emit_u32(Op::GetProp, class_key, *span);
+                self.emit_get_prop(class_key, *span);
                 let super_key = self.add_const(Const::String("__kaguraSuper".into()));
-                self.emit_u32(Op::GetProp, super_key, *span);
+                self.emit_get_prop(super_key, *span);
                 self.compile_expr(&Expr::This { span: *span })?;
                 self.compile_args(args)?;
                 self.emit(Op::CallThis, *span);
@@ -1826,13 +1834,13 @@ impl<'a> FunctionCompiler<'a> {
             Expr::SuperMember { property, span } => {
                 self.compile_expr(&Expr::This { span: *span })?;
                 let class_key = self.add_const(Const::String("__kaguraClass".into()));
-                self.emit_u32(Op::GetProp, class_key, *span);
+                self.emit_get_prop(class_key, *span);
                 let super_key = self.add_const(Const::String("__kaguraSuper".into()));
-                self.emit_u32(Op::GetProp, super_key, *span);
+                self.emit_get_prop(super_key, *span);
                 let prototype_key = self.add_const(Const::String("prototype".into()));
-                self.emit_u32(Op::GetProp, prototype_key, *span);
+                self.emit_get_prop(prototype_key, *span);
                 let key = self.add_const(Const::String(property.clone()));
-                self.emit_u32(Op::GetProp, key, *span);
+                self.emit_get_prop(key, *span);
             }
             Expr::Update {
                 target,
@@ -1900,7 +1908,7 @@ impl<'a> FunctionCompiler<'a> {
                         self.emit_u16(Op::StoreLocal, object_slot, *span);
                         let key = self.add_const(Const::String(property.clone()));
                         self.emit_u16(Op::LoadLocal, object_slot, *span);
-                        self.emit_u32(Op::GetProp, key, *span);
+                        self.emit_get_prop(key, *span);
                         self.emit_u16(Op::StoreLocal, old_slot, *span);
                         self.emit_u16(Op::LoadLocal, old_slot, *span);
                         self.emit_const(Const::Number(1.0), *span);
@@ -1908,7 +1916,7 @@ impl<'a> FunctionCompiler<'a> {
                         self.emit_u16(Op::StoreLocal, new_slot, *span);
                         self.emit_u16(Op::LoadLocal, object_slot, *span);
                         self.emit_u16(Op::LoadLocal, new_slot, *span);
-                        self.emit_u32(Op::SetPropValue, key, *span);
+                        self.emit_set_prop_value(key, *span);
                         if *prefix {
                             self.emit_u16(Op::LoadLocal, new_slot, *span);
                         } else {
@@ -2041,7 +2049,7 @@ impl<'a> FunctionCompiler<'a> {
             } => {
                 self.compile_expr(object)?;
                 let index = self.add_const(Const::String(property.clone()));
-                self.emit_u32(Op::GetProp, index, *span);
+                self.emit_get_prop(index, *span);
             }
             Expr::Object { properties, span } => {
                 self.emit(Op::NewObject, *span);
@@ -2268,6 +2276,24 @@ impl<'a> FunctionCompiler<'a> {
         index
     }
 
+    fn add_feedback(&mut self, kind: FeedbackKind) -> u32 {
+        let index = self.feedback.len() as u32;
+        self.feedback.push(kind);
+        index
+    }
+
+    fn emit_get_prop(&mut self, key: u32, span: Span) {
+        let feedback = self.add_feedback(FeedbackKind::PropertyLoad);
+        self.emit_u32(Op::GetPropIC, key, span);
+        self.emit_u32_raw(feedback, span);
+    }
+
+    fn emit_set_prop_value(&mut self, key: u32, span: Span) {
+        let feedback = self.add_feedback(FeedbackKind::PropertyStore);
+        self.emit_u32(Op::SetPropValueIC, key, span);
+        self.emit_u32_raw(feedback, span);
+    }
+
     fn emit_const(&mut self, constant: Const, span: Span) {
         let index = self.add_const(constant);
         self.emit_u32(Op::LoadConst, index, span);
@@ -2296,6 +2322,12 @@ impl<'a> FunctionCompiler<'a> {
 
     fn emit_u32(&mut self, op: Op, value: u32, span: Span) {
         self.emit(op, span);
+        for byte in value.to_le_bytes() {
+            self.emit_raw(byte, span);
+        }
+    }
+
+    fn emit_u32_raw(&mut self, value: u32, span: Span) {
         for byte in value.to_le_bytes() {
             self.emit_raw(byte, span);
         }

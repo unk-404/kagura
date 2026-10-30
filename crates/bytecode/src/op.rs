@@ -85,6 +85,8 @@ pub enum Op {
     LoadGlobal = 81,
     StoreGlobal = 82,
     ToPropertyKey = 83,
+    GetPropIC = 84,
+    SetPropValueIC = 85,
 }
 
 impl Op {
@@ -174,6 +176,8 @@ impl Op {
             81 => Self::LoadGlobal,
             82 => Self::StoreGlobal,
             83 => Self::ToPropertyKey,
+            84 => Self::GetPropIC,
+            85 => Self::SetPropValueIC,
             _ => return None,
         })
     }

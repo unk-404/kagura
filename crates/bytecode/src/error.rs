@@ -27,6 +27,8 @@ pub enum DecodeError {
     UnsupportedVersion(u16),
     #[error("invalid constant tag {0}")]
     InvalidConstant(u8),
+    #[error("invalid feedback kind {0}")]
+    InvalidFeedback(u8),
     #[error("invalid constant encoding")]
     InvalidConstantEncoding,
     #[error("invalid UTF-8 in bytecode")]
