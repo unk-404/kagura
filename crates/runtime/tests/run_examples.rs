@@ -1165,6 +1165,33 @@ fn runs_bitwise_compound_assignment() {
 }
 
 #[test]
+fn parses_nested_conditional_expressions() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(1 < 2 ? 3 : 4 < 5 ? 6 : 7, 1 > 2 ? 3 : 4 < 5 ? 6 : 7);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "3 6\n");
+}
+
+#[test]
+fn grows_value_heap_for_many_numbers() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.set_step_limit(5_000_000);
+    runtime
+        .run(
+            "var total = 0; for (var i = 0; i < 200000; i++) { total += i + 0.5; } console.log(total > 0);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "true\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

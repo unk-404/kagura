@@ -30,6 +30,28 @@ impl Arena {
         self.used
     }
 
+    pub fn grow(&mut self) -> bool {
+        let new_capacity = self.capacity.saturating_mul(2);
+        if new_capacity <= self.capacity || new_capacity > u32::MAX as usize {
+            return false;
+        }
+        let Some(new_layout) = Layout::from_size_align(new_capacity, 8).ok() else {
+            return false;
+        };
+        let new_ptr = unsafe { alloc(new_layout) };
+        let Some(new_ptr) = NonNull::new(new_ptr) else {
+            return false;
+        };
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.ptr.as_ptr(), new_ptr.as_ptr(), self.used);
+            dealloc(self.ptr.as_ptr(), self.layout);
+        }
+        self.ptr = new_ptr;
+        self.layout = new_layout;
+        self.capacity = new_capacity;
+        true
+    }
+
     pub fn alloc(&mut self, size: usize, align: usize) -> Option<u32> {
         if size == 0 || !align.is_power_of_two() {
             return None;

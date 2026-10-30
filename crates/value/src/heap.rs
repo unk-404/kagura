@@ -30,18 +30,28 @@ impl Heap {
         if let Some(smi) = smi_from_f64(value) {
             return Value::smi(smi);
         }
-        let offset = self
-            .arena
-            .alloc_f64(value)
-            .expect("value heap exhausted while allocating a number");
+        let offset = loop {
+            if let Some(offset) = self.arena.alloc_f64(value) {
+                break offset;
+            }
+            assert!(
+                self.arena.grow(),
+                "value heap exhausted while allocating a number"
+            );
+        };
         Value::number(offset)
     }
 
     pub fn string(&mut self, value: &str) -> Value {
-        let offset = self
-            .arena
-            .alloc_str(value)
-            .expect("value heap exhausted while allocating a string");
+        let offset = loop {
+            if let Some(offset) = self.arena.alloc_str(value) {
+                break offset;
+            }
+            assert!(
+                self.arena.grow(),
+                "value heap exhausted while allocating a string"
+            );
+        };
         Value::string(offset)
     }
 

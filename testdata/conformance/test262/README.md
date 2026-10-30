@@ -85,6 +85,8 @@ The current P1 slice adds:
 - bitwise compound assignment operators and proper `ToInt32` wrapping for
   bitwise/shift operands
 - `do...while` and a deterministic seeded `Math.random()`
+- growing value heap instead of panicking on many boxed numbers
+- nested conditional expressions parsed right-associatively
 - function-scope `var`/function hoisting before nested closures are compiled
 - test262 `_FIXTURE.js` helper files are excluded from selection instead of
   being counted as tests

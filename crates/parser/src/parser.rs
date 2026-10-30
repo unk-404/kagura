@@ -558,7 +558,7 @@ impl Parser {
         let left = if self.eat(&TokenKind::Question) {
             let then_branch = self.parse_expr()?;
             self.expect(&TokenKind::Colon, "expected ':' in conditional expression")?;
-            let else_branch = self.parse_or()?;
+            let else_branch = self.parse_expr()?;
             let span = left.span().merge(else_branch.span());
             Expr::Conditional {
                 condition: Box::new(left),
