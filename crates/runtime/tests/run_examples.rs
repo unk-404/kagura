@@ -1022,6 +1022,19 @@ fn runs_for_of_over_arrays_and_strings() {
 }
 
 #[test]
+fn wires_constructor_prototypes_and_instanceof() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "function F(x) { this.x = x; } F.prototype.get = function () { return this.x; }; var f = new F(5); console.log(f.get(), f instanceof F, F.prototype.constructor === F);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "5 true true\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

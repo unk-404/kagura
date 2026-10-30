@@ -667,7 +667,28 @@ impl<'a> Interpreter<'a> {
                             captured_this,
                         )
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                    push(&mut stack, Value::object(object.index()), span)?;
+                    let function_value = Value::object(object.index());
+                    if !lexical_this {
+                        let proto_shape = try_op!(self.object_shape(span));
+                        let prototype = self
+                            .objects
+                            .allocate(proto_shape)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        let prototype = Value::object(prototype.index());
+                        try_op!(self.set_non_enumerable_property(
+                            function_value,
+                            "prototype",
+                            prototype,
+                            span
+                        ));
+                        try_op!(self.set_non_enumerable_property(
+                            prototype,
+                            "constructor",
+                            function_value,
+                            span
+                        ));
+                    }
+                    push(&mut stack, function_value, span)?;
                 }
                 Op::CallValue => {
                     let argc = read_u8(&function.code, &mut pc, span)? as usize;

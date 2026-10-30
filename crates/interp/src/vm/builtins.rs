@@ -1124,6 +1124,25 @@ impl<'a> Interpreter<'a> {
             }
             return Ok(actual == name);
         }
+        let prototype = self.get_property(constructor, "prototype", span)?;
+        let Some(prototype_id) = prototype.object_offset().map(ObjectId::new) else {
+            return Ok(false);
+        };
+        let mut current = Some(value_id);
+        while let Some(current_id) = current {
+            if current_id == prototype_id {
+                return Ok(true);
+            }
+            let shape = self
+                .objects
+                .shape(current_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            current = self
+                .shapes
+                .get(shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .prototype;
+        }
         Ok(false)
     }
 
@@ -1313,13 +1332,23 @@ impl<'a> Interpreter<'a> {
                 .to_owned();
             return self.new_name(&name, args, span);
         }
+        let prototype = self.get_property(callee, "prototype", span)?;
+        let root = self.shapes.root();
+        let shape = if let Some(prototype_id) = prototype.object_offset().map(ObjectId::new) {
+            self.shapes
+                .with_prototype(root, Some(prototype_id))
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        } else {
+            root
+        };
         let object = self
             .objects
-            .allocate(self.shapes.root())
+            .allocate(shape)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         let object = Value::object(object.index());
         let mut all_roots = roots.to_vec();
         all_roots.push(object);
+        all_roots.push(prototype);
         match self.call(
             function_index as usize,
             args,
@@ -2219,7 +2248,7 @@ impl<'a> Interpreter<'a> {
         Ok(Value::object(array.index()))
     }
 
-    fn set_non_enumerable_property(
+    pub(super) fn set_non_enumerable_property(
         &mut self,
         target: Value,
         key: &str,
