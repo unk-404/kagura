@@ -112,6 +112,7 @@ impl Parser {
             TokenKind::Function => Ok(Stmt::Func(self.parse_func_decl()?)),
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
+            TokenKind::Do => self.parse_do_while(),
             TokenKind::For => self.parse_for(),
             TokenKind::Switch => self.parse_switch(),
             TokenKind::Return => self.parse_return(),
@@ -300,6 +301,18 @@ impl Parser {
             else_branch,
             span: start.merge(end),
         })
+    }
+
+    fn parse_do_while(&mut self) -> Result<Stmt, ParseError> {
+        let start = self.advance().span;
+        let body = Box::new(self.parse_sub_stmt()?);
+        self.expect(&TokenKind::While, "expected 'while' after do body")?;
+        self.expect(&TokenKind::LParen, "expected '(' after while")?;
+        let cond = self.parse_expr()?;
+        self.expect(&TokenKind::RParen, "expected ')' after do-while condition")?;
+        self.eat(&TokenKind::Semi);
+        let span = start.merge(cond.span());
+        Ok(Stmt::DoWhile { body, cond, span })
     }
 
     fn parse_while(&mut self) -> Result<Stmt, ParseError> {

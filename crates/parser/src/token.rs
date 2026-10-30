@@ -15,6 +15,7 @@ pub(crate) enum TokenKind {
     If,
     Else,
     While,
+    Do,
     For,
     Return,
     Throw,

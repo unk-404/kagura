@@ -77,6 +77,7 @@ fn stmt_has_closure(stmt: &Stmt) -> bool {
                 || else_branch.as_deref().is_some_and(stmt_has_closure)
         }
         Stmt::While { cond, body, .. } => expr_has_closure(cond) || stmt_has_closure(body),
+        Stmt::DoWhile { cond, body, .. } => expr_has_closure(cond) || stmt_has_closure(body),
         Stmt::For {
             init,
             cond,

@@ -82,6 +82,7 @@ The current P1 slice adds:
 - array/object destructuring declarations (`var [a,b]`, `var {x,y}`),
   including nested, renamed, default-valued, array rest, object rest,
   destructuring parameters, and destructuring assignment expressions
+- `do...while` and a deterministic seeded `Math.random()`
 - function-scope `var`/function hoisting before nested closures are compiled
 - test262 `_FIXTURE.js` helper files are excluded from selection instead of
   being counted as tests
@@ -180,8 +181,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-53733 selected, 22267 executed, 5297 passed, 16970 failed, 31466 skipped
-oracle node: 5297 checked, 5293 matched, 4 mismatched
+53733 selected, 22267 executed, 5309 passed, 16958 failed, 31466 skipped
+oracle node: 5309 checked, 5305 matched, 4 mismatched
 ```
 
 The four Node mismatches are tracked as differential warnings, not hidden:

@@ -265,6 +265,7 @@ impl<'a> FunctionCompiler<'a> {
                 }
             }
             Stmt::While { body, .. } => self.hoist_stmt(body),
+            Stmt::DoWhile { body, .. } => self.hoist_stmt(body),
             Stmt::For { init, body, .. } => {
                 if let Some(ForInit::Var(decl)) = init
                     && matches!(decl.kind, kagura_ast::VarKind::Var)
@@ -466,6 +467,28 @@ impl<'a> FunctionCompiler<'a> {
                     self.compile_stmt(else_branch)?;
                 }
                 self.patch_jump(end_jump, self.code.len());
+                Ok(())
+            }
+            Stmt::DoWhile { body, cond, span } => {
+                let loop_start = self.code.len();
+                self.loops.push(LoopContext {
+                    break_patches: Vec::new(),
+                    continue_patches: Vec::new(),
+                    continue_target: None,
+                    is_switch: false,
+                });
+                self.compile_stmt(body)?;
+                let cond_start = self.code.len();
+                self.compile_expr(cond)?;
+                self.emit_jump_back(Op::JumpIfTrue, loop_start, *span);
+                let end = self.code.len();
+                let context = self.loops.pop().expect("loop context");
+                for patch in context.continue_patches {
+                    self.patch_jump(patch, cond_start);
+                }
+                for patch in context.break_patches {
+                    self.patch_jump(patch, end);
+                }
                 Ok(())
             }
             Stmt::While { cond, body, span } => {

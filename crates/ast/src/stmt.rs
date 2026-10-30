@@ -104,6 +104,11 @@ pub enum Stmt {
         body: Box<Stmt>,
         span: Span,
     },
+    DoWhile {
+        body: Box<Stmt>,
+        cond: Expr,
+        span: Span,
+    },
     For {
         init: Option<ForInit>,
         cond: Option<Expr>,
@@ -185,6 +190,7 @@ impl Stmt {
                 .unwrap_or_else(|| Span::empty(0)),
             Self::If { span, .. }
             | Self::While { span, .. }
+            | Self::DoWhile { span, .. }
             | Self::For { span, .. }
             | Self::ForIn { span, .. }
             | Self::ForOf { span, .. }

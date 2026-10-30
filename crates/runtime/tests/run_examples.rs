@@ -1139,6 +1139,19 @@ fn hoists_function_scope_vars_before_nested_functions() {
 }
 
 #[test]
+fn runs_do_while_and_math_random() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var i = 0; do { i++; } while (i < 3); var r = Math.random(); console.log(i, r >= 0 && r < 1);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "3 true\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

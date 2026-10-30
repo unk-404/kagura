@@ -1240,6 +1240,14 @@ impl<'a> Interpreter<'a> {
                 .unwrap_or(f64::NAN)
         };
         let value = match operation {
+            "random" => {
+                let mut state = self.rng_state;
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                self.rng_state = state;
+                (state >> 11) as f64 / (1u64 << 53) as f64
+            }
             "abs" => number(self.heap, 0).abs(),
             "floor" => number(self.heap, 0).floor(),
             "ceil" => number(self.heap, 0).ceil(),

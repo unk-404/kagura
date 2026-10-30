@@ -25,12 +25,14 @@ if (!file) {
 }
 
 const source = fs.readFileSync(file, "utf8");
+const prelude =
+  "var performance = (typeof globalThis !== 'undefined' && globalThis.performance) || { now: function () { return Date.now(); } };\n";
 const wrapper = `\nfor (var __i = 0; __i < ${iterations}; __i++) ${entry}();\nconsole.log("JETSTREAM_SMOKE_OK");\n`;
 const tempRoot = path.resolve(".agents", "tmp");
 fs.mkdirSync(tempRoot, { recursive: true });
 const directory = fs.mkdtempSync(path.join(tempRoot, "kagura-jetstream-"));
 const script = path.join(directory, "workload.js");
-fs.writeFileSync(script, source + wrapper);
+fs.writeFileSync(script, prelude + source + wrapper);
 
 const command =
   engine === "kagura"

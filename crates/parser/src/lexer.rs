@@ -293,6 +293,7 @@ fn keyword_or_ident(text: &str) -> TokenKind {
         "if" => TokenKind::If,
         "else" => TokenKind::Else,
         "while" => TokenKind::While,
+        "do" => TokenKind::Do,
         "for" => TokenKind::For,
         "return" => TokenKind::Return,
         "throw" => TokenKind::Throw,
