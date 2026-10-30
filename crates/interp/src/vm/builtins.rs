@@ -822,6 +822,84 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(array.index())
             }
+            "sort" => {
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let mut values = Vec::new();
+                for index in 0..length {
+                    if self
+                        .objects
+                        .array_has(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        values.push(
+                            self.objects
+                                .array_get(object_id, index)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+                        );
+                    }
+                }
+                let comparator = args.first().copied().unwrap_or_else(Value::undefined);
+                if comparator.is_undefined() {
+                    values.sort_by(|left, right| {
+                        self.heap
+                            .to_js_string(*left)
+                            .cmp(&self.heap.to_js_string(*right))
+                    });
+                } else {
+                    let Some(comparator_id) = comparator.object_offset().map(ObjectId::new) else {
+                        return Err(RuntimeError::type_error(
+                            "sort comparator must be a function",
+                            span,
+                        ));
+                    };
+                    if !self
+                        .objects
+                        .is_function(comparator_id)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        return Err(RuntimeError::type_error(
+                            "sort comparator must be a function",
+                            span,
+                        ));
+                    }
+                    let mut roots = roots.to_vec();
+                    roots.extend_from_slice(&values);
+                    for index in 1..values.len() {
+                        let mut current = index;
+                        while current > 0 {
+                            let order = self
+                                .invoke_callable(
+                                    comparator,
+                                    &[values[current - 1], values[current]],
+                                    &roots,
+                                    span,
+                                )
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                            let order = self.heap.as_number(order).unwrap_or(f64::NAN);
+                            if order > 0.0 {
+                                values.swap(current - 1, current);
+                                current -= 1;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+                for index in 0..length {
+                    let value = if (index as usize) < values.len() {
+                        values[index as usize]
+                    } else {
+                        Value::hole()
+                    };
+                    self.objects
+                        .array_set(object_id, index, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                Value::object(object_id.index())
+            }
             "map" | "filter" | "forEach" => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self

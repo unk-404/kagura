@@ -53,6 +53,7 @@ const FINALLY_RETURN: &str = include_str!("../../../examples/finally_return.ts")
 const OBJECT_ASSIGN: &str = include_str!("../../../examples/object_assign.ts");
 const FINALLY_LOOPS: &str = include_str!("../../../examples/finally_loops.ts");
 const BUILTIN_EXTRAS: &str = include_str!("../../../examples/builtin_extras.ts");
+const ARRAY_SORT: &str = include_str!("../../../examples/array_sort.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -535,6 +536,14 @@ fn runs_extra_array_and_string_builtins() {
         host.output(),
         "3,2,1\n1,2,3,4,5\na|b|c\ntrue\ntrue\nababab\ncde\ncde\n"
     );
+}
+
+#[test]
+fn sorts_arrays_with_and_without_comparator() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARRAY_SORT, &mut host).unwrap();
+    assert_eq!(host.output(), "a,b,c\n1,2,3,10\n1,10,2\n1,3,\n");
 }
 
 #[test]

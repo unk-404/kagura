@@ -58,6 +58,7 @@ const FINALLY_LOOPS: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/finally_loops.kbc");
 const BUILTIN_EXTRAS: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/builtin_extras.kbc");
+const ARRAY_SORT: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/array_sort.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -376,4 +377,12 @@ fn executes_v1_builtin_extras_bytecode() {
         host.output(),
         "3,2,1\n1,2,3,4,5\na|b|c\ntrue\ntrue\nababab\ncde\ncde\n"
     );
+}
+
+#[test]
+fn executes_v1_array_sort_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(ARRAY_SORT, &mut host).unwrap();
+    assert_eq!(host.output(), "a,b,c\n1,2,3,10\n1,10,2\n1,3,\n");
 }
