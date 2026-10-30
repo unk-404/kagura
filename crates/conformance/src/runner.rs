@@ -89,6 +89,15 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
         "String.prototype.at",
         "String.prototype.concat",
         "String.prototype.localeCompare",
+        "Number.prototype.toFixed",
+        "Number.prototype.toExponential",
+        "Number.prototype.toPrecision",
+        "Number.isNaN",
+        "Number.isFinite",
+        "Number.isInteger",
+        "Number.isSafeInteger",
+        "Number.parseInt",
+        "Number.parseFloat",
     ];
     if metadata
         .flags

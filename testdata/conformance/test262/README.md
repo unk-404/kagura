@@ -75,6 +75,8 @@ The current P1 slice adds:
   `SyntaxError`, `Test262Error`, `Object`, and `Array` targets
 - `JSON.parse` backed by `serde_json`; `JSON.stringify` uses the existing
   object/array serializer
+- Number prototype formatting (`toString` radix, `toFixed`, `toExponential`,
+  `toPrecision`) and `Number.isNaN/isFinite/isInteger/isSafeInteger`
 - global `NaN` and `Infinity`
 - `Array.prototype.copyWithin`, `flat`, `flatMap`, and `reduceRight`
 - callable `Object(value)` primitives and object wrappers, plus
@@ -142,8 +144,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18891 executed, 3764 passed, 15127 failed, 35138 skipped
-oracle node: 3764 checked, 3763 matched, 1 mismatched
+54029 selected, 18891 executed, 3803 passed, 15088 failed, 35138 skipped
+oracle node: 3803 checked, 3802 matched, 1 mismatched
 ```
 
 The single Node mismatch is tracked as a differential warning, not hidden:

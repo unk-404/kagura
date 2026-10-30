@@ -827,6 +827,19 @@ fn exposes_nan_and_infinity_globals() {
 }
 
 #[test]
+fn runs_number_static_and_prototype_methods() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log((255).toString(16), (1.5).toFixed(2), Number.isNaN(NaN), Number.isInteger(5), Number.MAX_SAFE_INTEGER);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "ff 1.50 true true 9007199254740991\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

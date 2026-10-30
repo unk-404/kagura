@@ -49,8 +49,11 @@ fn components(args: &[Value], heap: &kagura_value::Heap) -> f64 {
         return f64::NAN;
     }
     let year = year as i32;
-    let month = month as i32 + 1;
+    let month = (month as i32).saturating_add(1);
     let day = day as i32;
+    if month < 1 {
+        return f64::NAN;
+    }
     let Some(date) = NaiveDate::from_ymd_opt(year, month as u32, day as u32) else {
         return f64::NAN;
     };

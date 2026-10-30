@@ -24,6 +24,38 @@ impl<'a> Interpreter<'a> {
                 span,
             ));
         }
+        if path == "Number.isNaN" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            return Ok(Some(Value::boolean(
+                self.heap.as_number(value).is_some_and(f64::is_nan),
+            )));
+        }
+        if path == "Number.isFinite" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            return Ok(Some(Value::boolean(
+                self.heap.as_number(value).is_some_and(f64::is_finite),
+            )));
+        }
+        if path == "Number.isInteger" || path == "Number.isSafeInteger" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            let number = self.heap.as_number(value);
+            let result = number.is_some_and(|number| {
+                number.is_finite()
+                    && number.fract() == 0.0
+                    && (path == "Number.isInteger" || number.abs() <= 9_007_199_254_740_991.0)
+            });
+            return Ok(Some(Value::boolean(result)));
+        }
+        if path == "Number.parseInt" {
+            let parsed = parse_int_value(self.heap, args);
+            return Ok(Some(self.heap.number(parsed)));
+        }
+        if path == "Number.parseFloat" {
+            let text = self
+                .heap
+                .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+            return Ok(Some(self.heap.number(parse_float_prefix(&text))));
+        }
         if path == "Object" {
             let value = args.first().copied().unwrap_or_else(Value::undefined);
             if value.is_undefined() || value.is_null() {
@@ -1646,6 +1678,56 @@ impl<'a> Interpreter<'a> {
         if name == "Infinity" {
             return Ok(self.heap.number(f64::INFINITY));
         }
+        if name == "Number" {
+            let object = self
+                .objects
+                .allocate_function(
+                    self.shapes.function_shape(),
+                    u32::MAX,
+                    Value::undefined(),
+                    Value::undefined(),
+                )
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let object = Value::object(object.index());
+            let name_value = self.heap.string("Number");
+            self.set_property(object, "name", name_value, span)?;
+            for (key, value) in [
+                ("MAX_SAFE_INTEGER", 9_007_199_254_740_991.0),
+                ("MIN_SAFE_INTEGER", -9_007_199_254_740_991.0),
+                ("MAX_VALUE", f64::MAX),
+                ("MIN_VALUE", f64::MIN_POSITIVE),
+                ("EPSILON", f64::EPSILON),
+                ("POSITIVE_INFINITY", f64::INFINITY),
+                ("NEGATIVE_INFINITY", f64::NEG_INFINITY),
+                ("NaN", f64::NAN),
+            ] {
+                let value = self.heap.number(value);
+                self.set_non_enumerable_property(object, key, value, span)?;
+            }
+            for method in [
+                "isNaN",
+                "isFinite",
+                "isInteger",
+                "isSafeInteger",
+                "parseInt",
+                "parseFloat",
+            ] {
+                let function = self
+                    .objects
+                    .allocate_function(
+                        self.shapes.function_shape(),
+                        u32::MAX,
+                        Value::undefined(),
+                        Value::undefined(),
+                    )
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let function = Value::object(function.index());
+                let name_value = self.heap.string(method);
+                self.set_property(function, "name", name_value, span)?;
+                self.set_non_enumerable_property(object, method, function, span)?;
+            }
+            return Ok(object);
+        }
         if name == "Object" || name == "Array" {
             if name == "Array" && self.object_prototype.is_none() {
                 self.load_builtin("Object", span)?;
@@ -2478,6 +2560,54 @@ impl<'a> Interpreter<'a> {
             {
                 return Ok(Some(value));
             }
+        }
+        if let Some(number) = self.heap.as_number(object) {
+            return Ok(Some(match key {
+                "valueOf" => object,
+                "toString" | "toLocaleString" => {
+                    let radix = args
+                        .first()
+                        .and_then(|value| self.heap.to_number(*value))
+                        .unwrap_or(10.0) as u32;
+                    if radix == 10 || !(2..=36).contains(&radix) {
+                        self.heap.string(&self.heap.to_js_string(object))
+                    } else {
+                        let text = format_radix(number, radix);
+                        self.heap.string(&text)
+                    }
+                }
+                "toFixed" => {
+                    let digits = args
+                        .first()
+                        .and_then(|value| self.heap.to_number(*value))
+                        .unwrap_or(0.0)
+                        .clamp(0.0, 100.0) as usize;
+                    self.heap.string(&format!("{number:.digits$}"))
+                }
+                "toExponential" => {
+                    let digits = args
+                        .first()
+                        .and_then(|value| self.heap.to_number(*value))
+                        .unwrap_or(0.0)
+                        .clamp(0.0, 100.0) as usize;
+                    let text = if args.is_empty() {
+                        format!("{number:e}")
+                    } else {
+                        format!("{number:.digits$e}")
+                    };
+                    self.heap.string(&normalize_exponent(&text))
+                }
+                "toPrecision" => {
+                    let Some(precision) =
+                        args.first().and_then(|value| self.heap.to_number(*value))
+                    else {
+                        return Ok(Some(self.heap.string(&self.heap.to_js_string(object))));
+                    };
+                    let precision = precision.clamp(1.0, 100.0) as usize;
+                    self.heap.string(&format!("{number:.precision$}"))
+                }
+                _ => return Ok(None),
+            }));
         }
         if object.is_string() {
             let text = self.heap.as_str(object).unwrap_or_default().to_owned();
@@ -3631,6 +3761,40 @@ fn relative_array_index(
         number
     };
     number.clamp(0.0, length as f64) as u32
+}
+
+fn normalize_exponent(text: &str) -> String {
+    if let Some(index) = text.find('e') {
+        let (mantissa, exponent) = text.split_at(index);
+        let exponent = &exponent[1..];
+        if let Some(exponent) = exponent.strip_prefix('-') {
+            return format!("{mantissa}e-{exponent}");
+        }
+        return format!("{mantissa}e+{exponent}");
+    }
+    text.to_owned()
+}
+
+fn format_radix(value: f64, radix: u32) -> String {
+    if !value.is_finite() {
+        return value.to_string();
+    }
+    let negative = value < 0.0;
+    let mut integer = value.abs().trunc() as u64;
+    let digits = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    let mut result = Vec::new();
+    if integer == 0 {
+        result.push(b'0');
+    }
+    while integer > 0 {
+        result.push(digits[(integer % radix as u64) as usize]);
+        integer /= radix as u64;
+    }
+    if negative {
+        result.push(b'-');
+    }
+    result.reverse();
+    String::from_utf8(result).unwrap_or_default()
 }
 
 fn parse_int_value(heap: &kagura_value::Heap, args: &[Value]) -> f64 {
