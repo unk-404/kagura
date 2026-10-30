@@ -606,6 +606,19 @@ impl<'a> FunctionCompiler<'a> {
                         }
                         self.patch_jump(next, self.code.len());
                     }
+                    if !self.finallys.is_empty() {
+                        self.emit_u16(Op::LoadLocal, completion_slot, *span);
+                        self.emit_const(Const::Number(0.0), *span);
+                        self.emit(Op::StrictEq, *span);
+                        let skip = self.emit_jump(Op::JumpIfTrue, *span);
+                        let jump = self.emit_jump(Op::Jump, *span);
+                        self.finallys
+                            .last_mut()
+                            .expect("outer finally context")
+                            .completion_jumps
+                            .push(jump);
+                        self.patch_jump(skip, self.code.len());
+                    }
                 } else if let Some(finally_block) = finally_block {
                     self.compile_block_body(finally_block)?;
                 }
@@ -615,26 +628,34 @@ impl<'a> FunctionCompiler<'a> {
                 if self.loops.is_empty() {
                     return Err(CompileError::new("break outside loop", *span));
                 }
-                if let Some(slot) = self.finallys.last().map(|context| context.completion_slot) {
-                    if self.finallys.len() > 1 {
-                        return Err(CompileError::new(
-                            "break through nested finally is not supported",
-                            *span,
-                        ));
-                    }
+                let slots: Vec<u16> = self
+                    .finallys
+                    .iter()
+                    .map(|context| context.completion_slot)
+                    .collect();
+                if !slots.is_empty() {
                     let code = self.completion_counter;
                     self.completion_counter += 1;
-                    self.emit_const(Const::Number(code as f64), *span);
-                    self.emit_u16(Op::StoreLocal, slot, *span);
+                    for slot in slots {
+                        self.emit_const(Const::Number(code as f64), *span);
+                        self.emit_u16(Op::StoreLocal, slot, *span);
+                    }
                     let jump = self.emit_jump(Op::Jump, *span);
                     let loop_index = self.loops.len() - 1;
-                    let context = self.finallys.last_mut().expect("finally context");
-                    context.completion_jumps.push(jump);
-                    context.completions.push(Completion {
-                        code,
-                        loop_index,
-                        is_break: true,
-                    });
+                    self.finallys
+                        .last_mut()
+                        .expect("finally context")
+                        .completion_jumps
+                        .push(jump);
+                    self.finallys
+                        .first_mut()
+                        .expect("finally context")
+                        .completions
+                        .push(Completion {
+                            code,
+                            loop_index,
+                            is_break: true,
+                        });
                     return Ok(());
                 }
                 let patch = self.emit_jump(Op::Jump, *span);
@@ -649,26 +670,34 @@ impl<'a> FunctionCompiler<'a> {
                 if self.loops.is_empty() {
                     return Err(CompileError::new("continue outside loop", *span));
                 }
-                if let Some(slot) = self.finallys.last().map(|context| context.completion_slot) {
-                    if self.finallys.len() > 1 {
-                        return Err(CompileError::new(
-                            "continue through nested finally is not supported",
-                            *span,
-                        ));
-                    }
+                let slots: Vec<u16> = self
+                    .finallys
+                    .iter()
+                    .map(|context| context.completion_slot)
+                    .collect();
+                if !slots.is_empty() {
                     let code = self.completion_counter;
                     self.completion_counter += 1;
-                    self.emit_const(Const::Number(code as f64), *span);
-                    self.emit_u16(Op::StoreLocal, slot, *span);
+                    for slot in slots {
+                        self.emit_const(Const::Number(code as f64), *span);
+                        self.emit_u16(Op::StoreLocal, slot, *span);
+                    }
                     let jump = self.emit_jump(Op::Jump, *span);
                     let loop_index = self.loops.len() - 1;
-                    let context = self.finallys.last_mut().expect("finally context");
-                    context.completion_jumps.push(jump);
-                    context.completions.push(Completion {
-                        code,
-                        loop_index,
-                        is_break: false,
-                    });
+                    self.finallys
+                        .last_mut()
+                        .expect("finally context")
+                        .completion_jumps
+                        .push(jump);
+                    self.finallys
+                        .first_mut()
+                        .expect("finally context")
+                        .completions
+                        .push(Completion {
+                            code,
+                            loop_index,
+                            is_break: false,
+                        });
                     return Ok(());
                 }
                 let patch = self.emit_jump(Op::Jump, *span);

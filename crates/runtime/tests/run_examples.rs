@@ -52,6 +52,7 @@ const OBJECT_CHECKS: &str = include_str!("../../../examples/object_checks.ts");
 const FINALLY_RETURN: &str = include_str!("../../../examples/finally_return.ts");
 const OBJECT_ASSIGN: &str = include_str!("../../../examples/object_assign.ts");
 const FINALLY_LOOPS: &str = include_str!("../../../examples/finally_loops.ts");
+const FINALLY_NESTED_LOOPS: &str = include_str!("../../../examples/finally_nested_loops.ts");
 const BUILTIN_EXTRAS: &str = include_str!("../../../examples/builtin_extras.ts");
 const ARRAY_SORT: &str = include_str!("../../../examples/array_sort.ts");
 const FUNCTION_CALL_APPLY: &str = include_str!("../../../examples/function_call_apply.ts");
@@ -526,6 +527,14 @@ fn runs_finally_on_break_and_continue() {
     let mut runtime = Runtime::default();
     runtime.run(FINALLY_LOOPS, &mut host).unwrap();
     assert_eq!(host.output(), "0,f0,f1\n0ff2f\n");
+}
+
+#[test]
+fn runs_nested_finally_on_break_and_continue() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(FINALLY_NESTED_LOOPS, &mut host).unwrap();
+    assert_eq!(host.output(), "inner,outer\nioio\n");
 }
 
 #[test]

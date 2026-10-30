@@ -56,6 +56,8 @@ const OBJECT_ASSIGN: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/object_assign.kbc");
 const FINALLY_LOOPS: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/finally_loops.kbc");
+const FINALLY_NESTED_LOOPS: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/finally_nested_loops.kbc");
 const BUILTIN_EXTRAS: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/builtin_extras.kbc");
 const ARRAY_SORT: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/array_sort.kbc");
@@ -368,6 +370,16 @@ fn executes_v1_finally_loop_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(FINALLY_LOOPS, &mut host).unwrap();
     assert_eq!(host.output(), "0,f0,f1\n0ff2f\n");
+}
+
+#[test]
+fn executes_v1_nested_finally_loop_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run_bytecode(FINALLY_NESTED_LOOPS, &mut host)
+        .unwrap();
+    assert_eq!(host.output(), "inner,outer\nioio\n");
 }
 
 #[test]
