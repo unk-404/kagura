@@ -1693,6 +1693,7 @@ fn binary_op(op: BinaryOp) -> Op {
         BinaryOp::Add => Op::Add,
         BinaryOp::Sub => Op::Sub,
         BinaryOp::Mul => Op::Mul,
+        BinaryOp::Pow => Op::Pow,
         BinaryOp::Div => Op::Div,
         BinaryOp::Mod => Op::Mod,
         BinaryOp::Lt => Op::Lt,

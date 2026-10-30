@@ -533,7 +533,7 @@ impl Parser {
     }
 
     fn parse_multiplicative(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_unary()?;
+        let mut expr = self.parse_exponentiation()?;
         loop {
             let op = match self.peek().kind {
                 TokenKind::Star => BinaryOp::Mul,
@@ -542,7 +542,7 @@ impl Parser {
                 _ => break,
             };
             self.advance();
-            let right = self.parse_unary()?;
+            let right = self.parse_exponentiation()?;
             let span = expr.span().merge(right.span());
             expr = Expr::Binary {
                 op,
@@ -552,6 +552,21 @@ impl Parser {
             };
         }
         Ok(expr)
+    }
+
+    fn parse_exponentiation(&mut self) -> Result<Expr, ParseError> {
+        let left = self.parse_unary()?;
+        if self.eat(&TokenKind::StarStar) {
+            let right = self.parse_exponentiation()?;
+            let span = left.span().merge(right.span());
+            return Ok(Expr::Binary {
+                op: BinaryOp::Pow,
+                left: Box::new(left),
+                right: Box::new(right),
+                span,
+            });
+        }
+        Ok(left)
     }
 
     fn parse_unary(&mut self) -> Result<Expr, ParseError> {

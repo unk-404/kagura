@@ -866,6 +866,19 @@ fn exposes_function_constructor_surface() {
 }
 
 #[test]
+fn runs_exponentiation_separators_and_find_last() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(2 ** 3 ** 2, 1_000 + 2, [1,2,3].findLast((x) => x < 3), [1,2,3].findLastIndex((x) => x < 3));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "512 1002 2 1\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

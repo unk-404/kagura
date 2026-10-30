@@ -49,12 +49,12 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
         }
         if byte.is_ascii_digit() {
             let start = pos;
-            while pos < bytes.len() && bytes[pos].is_ascii_digit() {
+            while pos < bytes.len() && (bytes[pos].is_ascii_digit() || bytes[pos] == b'_') {
                 pos += 1;
             }
             if pos < bytes.len() && bytes[pos] == b'.' {
                 pos += 1;
-                while pos < bytes.len() && bytes[pos].is_ascii_digit() {
+                while pos < bytes.len() && (bytes[pos].is_ascii_digit() || bytes[pos] == b'_') {
                     pos += 1;
                 }
             }
@@ -65,7 +65,7 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
                     pos += 1;
                 }
                 let digits = pos;
-                while pos < bytes.len() && bytes[pos].is_ascii_digit() {
+                while pos < bytes.len() && (bytes[pos].is_ascii_digit() || bytes[pos] == b'_') {
                     pos += 1;
                 }
                 if digits == pos {
@@ -76,7 +76,8 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
                 }
             }
             let text = &source[start..pos];
-            let value = text.parse::<f64>().map_err(|_| {
+            let normalized = text.replace('_', "");
+            let value = normalized.parse::<f64>().map_err(|_| {
                 ParseError::new(
                     "invalid number literal",
                     Span::new(start as u32, pos as u32),
@@ -108,6 +109,7 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
             (b'|', Some(b'|'), _) => (TokenKind::OrOr, 2),
             (b'+', Some(b'='), _) => (TokenKind::PlusEq, 2),
             (b'-', Some(b'='), _) => (TokenKind::MinusEq, 2),
+            (b'*', Some(b'*'), _) => (TokenKind::StarStar, 2),
             (b'*', Some(b'='), _) => (TokenKind::StarEq, 2),
             (b'/', Some(b'='), _) => (TokenKind::SlashEq, 2),
             (b'%', Some(b'='), _) => (TokenKind::PercentEq, 2),

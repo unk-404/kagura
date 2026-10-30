@@ -219,7 +219,7 @@ impl<'a> Interpreter<'a> {
                     let value = try_op!(self.add(left, right, span));
                     push(&mut stack, value, span)?;
                 }
-                Op::Sub | Op::Mul | Op::Div | Op::Mod => {
+                Op::Sub | Op::Mul | Op::Div | Op::Mod | Op::Pow => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;
                     let left = try_op!(self.number(left, span));
@@ -229,6 +229,7 @@ impl<'a> Interpreter<'a> {
                         Op::Mul => left * right,
                         Op::Div => left / right,
                         Op::Mod => left % right,
+                        Op::Pow => left.powf(right),
                         _ => unreachable!(),
                     };
                     push(&mut stack, self.heap.number(value), span)?;

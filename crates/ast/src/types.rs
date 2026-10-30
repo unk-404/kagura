@@ -20,6 +20,7 @@ pub enum BinaryOp {
     Add,
     Sub,
     Mul,
+    Pow,
     Div,
     Mod,
     Lt,

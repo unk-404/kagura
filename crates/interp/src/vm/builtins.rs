@@ -3342,6 +3342,43 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(array.index())
             }
+            "findLast" | "findLastIndex" => {
+                let callback = args.first().copied().unwrap_or_else(Value::undefined);
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let roots = roots.to_vec();
+                let mut index = length;
+                while index > 0 {
+                    index -= 1;
+                    if !self
+                        .objects
+                        .array_has(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        continue;
+                    }
+                    let value = self
+                        .objects
+                        .array_get(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let callback_args = [value, self.heap.number(index as f64), object];
+                    let result = self.invoke_callable(callback, &callback_args, &roots, span)?;
+                    if self.heap.truthy(result) {
+                        return Ok(Some(if key == "findLast" {
+                            value
+                        } else {
+                            self.heap.number(index as f64)
+                        }));
+                    }
+                }
+                if key == "findLast" {
+                    Value::undefined()
+                } else {
+                    self.heap.number(-1.0)
+                }
+            }
             "findIndex" => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self

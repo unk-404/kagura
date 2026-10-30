@@ -66,6 +66,7 @@ pub enum Op {
     InstanceOf = 62,
     ForInKeys = 63,
     CallBuiltin = 64,
+    Pow = 65,
 }
 
 impl Op {
@@ -136,6 +137,7 @@ impl Op {
             62 => Self::InstanceOf,
             63 => Self::ForInKeys,
             64 => Self::CallBuiltin,
+            65 => Self::Pow,
             _ => return None,
         })
     }
