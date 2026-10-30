@@ -90,14 +90,25 @@ enum Resolved {
         slot: u16,
         mutable: bool,
     },
+    Iteration {
+        depth: u16,
+        slot: u16,
+        mutable: bool,
+    },
 }
 
 impl Resolved {
     fn mutable(self) -> bool {
         match self {
-            Self::Local { mutable, .. } | Self::Capture { mutable, .. } => mutable,
+            Self::Local { mutable, .. }
+            | Self::Capture { mutable, .. }
+            | Self::Iteration { mutable, .. } => mutable,
         }
     }
+}
+
+struct IterationScope {
+    bindings: Vec<Local>,
 }
 
 struct LoopContext {
@@ -117,6 +128,7 @@ struct FunctionCompiler<'a> {
     gc_safe: bool,
     uses_env: bool,
     self_slot: Option<u16>,
+    iterations: Vec<IterationScope>,
     outer: Vec<Vec<Local>>,
     constants: &'a mut Vec<Const>,
     functions: &'a mut Vec<FunctionProto>,
@@ -142,6 +154,7 @@ impl<'a> FunctionCompiler<'a> {
             gc_safe,
             uses_env: body_has_closure(body),
             self_slot: None,
+            iterations: Vec::new(),
             outer: Vec::new(),
             constants,
             functions,
@@ -239,9 +252,40 @@ impl<'a> FunctionCompiler<'a> {
             } => {
                 let base = self.locals.len();
                 self.scopes.push(base);
+                let mut iteration_source = None;
                 if let Some(init) = init {
                     match init {
-                        ForInit::Var(decl) => self.compile_var(decl)?,
+                        ForInit::Var(decl) => {
+                            self.compile_var(decl)?;
+                            if matches!(
+                                decl.kind,
+                                kagura_ast::VarKind::Let | kagura_ast::VarKind::Const
+                            ) && loop_has_closure(cond.as_ref(), update.as_ref(), body)
+                            {
+                                let Some(Resolved::Local { slot, .. }) = self.resolve(&decl.name)
+                                else {
+                                    return Err(CompileError::new(
+                                        format!("unknown loop variable '{}'", decl.name),
+                                        decl.span,
+                                    ));
+                                };
+                                let mut bindings = vec![Local {
+                                    name: decl.name.clone(),
+                                    mutable: matches!(decl.kind, kagura_ast::VarKind::Let),
+                                    predeclared: false,
+                                }];
+                                collect_iteration_locals(body, &mut bindings);
+                                let count = bindings.len();
+                                self.emit(Op::IterationBegin, *span);
+                                self.emit_u8_raw(count, *span);
+                                self.emit_u16_raw(slot, *span);
+                                for _ in 1..count {
+                                    self.emit_u16_raw(u16::MAX, *span);
+                                }
+                                self.iterations.push(IterationScope { bindings });
+                                iteration_source = Some(count);
+                            }
+                        }
                         ForInit::Expr(expr) => {
                             self.compile_expr(expr)?;
                             self.emit(Op::Pop, expr.span());
@@ -261,22 +305,36 @@ impl<'a> FunctionCompiler<'a> {
                     continue_target: None,
                 });
                 self.compile_stmt(body)?;
+                let fork_start = self.code.len();
+                if let Some(count) = iteration_source {
+                    self.emit(Op::IterationNext, *span);
+                    self.emit_u8_raw(count, *span);
+                }
                 let update_start = self.code.len();
                 if let Some(update) = update {
                     self.compile_expr(update)?;
                     self.emit(Op::Pop, update.span());
                 }
                 let context = self.loops.pop().expect("loop context");
-                let continue_target = context.continue_target.unwrap_or(update_start);
+                let continue_target = if iteration_source.is_some() {
+                    fork_start
+                } else {
+                    context.continue_target.unwrap_or(update_start)
+                };
                 for patch in context.continue_patches {
                     self.patch_jump(patch, continue_target);
                 }
                 self.emit_jump_back(Op::Jump, loop_start, *span);
+                let cleanup = self.code.len();
+                if iteration_source.is_some() {
+                    self.emit(Op::IterationEnd, *span);
+                    self.iterations.pop();
+                }
                 if let Some(end_jump) = end_jump {
-                    self.patch_jump(end_jump, self.code.len());
+                    self.patch_jump(end_jump, cleanup);
                 }
                 for patch in context.break_patches {
-                    self.patch_jump(patch, self.code.len());
+                    self.patch_jump(patch, cleanup);
                 }
                 self.scopes.pop();
                 Ok(())
@@ -324,6 +382,22 @@ impl<'a> FunctionCompiler<'a> {
     }
 
     fn compile_var(&mut self, decl: &VarDecl) -> Result<(), CompileError> {
+        if let Some(scope) = self.iterations.last()
+            && let Some((slot, _)) = scope
+                .bindings
+                .iter()
+                .enumerate()
+                .find(|(_, binding)| binding.name == decl.name)
+        {
+            if let Some(init) = &decl.init {
+                self.compile_expr(init)?;
+            } else {
+                self.emit_const(Const::Undefined, decl.span);
+            }
+            self.emit_u16(Op::StoreIter, 0, decl.span);
+            self.emit_u16_raw(slot as u16, decl.span);
+            return Ok(());
+        }
         let base = *self.scopes.last().expect("scope");
         let predeclared = self.locals[base..]
             .iter()
@@ -371,7 +445,10 @@ impl<'a> FunctionCompiler<'a> {
                 ));
             }
         }
-        let mut outer = Vec::with_capacity(self.outer.len() + 1);
+        let mut outer = Vec::with_capacity(self.outer.len() + self.iterations.len() + 1);
+        for scope in self.iterations.iter().rev() {
+            outer.push(scope.bindings.clone());
+        }
         outer.push(self.locals.clone());
         outer.extend(self.outer.iter().cloned());
         let mut compiler =
@@ -439,6 +516,10 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit_u16(Op::LoadCapture, level, *span);
                     self.emit_u16_raw(slot, *span);
                 }
+                Some(Resolved::Iteration { depth, slot, .. }) => {
+                    self.emit_u16(Op::LoadIter, depth, *span);
+                    self.emit_u16_raw(slot, *span);
+                }
                 None => {
                     return Err(CompileError::new(
                         format!("unknown variable '{name}'"),
@@ -503,6 +584,10 @@ impl<'a> FunctionCompiler<'a> {
                         Resolved::Local { slot, .. } => self.emit_u16(Op::StoreLocal, slot, *span),
                         Resolved::Capture { level, slot, .. } => {
                             self.emit_u16(Op::StoreCapture, level, *span);
+                            self.emit_u16_raw(slot, *span);
+                        }
+                        Resolved::Iteration { depth, slot, .. } => {
+                            self.emit_u16(Op::StoreIter, depth, *span);
                             self.emit_u16_raw(slot, *span);
                         }
                     }
@@ -664,6 +749,20 @@ impl<'a> FunctionCompiler<'a> {
     }
 
     fn resolve(&self, name: &str) -> Option<Resolved> {
+        for (depth, scope) in self.iterations.iter().rev().enumerate() {
+            if let Some((slot, binding)) = scope
+                .bindings
+                .iter()
+                .enumerate()
+                .find(|(_, binding)| binding.name == name)
+            {
+                return Some(Resolved::Iteration {
+                    depth: depth as u16,
+                    slot: slot as u16,
+                    mutable: binding.mutable,
+                });
+            }
+        }
         if let Some((slot, local)) = self
             .locals
             .iter()
@@ -777,6 +876,46 @@ fn binary_op(op: BinaryOp) -> Op {
         BinaryOp::StrictNotEq => Op::StrictNotEq,
         BinaryOp::In => Op::In,
         BinaryOp::And | BinaryOp::Or => unreachable!(),
+    }
+}
+
+fn loop_has_closure(cond: Option<&Expr>, update: Option<&Expr>, body: &Stmt) -> bool {
+    cond.is_some_and(expr_has_closure)
+        || update.is_some_and(expr_has_closure)
+        || stmt_has_closure(body)
+}
+
+fn collect_iteration_locals(stmt: &Stmt, bindings: &mut Vec<Local>) {
+    match stmt {
+        Stmt::Var(decl) => {
+            if matches!(
+                decl.kind,
+                kagura_ast::VarKind::Let | kagura_ast::VarKind::Const
+            ) && !bindings.iter().any(|binding| binding.name == decl.name)
+            {
+                bindings.push(Local {
+                    name: decl.name.clone(),
+                    mutable: matches!(decl.kind, kagura_ast::VarKind::Let),
+                    predeclared: false,
+                });
+            }
+        }
+        Stmt::Block(body) => {
+            for stmt in body {
+                collect_iteration_locals(stmt, bindings);
+            }
+        }
+        Stmt::If {
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_iteration_locals(then_branch, bindings);
+            if let Some(else_branch) = else_branch {
+                collect_iteration_locals(else_branch, bindings);
+            }
+        }
+        _ => {}
     }
 }
 

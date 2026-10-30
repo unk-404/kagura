@@ -45,6 +45,11 @@ pub enum Op {
     CallValue = 41,
     LoadCapture = 42,
     StoreCapture = 43,
+    IterationBegin = 44,
+    IterationNext = 45,
+    IterationEnd = 46,
+    LoadIter = 47,
+    StoreIter = 48,
 }
 
 impl Op {
@@ -94,6 +99,11 @@ impl Op {
             41 => Self::CallValue,
             42 => Self::LoadCapture,
             43 => Self::StoreCapture,
+            44 => Self::IterationBegin,
+            45 => Self::IterationNext,
+            46 => Self::IterationEnd,
+            47 => Self::LoadIter,
+            48 => Self::StoreIter,
             _ => return None,
         })
     }

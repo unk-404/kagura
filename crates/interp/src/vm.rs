@@ -20,6 +20,11 @@ struct FrameContext<'a> {
     self_value: Option<Value>,
 }
 
+struct IterationFrame {
+    parent: Option<ObjectId>,
+    env: ObjectId,
+}
+
 pub struct Interpreter<'a> {
     module: &'a Module,
     heap: &'a mut Heap,
@@ -145,6 +150,8 @@ impl<'a> Interpreter<'a> {
         let env = frame.env;
         let closure_env = frame.closure_env;
         let self_value = frame.self_value;
+        let mut capture_env = env;
+        let mut iteration_frames: Vec<IterationFrame> = Vec::new();
         let mut stack: Vec<Value> = Vec::new();
         let mut pc = 0usize;
         loop {
@@ -398,12 +405,114 @@ impl<'a> Interpreter<'a> {
                     if let Some(closure_env) = closure_env {
                         roots.push(Value::object(closure_env.index()));
                     }
+                    if let Some(capture_env) = capture_env {
+                        roots.push(Value::object(capture_env.index()));
+                    }
                     let value = self.call_name(&name, index as usize, &args, span, &roots)?;
                     push(&mut stack, value, span)?;
                 }
+                Op::IterationBegin => {
+                    let count = read_u8(&function.code, &mut pc, span)? as usize;
+                    let mut sources = Vec::with_capacity(count);
+                    for _ in 0..count {
+                        sources.push(read_u16(&function.code, &mut pc, span)?);
+                    }
+                    let source_env = env.ok_or_else(|| {
+                        RuntimeError::runtime("iteration without an environment", span)
+                    })?;
+                    let frame_env = self
+                        .objects
+                        .allocate_array(self.shapes.root())
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    for source in sources {
+                        let value = if source == u16::MAX {
+                            Value::hole()
+                        } else {
+                            self.objects
+                                .array_get_raw(source_env, source as u32)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                        };
+                        self.objects
+                            .array_push(frame_env, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                    let parent = capture_env
+                        .map(|env| Value::object(env.index()))
+                        .unwrap_or_else(Value::undefined);
+                    self.objects
+                        .array_push(frame_env, parent)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    iteration_frames.push(IterationFrame {
+                        parent: capture_env,
+                        env: frame_env,
+                    });
+                    capture_env = Some(frame_env);
+                }
+                Op::IterationNext => {
+                    let count = read_u8(&function.code, &mut pc, span)? as usize;
+                    let Some(frame) = iteration_frames.last() else {
+                        return Err(RuntimeError::runtime("iteration is not active", span));
+                    };
+                    let old_env = frame.env;
+                    let parent = frame.parent;
+                    let next = self
+                        .objects
+                        .allocate_array(self.shapes.root())
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    for slot in 0..count {
+                        let value = self
+                            .objects
+                            .array_get_raw(old_env, slot as u32)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        self.objects
+                            .array_push(next, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                    let parent_link = parent
+                        .map(|env| Value::object(env.index()))
+                        .unwrap_or_else(Value::undefined);
+                    self.objects
+                        .array_push(next, parent_link)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if let Some(frame) = iteration_frames.last_mut() {
+                        frame.env = next;
+                    }
+                    capture_env = Some(next);
+                }
+                Op::IterationEnd => {
+                    let frame = iteration_frames
+                        .pop()
+                        .ok_or_else(|| RuntimeError::runtime("iteration is not active", span))?;
+                    capture_env = frame.parent;
+                }
+                Op::LoadIter => {
+                    let depth = read_u16(&function.code, &mut pc, span)? as usize;
+                    let slot = read_u16(&function.code, &mut pc, span)?;
+                    let Some(index) = iteration_frames.len().checked_sub(depth + 1) else {
+                        return Err(RuntimeError::runtime("iteration is not active", span));
+                    };
+                    let frame = &iteration_frames[index];
+                    let value = self
+                        .objects
+                        .array_get_raw(frame.env, slot as u32)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    push(&mut stack, value, span)?;
+                }
+                Op::StoreIter => {
+                    let depth = read_u16(&function.code, &mut pc, span)? as usize;
+                    let slot = read_u16(&function.code, &mut pc, span)?;
+                    let Some(index) = iteration_frames.len().checked_sub(depth + 1) else {
+                        return Err(RuntimeError::runtime("iteration is not active", span));
+                    };
+                    let frame = &iteration_frames[index];
+                    let value = pop(&mut stack, span)?;
+                    self.objects
+                        .array_set(frame.env, slot as u32, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
                 Op::NewClosure => {
                     let function = read_u32(&function.code, &mut pc, span)?;
-                    let env = env.ok_or_else(|| {
+                    let env = capture_env.ok_or_else(|| {
                         RuntimeError::runtime("closure created without an environment", span)
                     })?;
                     let object = self
@@ -447,6 +556,9 @@ impl<'a> Interpreter<'a> {
                     }
                     if let Some(closure_env) = closure_env {
                         roots.push(Value::object(closure_env.index()));
+                    }
+                    if let Some(capture_env) = capture_env {
+                        roots.push(Value::object(capture_env.index()));
                     }
                     let value =
                         self.call(function as usize, &args, &roots, closure_env, Some(callee))?;
@@ -603,6 +715,12 @@ impl<'a> Interpreter<'a> {
                         }
                         if let Some(self_value) = self_value {
                             roots.push(self_value);
+                        }
+                        if let Some(capture_env) = capture_env {
+                            roots.push(Value::object(capture_env.index()));
+                        }
+                        for frame in &iteration_frames {
+                            roots.push(Value::object(frame.env.index()));
                         }
                         self.objects.collect(&roots);
                     }

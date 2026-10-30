@@ -25,6 +25,11 @@ const HOISTING: &str = include_str!("../../../examples/hoisting.ts");
 const HIGHER_ORDER: &str = include_str!("../../../examples/higher_order.ts");
 const TOP_CLOSURE: &str = include_str!("../../../examples/top_closure.ts");
 const NAMED_FUNCTION: &str = include_str!("../../../examples/named_function.ts");
+const LOOP_CLOSURES: &str = include_str!("../../../examples/loop_closures.ts");
+const LOOP_CLOSURES_NESTED: &str = include_str!("../../../examples/loop_closures_nested.ts");
+const LOOP_CLOSURES_CONTROL: &str = include_str!("../../../examples/loop_closures_control.ts");
+const LOOP_CLOSURES_GC: &str = include_str!("../../../examples/loop_closures_gc.ts");
+const LOOP_BODY_CLOSURES: &str = include_str!("../../../examples/loop_body_closures.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -222,6 +227,46 @@ fn captured_tdz_errors_before_initialization() {
         &mut host,
     );
     assert!(result.is_err());
+}
+
+#[test]
+fn captures_per_iteration_loop_bindings() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(LOOP_CLOSURES, &mut host).unwrap();
+    assert_eq!(host.output(), "0\n1\n2\n");
+}
+
+#[test]
+fn captures_nested_loop_bindings() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(LOOP_CLOSURES_NESTED, &mut host).unwrap();
+    assert_eq!(host.output(), "0\n1\n10\n11\n");
+}
+
+#[test]
+fn loop_closure_environments_survive_break_and_continue() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(LOOP_CLOSURES_CONTROL, &mut host).unwrap();
+    assert_eq!(host.output(), "0\n1\n3\n");
+}
+
+#[test]
+fn keeps_loop_closure_environments_alive_during_gc() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::new(64 * 1024);
+    runtime.run(LOOP_CLOSURES_GC, &mut host).unwrap();
+    assert_eq!(host.output(), "0\n1\n2\n");
+}
+
+#[test]
+fn captures_body_let_bindings_per_iteration() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(LOOP_BODY_CLOSURES, &mut host).unwrap();
+    assert_eq!(host.output(), "0\n1\n2\n");
 }
 
 #[test]

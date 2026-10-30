@@ -17,6 +17,10 @@ const CLOSURES_NESTED: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/closures_nested.kbc");
 const CLOSURES_SHARED: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/closures_shared.kbc");
+const LOOP_CLOSURES: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/loop_closures.kbc");
+const LOOP_CLOSURES_NESTED: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/loop_closures_nested.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -125,6 +129,24 @@ fn executes_v1_shared_closure_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(CLOSURES_SHARED, &mut host).unwrap();
     assert_eq!(host.output(), "1\n11\n");
+}
+
+#[test]
+fn executes_v1_loop_closure_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(LOOP_CLOSURES, &mut host).unwrap();
+    assert_eq!(host.output(), "0\n1\n2\n");
+}
+
+#[test]
+fn executes_v1_nested_loop_closure_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run_bytecode(LOOP_CLOSURES_NESTED, &mut host)
+        .unwrap();
+    assert_eq!(host.output(), "0\n1\n10\n11\n");
 }
 
 #[test]
