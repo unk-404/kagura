@@ -1448,23 +1448,13 @@ impl<'a> Interpreter<'a> {
         Err(RuntimeError::type_error("invalid array index", span))
     }
 
-    fn add(&mut self, left: Value, right: Value, span: Span) -> Result<Value, RuntimeError> {
+    fn add(&mut self, left: Value, right: Value, _span: Span) -> Result<Value, RuntimeError> {
         if left.is_string() || right.is_string() {
             let text = format!(
                 "{}{}",
                 self.heap.to_js_string(left),
                 self.heap.to_js_string(right)
             );
-            if text
-                .len()
-                .saturating_add(16)
-                .gt(&self.heap.capacity().saturating_sub(self.heap.used()))
-            {
-                return Err(RuntimeError::range(
-                    "string allocation limit exceeded",
-                    span,
-                ));
-            }
             return Ok(self.heap.string(&text));
         }
         let left = self.heap.to_number(left).unwrap_or(f64::NAN);

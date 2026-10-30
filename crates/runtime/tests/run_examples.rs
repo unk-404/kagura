@@ -1311,3 +1311,17 @@ fn provides_performance_now() {
         .unwrap();
     assert_eq!(host.output(), "true\n");
 }
+
+#[test]
+fn grows_value_heap_for_long_string_building() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.set_step_limit(5_000_000);
+    runtime
+        .run(
+            "var text = ''; for (var i = 0; i < 20000; i++) { text += 'x'; } console.log(text.length);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "20000\n");
+}
