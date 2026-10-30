@@ -1247,16 +1247,18 @@ impl<'a> Interpreter<'a> {
                 Ok(object)
             }
             "Object" => {
+                let shape = self.object_shape(span)?;
                 let object = self
                     .objects
-                    .allocate(self.shapes.root())
+                    .allocate(shape)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 Ok(Value::object(object.index()))
             }
             "Array" => {
+                let shape = self.array_shape(span)?;
                 let array = self
                     .objects
-                    .allocate_array(self.shapes.root())
+                    .allocate_array(shape)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 if args.len() == 1
                     && let Some(length) = self.heap.as_number(args[0])
@@ -1538,6 +1540,100 @@ impl<'a> Interpreter<'a> {
                 self.set_property(object, key, value, span)?;
             }
             return Ok(object);
+        }
+        if name == "Object" || name == "Array" {
+            let prototype = if name == "Object" {
+                self.object_prototype
+            } else {
+                self.array_prototype
+            };
+            let prototype = if let Some(prototype) = prototype {
+                prototype
+            } else {
+                let shape = if name == "Array" {
+                    if let Some(object_prototype) = self.object_prototype {
+                        self.shapes
+                            .with_prototype(self.shapes.root(), Some(object_prototype))
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    } else {
+                        self.shapes.root()
+                    }
+                } else {
+                    self.shapes.root()
+                };
+                let prototype = self
+                    .objects
+                    .allocate(shape)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                if name == "Object" {
+                    self.object_prototype = Some(prototype);
+                } else {
+                    self.array_prototype = Some(prototype);
+                }
+                prototype
+            };
+            let prototype_value = Value::object(prototype.index());
+            let methods: &[&str] = if name == "Array" {
+                &[
+                    "at",
+                    "concat",
+                    "every",
+                    "fill",
+                    "filter",
+                    "find",
+                    "findIndex",
+                    "forEach",
+                    "includes",
+                    "indexOf",
+                    "join",
+                    "lastIndexOf",
+                    "map",
+                    "pop",
+                    "push",
+                    "reduce",
+                    "reverse",
+                    "slice",
+                    "some",
+                    "sort",
+                ]
+            } else {
+                &[
+                    "hasOwnProperty",
+                    "isPrototypeOf",
+                    "propertyIsEnumerable",
+                    "toString",
+                    "valueOf",
+                ]
+            };
+            for method in methods {
+                let function = self
+                    .objects
+                    .allocate_function(
+                        self.shapes.root(),
+                        u32::MAX,
+                        Value::undefined(),
+                        Value::undefined(),
+                    )
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let function = Value::object(function.index());
+                let name_value = self.heap.string(method);
+                self.set_property(function, "name", name_value, span)?;
+                self.set_property(prototype_value, method, function, span)?;
+            }
+            let object = self
+                .objects
+                .allocate_function(
+                    self.shapes.root(),
+                    u32::MAX,
+                    Value::undefined(),
+                    Value::undefined(),
+                )
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let value = Value::object(object.index());
+            let name_value = self.heap.string(name);
+            self.set_property(value, "name", name_value, span)?;
+            self.set_property(value, "prototype", prototype_value, span)?;
+            return Ok(value);
         }
         if name == "JSON" {
             let object = self

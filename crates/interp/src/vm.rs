@@ -3,7 +3,7 @@ mod calls;
 mod properties;
 
 use kagura_bytecode::{Const, Module, Op};
-use kagura_object::{ObjectHeap, ObjectId, ShapeTable};
+use kagura_object::{ObjectHeap, ObjectId, ShapeId, ShapeTable};
 use kagura_support::Span;
 use kagura_value::{Heap, Value};
 use tracing::instrument;
@@ -40,6 +40,8 @@ pub struct Interpreter<'a> {
     shapes: &'a mut ShapeTable,
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
+    array_prototype: Option<ObjectId>,
+    object_prototype: Option<ObjectId>,
     depth: usize,
     step_limit: u64,
 }
@@ -60,6 +62,8 @@ impl<'a> Interpreter<'a> {
             shapes,
             host,
             host_cache: vec![None; module.constants.len()],
+            array_prototype: None,
+            object_prototype: None,
             depth: 0,
             step_limit,
         }
@@ -809,7 +813,7 @@ impl<'a> Interpreter<'a> {
                     push(&mut stack, value, span)?;
                 }
                 Op::NewObject => {
-                    let shape = self.shapes.root();
+                    let shape = try_op!(self.object_shape(span));
                     let object = self
                         .objects
                         .allocate(shape)
@@ -854,7 +858,7 @@ impl<'a> Interpreter<'a> {
                     push(&mut stack, value, span)?;
                 }
                 Op::NewArray => {
-                    let shape = self.shapes.root();
+                    let shape = try_op!(self.array_shape(span));
                     let object = self
                         .objects
                         .allocate_array(shape)
@@ -1061,6 +1065,26 @@ impl<'a> Interpreter<'a> {
             .object_offset()
             .map(ObjectId::new)
             .ok_or_else(|| RuntimeError::type_error("value is not an object", span))
+    }
+
+    fn array_shape(&mut self, span: Span) -> Result<ShapeId, RuntimeError> {
+        if let Some(prototype) = self.array_prototype {
+            self.shapes
+                .with_prototype(self.shapes.root(), Some(prototype))
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+        } else {
+            Ok(self.shapes.root())
+        }
+    }
+
+    fn object_shape(&mut self, span: Span) -> Result<ShapeId, RuntimeError> {
+        if let Some(prototype) = self.object_prototype {
+            self.shapes
+                .with_prototype(self.shapes.root(), Some(prototype))
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+        } else {
+            Ok(self.shapes.root())
+        }
     }
 
     fn array_index(&self, value: Value) -> Option<u32> {

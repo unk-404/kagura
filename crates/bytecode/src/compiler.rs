@@ -40,9 +40,10 @@ impl Compiler {
                         kagura_ast::VarKind::Var | kagura_ast::VarKind::Let
                     ),
                     decl.span,
+                    matches!(decl.kind, kagura_ast::VarKind::Var),
                 )?,
                 Stmt::Func(decl) => {
-                    script.predeclare_or_error(&decl.name, true, decl.span)?;
+                    script.predeclare_or_error(&decl.name, true, decl.span, false)?;
                 }
                 _ => {}
             }
@@ -896,6 +897,10 @@ impl<'a> FunctionCompiler<'a> {
         let slot = if let Some(slot) = predeclared {
             self.locals[slot].predeclared = false;
             slot as u16
+        } else if matches!(decl.kind, kagura_ast::VarKind::Var)
+            && let Some(Resolved::Local { slot, .. }) = self.resolve(&decl.name)
+        {
+            slot
         } else {
             let Some(slot) = self.declare(
                 &decl.name,
@@ -1380,8 +1385,9 @@ impl<'a> FunctionCompiler<'a> {
         name: &str,
         mutable: bool,
         span: Span,
+        allow_duplicate: bool,
     ) -> Result<(), CompileError> {
-        if self.predeclare(name, mutable, span) {
+        if self.predeclare(name, mutable, span) || allow_duplicate {
             Ok(())
         } else {
             Err(CompileError::new(

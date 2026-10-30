@@ -75,6 +75,7 @@ The current P1 slice adds:
   `SyntaxError`, `Test262Error`, `Object`, and `Array` targets
 - `JSON.parse` backed by `serde_json`; `JSON.stringify` uses the existing
   object/array serializer
+- duplicate `var` declarations and `Array.prototype`/`Object.prototype` lookup
 - `Array.prototype.findIndex`, `fill`, `at`, and `lastIndexOf`
 - canonical array indices are distinguished from named properties, so
   `a[4294967295]` does not try to grow the elements store
@@ -130,8 +131,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 18856 executed, 3066 passed, 15790 failed, 35173 skipped
-oracle node: 3066 checked, 3065 matched, 1 mismatched
+54029 selected, 18856 executed, 3160 passed, 15696 failed, 35173 skipped
+oracle node: 3160 checked, 3159 matched, 1 mismatched
 ```
 
 The single Node mismatch is tracked as a differential warning, not hidden:

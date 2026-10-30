@@ -75,6 +75,7 @@ const JSON_PARSE: &str = include_str!("../../../examples/json_parse.ts");
 const DATE_BASIC: &str = include_str!("../../../examples/date_basic.ts");
 const ARRAY_INDEX: &str = include_str!("../../../examples/array_index.ts");
 const ARRAY_METHODS: &str = include_str!("../../../examples/array_methods.ts");
+const DUPLICATE_VAR: &str = include_str!("../../../examples/duplicate_var.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -748,6 +749,14 @@ fn runs_extended_array_methods() {
     let mut runtime = Runtime::default();
     runtime.run(ARRAY_METHODS, &mut host).unwrap();
     assert_eq!(host.output(), "1\n1,9,3\n3 undefined\n2 0\n");
+}
+
+#[test]
+fn allows_duplicate_var_and_array_prototype_lookup() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(DUPLICATE_VAR, &mut host).unwrap();
+    assert_eq!(host.output(), "2 7 7\n");
 }
 
 #[test]

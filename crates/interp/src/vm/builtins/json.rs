@@ -35,9 +35,12 @@ impl Interpreter<'_> {
             }
             serde_json::Value::String(text) => Ok(self.heap.string(&text)),
             serde_json::Value::Array(values) => {
+                let shape = self
+                    .array_shape(span)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 let array = self
                     .objects
-                    .allocate_array(self.shapes.root())
+                    .allocate_array(shape)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 for value in values {
                     let value = self.json_from_value(value, span)?;
@@ -48,9 +51,12 @@ impl Interpreter<'_> {
                 Ok(Value::object(array.index()))
             }
             serde_json::Value::Object(values) => {
+                let shape = self
+                    .object_shape(span)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 let object = self
                     .objects
-                    .allocate(self.shapes.root())
+                    .allocate(shape)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 let object = Value::object(object.index());
                 for (key, value) in values {
