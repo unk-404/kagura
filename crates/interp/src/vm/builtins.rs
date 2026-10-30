@@ -84,6 +84,22 @@ impl<'a> Interpreter<'a> {
                 .is_frozen(target, span)
                 .map(|frozen| Some(Value::boolean(frozen)));
         }
+        if path == "Object.seal" {
+            let target = args
+                .first()
+                .copied()
+                .ok_or_else(|| RuntimeError::type_error("Object.seal requires a target", span))?;
+            self.seal_object(target, span)?;
+            return Ok(Some(target));
+        }
+        if path == "Object.isSealed" {
+            let target = args.first().copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.isSealed requires a target", span)
+            })?;
+            return self
+                .is_sealed(target, span)
+                .map(|sealed| Some(Value::boolean(sealed)));
+        }
         if path == "Object.create" {
             let Some(prototype) = args.first().copied() else {
                 return Err(RuntimeError::type_error(
@@ -457,6 +473,96 @@ impl<'a> Interpreter<'a> {
                 continue;
             };
             if descriptor.attributes.writable || descriptor.attributes.configurable {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    fn seal_object(&mut self, target: Value, span: Span) -> Result<(), RuntimeError> {
+        let target_id = self.object_id(target, span)?;
+        if self
+            .objects
+            .is_array(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            self.objects
+                .mark_sealed(target_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            return Ok(());
+        }
+        let mut shape = self
+            .objects
+            .shape(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let keys = own_property_keys(self.shapes, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for key in keys {
+            let attributes = self
+                .shapes
+                .lookup(shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .map(|descriptor| descriptor.attributes)
+                .ok_or_else(|| RuntimeError::runtime("missing property", span))?;
+            shape = self
+                .shapes
+                .redescribe(
+                    shape,
+                    &key,
+                    PropertyAttributes {
+                        writable: attributes.writable,
+                        enumerable: attributes.enumerable,
+                        configurable: false,
+                    },
+                )
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            self.objects
+                .set_shape(target_id, shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        }
+        shape = self
+            .shapes
+            .set_non_extensible(shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        self.objects
+            .set_shape(target_id, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        self.objects
+            .mark_sealed(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+    }
+
+    fn is_sealed(&mut self, target: Value, span: Span) -> Result<bool, RuntimeError> {
+        let target_id = self.object_id(target, span)?;
+        if self
+            .objects
+            .is_sealed(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Ok(true);
+        }
+        let shape = self
+            .objects
+            .shape(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if !self
+            .shapes
+            .is_non_extensible(shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Ok(false);
+        }
+        let keys = own_property_keys(self.shapes, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for key in keys {
+            let Some(descriptor) = self
+                .shapes
+                .lookup(shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            else {
+                continue;
+            };
+            if descriptor.attributes.configurable {
                 return Ok(false);
             }
         }
@@ -1040,7 +1146,11 @@ impl<'a> Interpreter<'a> {
                     .objects
                     .is_frozen(object_id)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                if !frozen {
+                let sealed = self
+                    .objects
+                    .is_sealed(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                if !frozen && !sealed {
                     for value in args {
                         self.objects
                             .array_push(object_id, *value)
@@ -1058,6 +1168,10 @@ impl<'a> Interpreter<'a> {
                     .objects
                     .is_frozen(object_id)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    || self
+                        .objects
+                        .is_sealed(object_id)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
                 {
                     Value::undefined()
                 } else {

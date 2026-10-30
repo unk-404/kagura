@@ -60,6 +60,7 @@ const FUNCTION_BIND: &str = include_str!("../../../examples/function_bind.ts");
 const PROPERTY_DESCRIPTOR: &str = include_str!("../../../examples/property_descriptor.ts");
 const OBJECT_FREEZE: &str = include_str!("../../../examples/object_freeze.ts");
 const ARRAY_FREEZE: &str = include_str!("../../../examples/array_freeze.ts");
+const OBJECT_SEAL: &str = include_str!("../../../examples/object_seal.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -598,6 +599,14 @@ fn freezes_arrays_and_ignores_mutation() {
     let mut runtime = Runtime::default();
     runtime.run(ARRAY_FREEZE, &mut host).unwrap();
     assert_eq!(host.output(), "1,2\n2\ntrue\n");
+}
+
+#[test]
+fn seals_objects_and_arrays() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(OBJECT_SEAL, &mut host).unwrap();
+    assert_eq!(host.output(), "2\nundefined\ntrue\n3,2\n2\ntrue\n");
 }
 
 #[test]

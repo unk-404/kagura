@@ -22,6 +22,7 @@ const FLAG_MARK: u32 = 2;
 const FLAG_FUNCTION: u32 = 4;
 const FLAG_BOUND: u32 = 8;
 const FLAG_FROZEN: u32 = 16;
+const FLAG_SEALED: u32 = 32;
 const NO_BLOCK: u32 = u32::MAX;
 const MIN_ARRAY_CAPACITY: u32 = 4;
 
@@ -192,7 +193,7 @@ impl ObjectHeap {
         write_u32(
             &mut self.arena,
             object.index() + FLAGS_OFFSET,
-            flags | FLAG_FROZEN,
+            flags | FLAG_FROZEN | FLAG_SEALED,
         );
         Ok(())
     }
@@ -201,6 +202,23 @@ impl ObjectHeap {
         let flags = read_u32(&self.arena, object.index() + FLAGS_OFFSET)
             .ok_or(ObjectHeapError::InvalidObject)?;
         Ok(flags & FLAG_FROZEN != 0)
+    }
+
+    pub fn mark_sealed(&mut self, object: ObjectId) -> Result<(), ObjectHeapError> {
+        let flags = read_u32(&self.arena, object.index() + FLAGS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        write_u32(
+            &mut self.arena,
+            object.index() + FLAGS_OFFSET,
+            flags | FLAG_SEALED,
+        );
+        Ok(())
+    }
+
+    pub fn is_sealed(&self, object: ObjectId) -> Result<bool, ObjectHeapError> {
+        let flags = read_u32(&self.arena, object.index() + FLAGS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        Ok(flags & FLAG_SEALED != 0)
     }
 
     pub fn shape(&self, object: ObjectId) -> Result<ShapeId, ObjectHeapError> {

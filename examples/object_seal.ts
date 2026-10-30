@@ -1,0 +1,15 @@
+let object = { a: 1 };
+Object.seal(object);
+object.a = 2;
+object.b = 3;
+console.log(object.a);
+console.log(object.b);
+console.log(Object.isSealed(object));
+let array = [1, 2];
+Object.seal(array);
+array[0] = 3;
+array[2] = 4;
+array.push(5);
+console.log(array.join(","));
+console.log(array.length);
+console.log(Object.isSealed(array));

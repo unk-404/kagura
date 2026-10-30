@@ -789,6 +789,21 @@ impl<'a> Interpreter<'a> {
                         continue;
                     }
                     let index = try_op!(self.index_value(index, span));
+                    if try_op!(
+                        self.objects
+                            .is_sealed(id)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                    ) {
+                        let length = try_op!(
+                            self.objects
+                                .array_length(id)
+                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                        );
+                        if index >= length {
+                            push(&mut stack, value, span)?;
+                            continue;
+                        }
+                    }
                     try_op!(
                         self.objects
                             .array_set(id, index, value)
