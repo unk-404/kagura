@@ -1407,6 +1407,22 @@ fn property_inline_cache_is_per_call_site() {
 }
 
 #[test]
+fn property_ic_tracks_prototype_shape_guard() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var proto = { value: 1 }; var object = Object.create(proto); var total = 0; for (var i = 0; i < 100; i++) { total += object.value; } proto.value = 5; total += object.value; proto.extra = 0; total += object.value; console.log(total, object.value);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "110 5\n");
+    let (hits, misses) = runtime.property_ic_stats();
+    assert!(hits > 90);
+    assert!(misses >= 2);
+}
+
+#[test]
 fn property_inline_cache_is_polymorphic() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

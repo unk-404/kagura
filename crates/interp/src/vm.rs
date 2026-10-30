@@ -18,6 +18,8 @@ const GC_THRESHOLD: u32 = 32 * 1024;
 #[derive(Clone, Copy, Debug)]
 struct PropertyCacheEntry {
     shape: ShapeId,
+    holder: ObjectId,
+    holder_shape: ShapeId,
     location: PropertyLocation,
     writable: bool,
 }

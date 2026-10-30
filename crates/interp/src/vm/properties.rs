@@ -1,4 +1,4 @@
-use kagura_object::{ObjectId, PropertyAttributes, PropertyKey, PropertyLocation};
+use kagura_object::{ObjectId, PropertyAttributes, PropertyKey, PropertyLocation, ShapeId};
 use kagura_support::Span;
 use kagura_value::Value;
 
@@ -38,6 +38,58 @@ impl<'a> Interpreter<'a> {
         Ok(Some(value))
     }
 
+    fn cached_property(
+        &mut self,
+        entry: PropertyCacheEntry,
+        span: Span,
+    ) -> Result<Option<Value>, RuntimeError> {
+        if self.objects.shape(entry.holder).ok() != Some(entry.holder_shape) {
+            return Ok(None);
+        }
+        self.load_property_location(entry.holder, entry.location, span)
+            .map(Some)
+    }
+
+    fn find_property_holder(
+        &mut self,
+        receiver: ObjectId,
+        receiver_shape: ShapeId,
+        key: &str,
+        span: Span,
+    ) -> Result<Option<PropertyCacheEntry>, RuntimeError> {
+        let key = PropertyKey::from_string(key);
+        let mut holder = receiver;
+        let mut holder_shape = receiver_shape;
+        loop {
+            let descriptor = self
+                .shapes
+                .lookup(holder_shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if let Some(descriptor) = descriptor {
+                return Ok(Some(PropertyCacheEntry {
+                    shape: receiver_shape,
+                    holder,
+                    holder_shape,
+                    location: descriptor.location,
+                    writable: descriptor.attributes.writable,
+                }));
+            }
+            let Some(prototype) = self
+                .shapes
+                .get(holder_shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .prototype
+            else {
+                return Ok(None);
+            };
+            holder = prototype;
+            holder_shape = self
+                .objects
+                .shape(holder)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        }
+    }
+
     pub(super) fn get_property_ic(
         &mut self,
         object: Value,
@@ -61,27 +113,20 @@ impl<'a> Interpreter<'a> {
             .and_then(|sites| sites.get(site as usize))
             .copied()
             .and_then(|feedback| feedback.lookup(shape))
+            && let Some(value) = self.cached_property(entry, span)?
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
-            return self.load_property_location(id, entry.location, span);
+            return Ok(value);
         }
         self.property_ic_misses = self.property_ic_misses.saturating_add(1);
         let value = self.get_property(object, key, span)?;
-        let descriptor = self
-            .shapes
-            .lookup(shape, &PropertyKey::from_string(key))
-            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(slot) = self
-            .property_feedback
-            .get_mut(function_index)
-            .and_then(|sites| sites.get_mut(site as usize))
-            && let Some(descriptor) = descriptor
+        if let Some(entry) = self.find_property_holder(id, shape, key, span)?
+            && let Some(slot) = self
+                .property_feedback
+                .get_mut(function_index)
+                .and_then(|sites| sites.get_mut(site as usize))
         {
-            slot.record(PropertyCacheEntry {
-                shape,
-                location: descriptor.location,
-                writable: descriptor.attributes.writable,
-            });
+            slot.record(entry);
         }
         Ok(value)
     }
@@ -107,24 +152,17 @@ impl<'a> Interpreter<'a> {
             .get(feedback_index as usize)
             .copied()
             .and_then(|feedback| feedback.lookup(shape))
+            && let Some(value) = self.cached_property(entry, span)?
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
-            return self.load_property_location(id, entry.location, span);
+            return Ok(value);
         }
         self.property_ic_misses = self.property_ic_misses.saturating_add(1);
         let value = self.get_property(object, key, span)?;
-        let descriptor = self
-            .shapes
-            .lookup(shape, &PropertyKey::from_string(key))
-            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if let Some(slot) = self.feedback.get_mut(feedback_index as usize)
-            && let Some(descriptor) = descriptor
+        if let Some(entry) = self.find_property_holder(id, shape, key, span)?
+            && let Some(slot) = self.feedback.get_mut(feedback_index as usize)
         {
-            slot.record(PropertyCacheEntry {
-                shape,
-                location: descriptor.location,
-                writable: descriptor.attributes.writable,
-            });
+            slot.record(entry);
         }
         Ok(value)
     }
@@ -159,7 +197,7 @@ impl<'a> Interpreter<'a> {
             .get(feedback_index as usize)
             .copied()
             .and_then(|feedback| feedback.lookup(shape))
-            .filter(|entry| entry.writable)
+            .filter(|entry| entry.writable && entry.holder == id)
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
             return self.store_property_location(id, entry.location, value, span);
@@ -180,6 +218,8 @@ impl<'a> Interpreter<'a> {
         {
             slot.record(PropertyCacheEntry {
                 shape,
+                holder: id,
+                holder_shape: shape,
                 location: descriptor.location,
                 writable: true,
             });
@@ -219,7 +259,7 @@ impl<'a> Interpreter<'a> {
             .and_then(|sites| sites.get(site as usize))
             .copied()
             .and_then(|feedback| feedback.lookup(shape))
-            .filter(|entry| entry.writable)
+            .filter(|entry| entry.writable && entry.holder == id)
         {
             self.property_ic_hits = self.property_ic_hits.saturating_add(1);
             return self.store_property_location(id, entry.location, value, span);
@@ -243,6 +283,8 @@ impl<'a> Interpreter<'a> {
         {
             slot.record(PropertyCacheEntry {
                 shape,
+                holder: id,
+                holder_shape: shape,
                 location: descriptor.location,
                 writable: true,
             });
