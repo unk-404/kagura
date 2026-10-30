@@ -65,6 +65,7 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
         "coalesce-expression",
         "globalThis",
         "object-spread",
+        "destructuring-binding",
         "string-trimming",
         "Array.prototype.reduce",
         "Array.prototype.reduceRight",

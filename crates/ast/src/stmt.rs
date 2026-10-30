@@ -40,8 +40,24 @@ pub enum ForInit {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum Pattern {
+    Ident(String),
+    Array(Vec<Option<Pattern>>),
+    Object(Vec<(String, Pattern)>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct DestructureDecl {
+    pub kind: VarKind,
+    pub pattern: Pattern,
+    pub init: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     Var(VarDecl),
+    Destructure(DestructureDecl),
     Func(FuncDecl),
     Block(Vec<Stmt>),
     If {
@@ -116,6 +132,7 @@ impl Stmt {
     pub fn span(&self) -> Span {
         match self {
             Self::Var(decl) => decl.span,
+            Self::Destructure(decl) => decl.span,
             Self::Func(decl) => decl.span,
             Self::Block(body) => body
                 .first()

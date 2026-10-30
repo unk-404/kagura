@@ -944,6 +944,19 @@ fn spreads_array_literals() {
 }
 
 #[test]
+fn binds_array_and_object_destructuring_patterns() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var [a, b] = [1, 2]; var { x, y: z } = { x: 3, y: 4 }; let [p, , q] = [5, 6, 7]; var [[m], { n }] = [[8], { n: 9 }]; console.log(a, b, x, z, p, q, m, n);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "1 2 3 4 5 7 8 9\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

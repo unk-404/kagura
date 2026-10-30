@@ -1,6 +1,9 @@
 mod analysis;
 
-use kagura_ast::{AssignTarget, BinaryOp, Expr, ForInit, Param, Program, Stmt, UnaryOp, VarDecl};
+use kagura_ast::{
+    AssignTarget, BinaryOp, DestructureDecl, Expr, ForInit, Param, Pattern, Program, Stmt, UnaryOp,
+    VarDecl,
+};
 use kagura_support::{FastHashSet, Span};
 
 use crate::error::CompileError;
@@ -286,6 +289,7 @@ impl<'a> FunctionCompiler<'a> {
         }
         match stmt {
             Stmt::Var(decl) => self.compile_var(decl),
+            Stmt::Destructure(decl) => self.compile_destructure(decl),
             Stmt::Func(decl) => {
                 if self.strict && matches!(decl.name.as_str(), "eval" | "arguments") {
                     return Err(CompileError::new(
@@ -879,6 +883,64 @@ impl<'a> FunctionCompiler<'a> {
             self.compile_stmt(stmt)?;
         }
         self.close_scope();
+        Ok(())
+    }
+
+    fn compile_destructure(&mut self, decl: &DestructureDecl) -> Result<(), CompileError> {
+        let source = self.hidden_local(decl.span);
+        self.compile_expr(&decl.init)?;
+        self.emit_u16(Op::StoreLocal, source, decl.span);
+        self.bind_pattern(&decl.pattern, source, decl.kind, decl.span)
+    }
+
+    fn bind_pattern(
+        &mut self,
+        pattern: &Pattern,
+        source: u16,
+        kind: kagura_ast::VarKind,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        match pattern {
+            Pattern::Ident(name) => {
+                let mutable = !matches!(kind, kagura_ast::VarKind::Const);
+                let slot = if matches!(kind, kagura_ast::VarKind::Var) {
+                    if let Some(Resolved::Local { slot, .. }) = self.resolve(name) {
+                        slot
+                    } else {
+                        self.declare(name, mutable, span)
+                            .ok_or_else(|| CompileError::new("duplicate binding", span))?
+                    }
+                } else {
+                    self.declare(name, mutable, span)
+                        .ok_or_else(|| CompileError::new("duplicate binding", span))?
+                };
+                self.emit_u16(Op::LoadLocal, source, span);
+                self.emit_u16(Op::StoreLocal, slot, span);
+            }
+            Pattern::Array(elements) => {
+                for (index, element) in elements.iter().enumerate() {
+                    let Some(element) = element else {
+                        continue;
+                    };
+                    self.emit_u16(Op::LoadLocal, source, span);
+                    self.emit_const(Const::Number(index as f64), span);
+                    self.emit(Op::GetIndex, span);
+                    let value = self.hidden_local(span);
+                    self.emit_u16(Op::StoreLocal, value, span);
+                    self.bind_pattern(element, value, kind, span)?;
+                }
+            }
+            Pattern::Object(properties) => {
+                for (key, element) in properties {
+                    self.emit_u16(Op::LoadLocal, source, span);
+                    let index = self.add_const(Const::String(key.clone()));
+                    self.emit_u32(Op::GetProp, index, span);
+                    let value = self.hidden_local(span);
+                    self.emit_u16(Op::StoreLocal, value, span);
+                    self.bind_pattern(element, value, kind, span)?;
+                }
+            }
+        }
         Ok(())
     }
 

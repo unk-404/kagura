@@ -2,8 +2,8 @@ mod control;
 mod functions;
 
 use kagura_ast::{
-    ArrowBody, AssignTarget, BinaryOp, Expr, ForInit, ObjectProperty, Param, Program, Stmt,
-    SwitchCase, TypeAnn, UnaryOp, VarDecl, VarKind,
+    ArrowBody, AssignTarget, BinaryOp, DestructureDecl, Expr, ForInit, ObjectProperty, Param,
+    Pattern, Program, Stmt, SwitchCase, TypeAnn, UnaryOp, VarDecl, VarKind,
 };
 use kagura_support::Span;
 use tracing::instrument;
@@ -45,7 +45,27 @@ impl Parser {
                     TokenKind::Let => VarKind::Let,
                     _ => VarKind::Const,
                 };
-                Ok(Stmt::Var(self.parse_var_decl(kind, true)?))
+                if self.tokens.get(self.pos + 1).is_some_and(|token| {
+                    matches!(token.kind, TokenKind::LBracket | TokenKind::LBrace)
+                }) {
+                    let start = self.advance().span;
+                    let pattern = self.parse_binding_pattern()?;
+                    self.expect(
+                        &TokenKind::Assign,
+                        "expected '=' after destructuring pattern",
+                    )?;
+                    let init = self.parse_expr()?;
+                    let end = init.span();
+                    self.expect(&TokenKind::Semi, "expected ';' after declaration")?;
+                    Ok(Stmt::Destructure(DestructureDecl {
+                        kind,
+                        pattern,
+                        init,
+                        span: start.merge(end),
+                    }))
+                } else {
+                    Ok(Stmt::Var(self.parse_var_decl(kind, true)?))
+                }
             }
             TokenKind::Function => Ok(Stmt::Func(self.parse_func_decl()?)),
             TokenKind::If => self.parse_if(),
@@ -79,6 +99,56 @@ impl Parser {
                 Ok(Stmt::Expr { expr, span })
             }
         }
+    }
+
+    fn parse_binding_pattern(&mut self) -> Result<Pattern, ParseError> {
+        if self.eat(&TokenKind::LBracket) {
+            let mut elements = Vec::new();
+            while !self.at(&TokenKind::RBracket) {
+                if self.eat(&TokenKind::Comma) {
+                    elements.push(None);
+                    continue;
+                }
+                elements.push(Some(self.parse_binding_pattern()?));
+                if !self.eat(&TokenKind::Comma) {
+                    break;
+                }
+            }
+            self.expect(&TokenKind::RBracket, "expected ']' after array pattern")?;
+            return Ok(Pattern::Array(elements));
+        }
+        if self.eat(&TokenKind::LBrace) {
+            let mut properties = Vec::new();
+            while !self.at(&TokenKind::RBrace) {
+                let key_token = self.advance();
+                let key = match key_token.kind {
+                    TokenKind::Ident(key) | TokenKind::Str(key) => key,
+                    TokenKind::Number(value) => format!("{value}"),
+                    _ => {
+                        return Err(ParseError::new(
+                            "expected object pattern property",
+                            key_token.span,
+                        ));
+                    }
+                };
+                let pattern = if self.eat(&TokenKind::Colon) {
+                    self.parse_binding_pattern()?
+                } else {
+                    Pattern::Ident(key.clone())
+                };
+                properties.push((key, pattern));
+                if !self.eat(&TokenKind::Comma) {
+                    break;
+                }
+            }
+            self.expect(&TokenKind::RBrace, "expected '}' after object pattern")?;
+            return Ok(Pattern::Object(properties));
+        }
+        let name = self.expect_ident("expected binding name")?;
+        let TokenKind::Ident(name) = name.kind else {
+            unreachable!()
+        };
+        Ok(Pattern::Ident(name))
     }
 
     fn parse_var_decl(&mut self, kind: VarKind, expect_semi: bool) -> Result<VarDecl, ParseError> {

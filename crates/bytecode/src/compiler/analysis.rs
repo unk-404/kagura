@@ -59,6 +59,7 @@ pub(super) fn body_has_closure(body: &[Stmt]) -> bool {
 fn stmt_has_closure(stmt: &Stmt) -> bool {
     match stmt {
         Stmt::Var(decl) => decl.init.as_ref().is_some_and(expr_has_closure),
+        Stmt::Destructure(decl) => expr_has_closure(&decl.init),
         Stmt::Func(_) => true,
         Stmt::Block(body) => body_has_closure(body),
         Stmt::If {
