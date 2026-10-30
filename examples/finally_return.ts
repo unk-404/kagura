@@ -34,7 +34,22 @@ try {
   console.log(error);
 }
 try {
-  console.log("body");
+  try {
+    console.log("body");
+  } finally {
+    console.log("finally");
+  }
 } finally {
-  console.log("finally");
+  console.log("outer");
+}
+try {
+  try {
+    throw "start";
+  } catch (error) {
+    throw "replaced";
+  } finally {
+    console.log("catch finally");
+  }
+} catch (error) {
+  console.log(error);
 }

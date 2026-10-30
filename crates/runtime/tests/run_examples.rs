@@ -512,7 +512,10 @@ fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
     runtime.run(FINALLY_RETURN, &mut host).unwrap();
-    assert_eq!(host.output(), "a\n1\n3\nc\n4\ninner\nboom\nbody\nfinally\n");
+    assert_eq!(
+        host.output(),
+        "a\n1\n3\nc\n4\ninner\nboom\nbody\nfinally\nouter\ncatch finally\nreplaced\n"
+    );
 }
 
 #[test]

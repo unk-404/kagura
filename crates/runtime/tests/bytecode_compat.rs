@@ -339,5 +339,8 @@ fn executes_v1_finally_completion_bytecode() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
     runtime.run_bytecode(FINALLY_RETURN, &mut host).unwrap();
-    assert_eq!(host.output(), "a\n1\n3\nc\n4\ninner\nboom\nbody\nfinally\n");
+    assert_eq!(
+        host.output(),
+        "a\n1\n3\nc\n4\ninner\nboom\nbody\nfinally\nouter\ncatch finally\nreplaced\n"
+    );
 }

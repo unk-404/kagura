@@ -487,7 +487,7 @@ impl<'a> FunctionCompiler<'a> {
                     });
                     finally_state = Some((return_slot, flag_slot));
                 }
-                let rethrow = if finally_block.is_some() && catch_block.is_none() {
+                let rethrow = if finally_block.is_some() {
                     let error_slot = self.hidden_local(*span);
                     let threw_slot = self.hidden_local(*span);
                     self.emit_const(Const::False, *span);
@@ -502,13 +502,8 @@ impl<'a> FunctionCompiler<'a> {
                 let end_patch = self.emit_jump(Op::Jump, *span);
                 let catch_pc = self.code.len();
                 self.patch_jump(catch_patch, catch_pc);
-                let mut handler_jump = None;
-                if let Some((error_slot, threw_slot)) = rethrow {
-                    self.emit_u16(Op::StoreLocal, error_slot, *span);
-                    self.emit_const(Const::True, *span);
-                    self.emit_u16(Op::StoreLocal, threw_slot, *span);
-                    handler_jump = Some(self.emit_jump(Op::Jump, *span));
-                } else if let Some(catch_block) = catch_block {
+                let mut to_finally = vec![end_patch];
+                if let Some(catch_block) = catch_block {
                     let base = self.locals.len();
                     self.scopes.push(base);
                     let slot = catch_param
@@ -519,15 +514,34 @@ impl<'a> FunctionCompiler<'a> {
                     } else {
                         self.emit(Op::Pop, *span);
                     }
-                    for stmt in catch_block {
-                        self.compile_stmt(stmt)?;
+                    if let Some((error_slot, threw_slot)) = rethrow {
+                        let catch_try = self.emit_jump(Op::TryBegin, *span);
+                        for stmt in catch_block {
+                            self.compile_stmt(stmt)?;
+                        }
+                        self.emit(Op::TryEnd, *span);
+                        to_finally.push(self.emit_jump(Op::Jump, *span));
+                        let handler_pc = self.code.len();
+                        self.patch_jump(catch_try, handler_pc);
+                        self.emit_u16(Op::StoreLocal, error_slot, *span);
+                        self.emit_const(Const::True, *span);
+                        self.emit_u16(Op::StoreLocal, threw_slot, *span);
+                        to_finally.push(self.emit_jump(Op::Jump, *span));
+                    } else {
+                        for stmt in catch_block {
+                            self.compile_stmt(stmt)?;
+                        }
                     }
                     self.close_scope();
+                } else if let Some((error_slot, threw_slot)) = rethrow {
+                    self.emit_u16(Op::StoreLocal, error_slot, *span);
+                    self.emit_const(Const::True, *span);
+                    self.emit_u16(Op::StoreLocal, threw_slot, *span);
+                    to_finally.push(self.emit_jump(Op::Jump, *span));
                 }
                 let finally_pc = self.code.len();
-                self.patch_jump(end_patch, finally_pc);
-                if let Some(handler_jump) = handler_jump {
-                    self.patch_jump(handler_jump, finally_pc);
+                for patch in to_finally {
+                    self.patch_jump(patch, finally_pc);
                 }
                 if let Some((return_slot, flag_slot)) = finally_state {
                     let context = self.finallys.pop().expect("finally context");
