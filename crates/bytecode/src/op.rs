@@ -68,6 +68,7 @@ pub enum Op {
     CallBuiltin = 64,
     Pow = 65,
     SpreadObject = 66,
+    SpreadArray = 67,
 }
 
 impl Op {
@@ -140,6 +141,7 @@ impl Op {
             64 => Self::CallBuiltin,
             65 => Self::Pow,
             66 => Self::SpreadObject,
+            67 => Self::SpreadArray,
             _ => return None,
         })
     }

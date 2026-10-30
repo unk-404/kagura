@@ -79,6 +79,7 @@ pub enum Expr {
     },
     Array {
         elements: Vec<Option<Expr>>,
+        spreads: Vec<bool>,
         span: Span,
     },
     Index {

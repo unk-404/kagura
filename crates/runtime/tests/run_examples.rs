@@ -931,6 +931,19 @@ fn spreads_object_literals() {
 }
 
 #[test]
+fn spreads_array_literals() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var a = [1, 2]; var b = [0, ...a, 3]; console.log(b.join(','), [...a, ...b].join(','));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "0,1,2,3 1,2,0,1,2,3\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

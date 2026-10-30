@@ -306,6 +306,57 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub(super) fn spread_array_into(
+        &mut self,
+        target: Value,
+        source: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let target_id = target
+            .object_offset()
+            .map(kagura_object::ObjectId::new)
+            .ok_or_else(|| {
+                RuntimeError::type_error("array spread target is not an object", span)
+            })?;
+        let Some(source_id) = source.object_offset().map(kagura_object::ObjectId::new) else {
+            return Err(RuntimeError::type_error(
+                "spread value is not iterable",
+                span,
+            ));
+        };
+        if !self
+            .objects
+            .is_array(source_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Err(RuntimeError::type_error(
+                "spread value is not iterable",
+                span,
+            ));
+        }
+        let length = self
+            .objects
+            .array_length(source_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for index in 0..length {
+            if !self
+                .objects
+                .array_has(source_id, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                continue;
+            }
+            let value = self
+                .objects
+                .array_get(source_id, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            self.objects
+                .array_push(target_id, value)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        }
+        Ok(())
+    }
+
     pub(super) fn copy_spread_properties(
         &mut self,
         target: Value,

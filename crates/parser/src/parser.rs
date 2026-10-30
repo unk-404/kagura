@@ -888,17 +888,21 @@ impl Parser {
     fn parse_array_literal(&mut self) -> Result<Expr, ParseError> {
         let start = self.advance().span;
         let mut elements = Vec::new();
+        let mut spreads = Vec::new();
         if !self.at(&TokenKind::RBracket) {
             loop {
                 if self.at(&TokenKind::Comma) {
                     elements.push(None);
+                    spreads.push(false);
                     self.advance();
                     if self.at(&TokenKind::RBracket) {
                         break;
                     }
                     continue;
                 }
+                let spread = self.eat(&TokenKind::DotDotDot);
                 elements.push(Some(self.parse_expr()?));
+                spreads.push(spread);
                 if !self.eat(&TokenKind::Comma) || self.at(&TokenKind::RBracket) {
                     break;
                 }
@@ -907,6 +911,7 @@ impl Parser {
         let end = self.expect(&TokenKind::RBracket, "expected ']' after array literal")?;
         Ok(Expr::Array {
             elements,
+            spreads,
             span: start.merge(end.span),
         })
     }

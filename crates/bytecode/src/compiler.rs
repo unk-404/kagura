@@ -1390,14 +1390,24 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit_u32(Op::SetProp, index, property.span);
                 }
             }
-            Expr::Array { elements, span } => {
+            Expr::Array {
+                elements,
+                spreads,
+                span,
+            } => {
                 self.emit(Op::NewArray, *span);
-                for element in elements {
+                for (index, element) in elements.iter().enumerate() {
                     match element {
+                        Some(element) if spreads.get(index).copied().unwrap_or(false) => {
+                            self.compile_expr(element)?;
+                            self.emit(Op::SpreadArray, element.span());
+                        }
                         Some(element) => self.compile_expr(element)?,
                         None => self.emit(Op::LoadHole, *span),
                     }
-                    self.emit(Op::ArrayPush, *span);
+                    if !spreads.get(index).copied().unwrap_or(false) {
+                        self.emit(Op::ArrayPush, *span);
+                    }
                 }
             }
             Expr::Index {

@@ -246,6 +246,13 @@ impl<'a> Interpreter<'a> {
                         .ok_or_else(|| RuntimeError::runtime("operand stack underflow", span))?;
                     try_op!(self.copy_spread_properties(target, source, span));
                 }
+                Op::SpreadArray => {
+                    let source = pop(&mut stack, span)?;
+                    let target = *stack
+                        .last()
+                        .ok_or_else(|| RuntimeError::runtime("operand stack underflow", span))?;
+                    try_op!(self.spread_array_into(target, source, span));
+                }
                 Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;
