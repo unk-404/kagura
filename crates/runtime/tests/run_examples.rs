@@ -33,6 +33,7 @@ const LOOP_BODY_CLOSURES: &str = include_str!("../../../examples/loop_body_closu
 const TRY_CATCH: &str = include_str!("../../../examples/try_catch.ts");
 const TRY_FINALLY: &str = include_str!("../../../examples/try_finally.ts");
 const TRY_NESTED: &str = include_str!("../../../examples/try_nested.ts");
+const TRY_CROSS_FUNCTION: &str = include_str!("../../../examples/try_cross_function.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -301,6 +302,27 @@ fn uncaught_throw_fails_execution() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
     assert!(runtime.run("throw 1;", &mut host).is_err());
+}
+
+#[test]
+fn catches_throw_from_called_function() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(TRY_CROSS_FUNCTION, &mut host).unwrap();
+    assert_eq!(host.output(), "7\nafter\n");
+}
+
+#[test]
+fn catches_missing_host_error() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "try { missingHost(); } catch (error) { console.log(\"caught\"); }",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "caught\n");
 }
 
 #[test]

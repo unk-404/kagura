@@ -414,7 +414,14 @@ impl<'a> Interpreter<'a> {
                     if let Some(capture_env) = capture_env {
                         roots.push(Value::object(capture_env.index()));
                     }
-                    let value = self.call_name(&name, index as usize, &args, span, &roots)?;
+                    let value = match self.call_name(&name, index as usize, &args, span, &roots) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            let catch_pc = self.catch_error(&mut handlers, &mut stack, error)?;
+                            pc = catch_pc;
+                            continue;
+                        }
+                    };
                     push(&mut stack, value, span)?;
                 }
                 Op::TryBegin => {
@@ -434,10 +441,7 @@ impl<'a> Interpreter<'a> {
                         push(&mut stack, value, span)?;
                         pc = handler.catch_pc;
                     } else {
-                        return Err(RuntimeError::runtime(
-                            format!("uncaught exception: {}", self.heap.to_js_string(value)),
-                            span,
-                        ));
+                        return Err(RuntimeError::thrown(value, span));
                     }
                 }
                 Op::IterationBegin => {
@@ -589,8 +593,20 @@ impl<'a> Interpreter<'a> {
                     if let Some(capture_env) = capture_env {
                         roots.push(Value::object(capture_env.index()));
                     }
-                    let value =
-                        self.call(function as usize, &args, &roots, closure_env, Some(callee))?;
+                    let value = match self.call(
+                        function as usize,
+                        &args,
+                        &roots,
+                        closure_env,
+                        Some(callee),
+                    ) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            let catch_pc = self.catch_error(&mut handlers, &mut stack, error)?;
+                            pc = catch_pc;
+                            continue;
+                        }
+                    };
                     push(&mut stack, value, span)?;
                 }
                 Op::CallHost => {
@@ -612,7 +628,14 @@ impl<'a> Interpreter<'a> {
                     }
                     args.reverse();
                     let id = self.resolve_host(&path, index as usize, span)?;
-                    let value = self.invoke_host(id, &args, span)?;
+                    let value = match self.invoke_host(id, &args, span) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            let catch_pc = self.catch_error(&mut handlers, &mut stack, error)?;
+                            pc = catch_pc;
+                            continue;
+                        }
+                    };
                     push(&mut stack, value, span)?;
                 }
                 Op::Print => {
@@ -628,7 +651,14 @@ impl<'a> Interpreter<'a> {
                     let id = self.host.resolve("console.log").ok_or_else(|| {
                         RuntimeError::runtime("console.log is not registered", span)
                     })?;
-                    let value = self.invoke_host(id, &args, span)?;
+                    let value = match self.invoke_host(id, &args, span) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            let catch_pc = self.catch_error(&mut handlers, &mut stack, error)?;
+                            pc = catch_pc;
+                            continue;
+                        }
+                    };
                     push(&mut stack, value, span)?;
                 }
                 Op::NewObject => {
@@ -814,6 +844,23 @@ impl<'a> Interpreter<'a> {
         self.host
             .invoke(id, &mut call)
             .map_err(|error| RuntimeError::runtime(error.message, span))
+    }
+
+    fn catch_error(
+        &mut self,
+        handlers: &mut Vec<TryHandler>,
+        stack: &mut Vec<Value>,
+        error: RuntimeError,
+    ) -> Result<usize, RuntimeError> {
+        let Some(handler) = handlers.pop() else {
+            return Err(error);
+        };
+        stack.truncate(handler.stack_depth);
+        let value = error
+            .thrown
+            .unwrap_or_else(|| self.heap.string(&error.message));
+        stack.push(value);
+        Ok(handler.catch_pc)
     }
 
     fn capture_env(

@@ -23,6 +23,8 @@ const LOOP_CLOSURES_NESTED: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/loop_closures_nested.kbc");
 const TRY_CATCH: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/try_catch.kbc");
 const TRY_FINALLY: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/try_finally.kbc");
+const TRY_CROSS_FUNCTION: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/try_cross_function.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -165,6 +167,14 @@ fn executes_v1_try_finally_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(TRY_FINALLY, &mut host).unwrap();
     assert_eq!(host.output(), "boom\nfinally\nafter\n");
+}
+
+#[test]
+fn executes_v1_cross_function_throw_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(TRY_CROSS_FUNCTION, &mut host).unwrap();
+    assert_eq!(host.output(), "7\nafter\n");
 }
 
 #[test]

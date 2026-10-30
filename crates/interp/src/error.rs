@@ -1,5 +1,6 @@
 use kagura_diagnostics::{Diagnostic, DiagnosticKind};
 use kagura_support::Span;
+use kagura_value::Value;
 use thiserror::Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -16,6 +17,7 @@ pub struct RuntimeError {
     pub kind: RuntimeErrorKind,
     pub message: String,
     pub span: Span,
+    pub thrown: Option<Value>,
 }
 
 impl RuntimeError {
@@ -24,6 +26,16 @@ impl RuntimeError {
             kind,
             message: message.into(),
             span,
+            thrown: None,
+        }
+    }
+
+    pub fn thrown(value: Value, span: Span) -> Self {
+        Self {
+            kind: RuntimeErrorKind::Runtime,
+            message: format!("uncaught exception: {value:?}"),
+            span,
+            thrown: Some(value),
         }
     }
 
