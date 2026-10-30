@@ -14,7 +14,8 @@ impl<'a> Interpreter<'a> {
         args: &[Value],
         caller_roots: &[Value],
         closure_env: Option<ObjectId>,
-        self_value: Option<Value>,
+        self_binding: Option<Value>,
+        receiver: Option<Value>,
     ) -> Result<Value, RuntimeError> {
         if self.depth >= MAX_CALL_DEPTH {
             return Err(RuntimeError::range(
@@ -58,7 +59,7 @@ impl<'a> Interpreter<'a> {
         } else {
             None
         };
-        if let (Some(slot), Some(value)) = (function.self_slot, self_value) {
+        if let (Some(slot), Some(value)) = (function.self_slot, self_binding) {
             let slot = slot as usize;
             if slot < locals.len() {
                 locals[slot] = value;
@@ -78,7 +79,7 @@ impl<'a> Interpreter<'a> {
             caller_roots,
             env,
             closure_env,
-            self_value,
+            self_value: receiver,
         };
         let result = self.execute(index, &function, &mut locals, &mut defined, &frame);
         self.depth -= 1;
@@ -94,7 +95,7 @@ impl<'a> Interpreter<'a> {
         caller_roots: &[Value],
     ) -> Result<Value, RuntimeError> {
         if let Some(function) = self.module.find_function(name) {
-            return self.call(function, args, caller_roots, None, None);
+            return self.call(function, args, caller_roots, None, None, None);
         }
         let id = self.resolve_host(name, index, span)?;
         self.invoke_host(id, args, span)

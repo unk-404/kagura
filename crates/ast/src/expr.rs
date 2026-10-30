@@ -23,6 +23,9 @@ pub enum Expr {
     Undefined {
         span: Span,
     },
+    This {
+        span: Span,
+    },
     Ident {
         name: String,
         span: Span,
@@ -112,6 +115,7 @@ impl Expr {
             | Self::Boolean { span, .. }
             | Self::Null { span }
             | Self::Undefined { span }
+            | Self::This { span }
             | Self::Ident { span, .. }
             | Self::Unary { span, .. }
             | Self::Binary { span, .. }

@@ -1,30 +1,6 @@
-﻿use kagura_ast::{AssignTarget, Expr, ForInit, Stmt};
+use kagura_ast::{AssignTarget, Expr, ForInit, Stmt};
 
 use super::Local;
-
-pub(super) fn is_builtin_method(name: &str) -> bool {
-    matches!(
-        name,
-        "push"
-            | "pop"
-            | "join"
-            | "indexOf"
-            | "includes"
-            | "slice"
-            | "map"
-            | "filter"
-            | "forEach"
-            | "some"
-            | "every"
-            | "find"
-            | "reduce"
-            | "charAt"
-            | "charCodeAt"
-            | "toUpperCase"
-            | "toLowerCase"
-            | "trim"
-    )
-}
 
 pub(super) fn loop_has_closure(cond: Option<&Expr>, update: Option<&Expr>, body: &Stmt) -> bool {
     cond.is_some_and(expr_has_closure)
@@ -146,6 +122,7 @@ fn expr_has_closure(expr: &Expr) -> bool {
         | Expr::Boolean { .. }
         | Expr::Null { .. }
         | Expr::Undefined { .. }
+        | Expr::This { .. }
         | Expr::Ident { .. } => false,
     }
 }

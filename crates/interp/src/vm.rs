@@ -64,7 +64,7 @@ impl<'a> Interpreter<'a> {
     #[instrument(skip(self), fields(entry = self.module.entry))]
     pub fn run(&mut self) -> Result<Value, RuntimeError> {
         let entry = self.module.entry;
-        self.call(entry, &[], &[], None, None)
+        self.call(entry, &[], &[], None, None, None)
     }
 
     #[instrument(skip(self, locals, defined, frame), fields(function = function_index))]
@@ -133,6 +133,13 @@ impl<'a> Interpreter<'a> {
                 }
                 Op::LoadHole => {
                     push(&mut stack, Value::hole(), span)?;
+                }
+                Op::LoadThis => {
+                    push(
+                        &mut stack,
+                        self_value.unwrap_or_else(Value::undefined),
+                        span,
+                    )?;
                 }
                 Op::LoadLocal => {
                     let slot = read_u16(&function.code, &mut pc, span)? as usize;
@@ -560,12 +567,26 @@ impl<'a> Interpreter<'a> {
                     }
                     roots.push(object);
                     roots.extend_from_slice(&args);
-                    let value = try_op!(
-                        self.call_builtin(object, &key, &args, span, &roots)
-                            .and_then(|value| value.ok_or_else(|| {
-                                RuntimeError::type_error("method is not supported", span)
-                            }))
-                    );
+                    let method = if object.is_object() {
+                        try_op!(self.get_property(object, &key, span))
+                    } else {
+                        Value::undefined()
+                    };
+                    let value = if method.is_object()
+                        && self
+                            .objects
+                            .is_function(ObjectId::new(method.object_offset().unwrap_or(0)))
+                            .unwrap_or(false)
+                    {
+                        try_op!(self.invoke_method(method, &args, &roots, object, span))
+                    } else {
+                        try_op!(
+                            self.call_builtin(object, &key, &args, span, &roots)
+                                .and_then(|value| value.ok_or_else(|| {
+                                    RuntimeError::type_error("method is not supported", span)
+                                }))
+                        )
+                    };
                     push(&mut stack, value, span)?;
                 }
                 Op::CallHost => {

@@ -40,6 +40,9 @@ const BUILTINS_HOLES: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/builtins_holes.kbc");
 const WHILE_CLOSURES: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/while_closures.kbc");
+const METHOD_THIS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/method_this.kbc");
+const METHOD_SHADOWING: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/method_shadowing.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -264,4 +267,20 @@ fn executes_v1_while_closure_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(WHILE_CLOSURES, &mut host).unwrap();
     assert_eq!(host.output(), "0\n1\n");
+}
+
+#[test]
+fn executes_v1_this_binding_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(METHOD_THIS, &mut host).unwrap();
+    assert_eq!(host.output(), "5\nno receiver\n");
+}
+
+#[test]
+fn executes_v1_method_shadowing_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(METHOD_SHADOWING, &mut host).unwrap();
+    assert_eq!(host.output(), "11\n2,4\n");
 }

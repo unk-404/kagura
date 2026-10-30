@@ -213,6 +213,7 @@ fn keyword_or_ident(text: &str) -> TokenKind {
         "false" => TokenKind::False,
         "null" => TokenKind::Null,
         "undefined" => TokenKind::Undefined,
+        "this" => TokenKind::This,
         "type" => TokenKind::Type,
         "interface" => TokenKind::Interface,
         "as" => TokenKind::As,

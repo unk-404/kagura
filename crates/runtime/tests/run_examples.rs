@@ -42,6 +42,8 @@ const OBJECT_BUILTINS: &str = include_str!("../../../examples/object_builtins.ts
 const PROTOTYPE_CHAIN: &str = include_str!("../../../examples/prototype_chain.ts");
 const BUILTINS_HOLES: &str = include_str!("../../../examples/builtins_holes.ts");
 const WHILE_CLOSURES: &str = include_str!("../../../examples/while_closures.ts");
+const METHOD_THIS: &str = include_str!("../../../examples/method_this.ts");
+const METHOD_SHADOWING: &str = include_str!("../../../examples/method_shadowing.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -441,6 +443,22 @@ fn captures_while_body_bindings_per_iteration() {
     let mut runtime = Runtime::default();
     runtime.run(WHILE_CLOSURES, &mut host).unwrap();
     assert_eq!(host.output(), "0\n1\n");
+}
+
+#[test]
+fn binds_this_for_method_calls() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(METHOD_THIS, &mut host).unwrap();
+    assert_eq!(host.output(), "5\nno receiver\n");
+}
+
+#[test]
+fn user_methods_shadow_builtin_names() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(METHOD_SHADOWING, &mut host).unwrap();
+    assert_eq!(host.output(), "11\n2,4\n");
 }
 
 #[test]

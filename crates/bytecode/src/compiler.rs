@@ -6,9 +6,7 @@ use kagura_support::{FastHashSet, Span};
 use crate::error::CompileError;
 use crate::module::{Const, FunctionProto, Module, VERSION};
 use crate::op::Op;
-use analysis::{
-    body_has_closure, collect_iteration_locals, is_builtin_method, loop_has_closure, member_path,
-};
+use analysis::{body_has_closure, collect_iteration_locals, loop_has_closure, member_path};
 
 pub fn compile(program: &Program) -> Result<Module, CompileError> {
     Compiler::default().compile(program)
@@ -604,6 +602,9 @@ impl<'a> FunctionCompiler<'a> {
                 let index = self.add_const(Const::Undefined);
                 self.emit_u32(Op::LoadConst, index, *span);
             }
+            Expr::This { span } => {
+                self.emit(Op::LoadThis, *span);
+            }
             Expr::Ident { name, span } => match self.resolve(name) {
                 Some(Resolved::Local { slot, .. }) => self.emit_u16(Op::LoadLocal, slot, *span),
                 Some(Resolved::Capture { level, slot, .. }) => {
@@ -716,29 +717,20 @@ impl<'a> FunctionCompiler<'a> {
                     object, property, ..
                 } = callee.as_ref()
                 {
-                    if is_builtin_method(property) {
+                    let host_path = member_path(callee).filter(|path| {
+                        let root = path.split('.').next().unwrap_or_default();
+                        self.resolve(root).is_none()
+                    });
+                    if let Some(path) = host_path {
+                        self.compile_args(args)?;
+                        let index = self.add_const(Const::String(path));
+                        self.emit_u32(Op::CallHost, index, *span);
+                        self.emit_u8_raw(args.len(), *span);
+                    } else {
                         self.compile_expr(object)?;
                         self.compile_args(args)?;
                         let index = self.add_const(Const::String(property.clone()));
                         self.emit_u32(Op::CallMethod, index, *span);
-                        self.emit_u8_raw(args.len(), *span);
-                    } else if let Some(path) = member_path(callee) {
-                        let root = path.split('.').next().unwrap_or_default();
-                        if self.resolve(root).is_some() {
-                            self.compile_expr(callee)?;
-                            self.compile_args(args)?;
-                            self.emit(Op::CallValue, *span);
-                            self.emit_u8_raw(args.len(), *span);
-                        } else {
-                            self.compile_args(args)?;
-                            let index = self.add_const(Const::String(path));
-                            self.emit_u32(Op::CallHost, index, *span);
-                            self.emit_u8_raw(args.len(), *span);
-                        }
-                    } else {
-                        self.compile_expr(callee)?;
-                        self.compile_args(args)?;
-                        self.emit(Op::CallValue, *span);
                         self.emit_u8_raw(args.len(), *span);
                     }
                 } else {

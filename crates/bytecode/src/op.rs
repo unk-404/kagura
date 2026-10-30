@@ -54,6 +54,7 @@ pub enum Op {
     TryBegin = 50,
     TryEnd = 51,
     CallMethod = 52,
+    LoadThis = 53,
 }
 
 impl Op {
@@ -112,6 +113,7 @@ impl Op {
             50 => Self::TryBegin,
             51 => Self::TryEnd,
             52 => Self::CallMethod,
+            53 => Self::LoadThis,
             _ => return None,
         })
     }

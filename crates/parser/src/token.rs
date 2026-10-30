@@ -23,6 +23,7 @@ pub(crate) enum TokenKind {
     False,
     Null,
     Undefined,
+    This,
     Type,
     Interface,
     As,

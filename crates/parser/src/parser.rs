@@ -531,6 +531,10 @@ impl Parser {
                 self.advance();
                 Ok(Expr::Undefined { span: token.span })
             }
+            TokenKind::This => {
+                self.advance();
+                Ok(Expr::This { span: token.span })
+            }
             TokenKind::Ident(name) => {
                 self.advance();
                 if self.eat(&TokenKind::Arrow) {

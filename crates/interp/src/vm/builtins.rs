@@ -215,6 +215,38 @@ impl<'a> Interpreter<'a> {
             caller_roots,
             closure_env,
             Some(callee),
+            None,
+        )
+    }
+
+    pub(super) fn invoke_method(
+        &mut self,
+        callee: Value,
+        args: &[Value],
+        caller_roots: &[Value],
+        receiver: Value,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.object_id(callee, span)?;
+        if !self
+            .objects
+            .is_function(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Err(RuntimeError::type_error("value is not callable", span));
+        }
+        let (function, env_value) = self
+            .objects
+            .function_data(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let closure_env = env_value.object_offset().map(ObjectId::new);
+        self.call(
+            function as usize,
+            args,
+            caller_roots,
+            closure_env,
+            Some(callee),
+            Some(receiver),
         )
     }
 
