@@ -1268,10 +1268,16 @@ impl<'a> FunctionCompiler<'a> {
                         self.resolve(root).is_none()
                     });
                     if let Some(path) = host_path {
-                        self.compile_args(args)?;
-                        let index = self.add_const(Const::String(path));
-                        self.emit_u32(Op::CallHost, index, *span);
-                        self.emit_u8_raw(args.len(), *span);
+                        if let Some(id) = crate::builtins::BuiltinId::from_path(&path) {
+                            self.compile_args(args)?;
+                            self.emit_u16(Op::CallBuiltin, id as u16, *span);
+                            self.emit_u8_raw(args.len(), *span);
+                        } else {
+                            self.compile_args(args)?;
+                            let index = self.add_const(Const::String(path));
+                            self.emit_u32(Op::CallHost, index, *span);
+                            self.emit_u8_raw(args.len(), *span);
+                        }
                     } else {
                         self.compile_expr(object)?;
                         self.compile_args(args)?;

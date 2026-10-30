@@ -65,6 +65,7 @@ pub enum Op {
     ThrowReference = 61,
     InstanceOf = 62,
     ForInKeys = 63,
+    CallBuiltin = 64,
 }
 
 impl Op {
@@ -134,6 +135,7 @@ impl Op {
             61 => Self::ThrowReference,
             62 => Self::InstanceOf,
             63 => Self::ForInKeys,
+            64 => Self::CallBuiltin,
             _ => return None,
         })
     }

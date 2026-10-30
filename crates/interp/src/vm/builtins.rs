@@ -1421,6 +1421,30 @@ impl<'a> Interpreter<'a> {
         Ok(true)
     }
 
+    pub(super) fn call_builtin_id(
+        &mut self,
+        id: kagura_bytecode::builtins::BuiltinId,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        use kagura_bytecode::builtins::BuiltinId;
+        match id {
+            BuiltinId::JsonParse => {
+                let text = self
+                    .heap
+                    .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+                self.json_parse_native(&text, span)
+            }
+            BuiltinId::JsonStringify => {
+                let value = args.first().copied().unwrap_or_else(Value::undefined);
+                match self.json_stringify(value, span)? {
+                    Some(text) => Ok(self.heap.string(&text)),
+                    None => Ok(Value::undefined()),
+                }
+            }
+        }
+    }
+
     pub(super) fn load_builtin(&mut self, name: &str, span: Span) -> Result<Value, RuntimeError> {
         if name == "Math" {
             let object = self

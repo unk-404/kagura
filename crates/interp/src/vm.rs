@@ -709,6 +709,19 @@ impl<'a> Interpreter<'a> {
                     };
                     push(&mut stack, value, span)?;
                 }
+                Op::CallBuiltin => {
+                    let id = read_u16(&function.code, &mut pc, span)?;
+                    let argc = read_u8(&function.code, &mut pc, span)? as usize;
+                    let mut args = Vec::with_capacity(argc);
+                    for _ in 0..argc {
+                        args.push(pop(&mut stack, span)?);
+                    }
+                    args.reverse();
+                    let id = kagura_bytecode::builtins::BuiltinId::from_u16(id)
+                        .ok_or_else(|| RuntimeError::runtime("unknown builtin id", span))?;
+                    let value = try_op!(self.call_builtin_id(id, &args, span));
+                    push(&mut stack, value, span)?;
+                }
                 Op::CallHost => {
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let argc = read_u8(&function.code, &mut pc, span)? as usize;
