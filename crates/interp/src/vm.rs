@@ -260,6 +260,26 @@ impl<'a> Interpreter<'a> {
                     let value = try_op!(self.array_rest(source, start, span));
                     push(&mut stack, value, span)?;
                 }
+                Op::ObjectRest => {
+                    let index = read_u32(&function.code, &mut pc, span)? as usize;
+                    let excluded = match function
+                        .code
+                        .get(index)
+                        .and_then(|_| self.module.constants.get(index))
+                    {
+                        Some(Const::String(keys)) => {
+                            if keys.is_empty() {
+                                Vec::new()
+                            } else {
+                                keys.split('\0').map(str::to_owned).collect()
+                            }
+                        }
+                        _ => return Err(RuntimeError::runtime("invalid object rest keys", span)),
+                    };
+                    let source = pop(&mut stack, span)?;
+                    let value = try_op!(self.object_rest(source, &excluded, span));
+                    push(&mut stack, value, span)?;
+                }
                 Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;

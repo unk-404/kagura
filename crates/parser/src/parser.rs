@@ -123,7 +123,12 @@ impl Parser {
         }
         if self.eat(&TokenKind::LBrace) {
             let mut properties = Vec::new();
+            let mut rest = None;
             while !self.at(&TokenKind::RBrace) {
+                if self.eat(&TokenKind::DotDotDot) {
+                    rest = Some(Box::new(self.parse_binding_pattern()?));
+                    break;
+                }
                 let key_token = self.advance();
                 let key = match key_token.kind {
                     TokenKind::Ident(key) | TokenKind::Str(key) => key,
@@ -147,7 +152,7 @@ impl Parser {
                 }
             }
             self.expect(&TokenKind::RBrace, "expected '}' after object pattern")?;
-            return Ok(Pattern::Object(properties));
+            return Ok(Pattern::Object { properties, rest });
         }
         let name = self.expect_ident("expected binding name")?;
         let TokenKind::Ident(name) = name.kind else {

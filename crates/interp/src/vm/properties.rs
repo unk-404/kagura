@@ -306,6 +306,54 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub(super) fn object_rest(
+        &mut self,
+        source: Value,
+        excluded: &[String],
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let shape = self.object_shape(span)?;
+        let result = self
+            .objects
+            .allocate(shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let result = Value::object(result.index());
+        let Some(source_id) = source.object_offset().map(kagura_object::ObjectId::new) else {
+            return Ok(result);
+        };
+        let source_shape = self
+            .objects
+            .shape(source_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let keys = kagura_object::own_property_keys(self.shapes, source_shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for key in keys {
+            let enumerable = self
+                .shapes
+                .lookup(source_shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .is_some_and(|descriptor| descriptor.attributes.enumerable);
+            if !enumerable {
+                continue;
+            }
+            let key_string = match &key {
+                PropertyKey::Index(index) => index.to_string(),
+                PropertyKey::String(key) => key.clone(),
+                PropertyKey::Symbol(_) => continue,
+            };
+            if excluded.iter().any(|excluded| excluded == &key_string) {
+                continue;
+            }
+            if let Some(value) = self
+                .get_own_data_property(source, &key_string)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                self.set_property(result, &key_string, value, span)?;
+            }
+        }
+        Ok(result)
+    }
+
     pub(super) fn array_rest(
         &mut self,
         source: Value,

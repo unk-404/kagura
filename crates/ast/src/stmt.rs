@@ -43,7 +43,10 @@ pub enum ForInit {
 pub enum Pattern {
     Ident(String),
     Array(Vec<Option<Pattern>>),
-    Object(Vec<(String, Pattern)>),
+    Object {
+        properties: Vec<(String, Pattern)>,
+        rest: Option<Box<Pattern>>,
+    },
     Default {
         pattern: Box<Pattern>,
         default: Expr,

@@ -939,7 +939,7 @@ impl<'a> FunctionCompiler<'a> {
                     self.bind_pattern(element, value, kind, span)?;
                 }
             }
-            Pattern::Object(properties) => {
+            Pattern::Object { properties, rest } => {
                 for (key, element) in properties {
                     self.emit_u16(Op::LoadLocal, source, span);
                     let index = self.add_const(Const::String(key.clone()));
@@ -947,6 +947,19 @@ impl<'a> FunctionCompiler<'a> {
                     let value = self.hidden_local(span);
                     self.emit_u16(Op::StoreLocal, value, span);
                     self.bind_pattern(element, value, kind, span)?;
+                }
+                if let Some(rest) = rest {
+                    self.emit_u16(Op::LoadLocal, source, span);
+                    let keys = properties
+                        .iter()
+                        .map(|(key, _)| key.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\u{0}");
+                    let index = self.add_const(Const::String(keys));
+                    self.emit_u32(Op::ObjectRest, index, span);
+                    let value = self.hidden_local(span);
+                    self.emit_u16(Op::StoreLocal, value, span);
+                    self.bind_pattern(rest, value, kind, span)?;
                 }
             }
             Pattern::Default { pattern, default } => {
