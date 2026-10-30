@@ -9,3 +9,6 @@ kagura-ast = { version = "0.1.0", path = "../ast" }
 kagura-diagnostics = { version = "0.1.0", path = "../diagnostics" }
 kagura-support = { version = "0.1.0", path = "../support" }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+kagura-parser = { path = "../parser" }

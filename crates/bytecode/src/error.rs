@@ -16,3 +16,23 @@ impl CompileError {
         }
     }
 }
+
+#[derive(Debug, Error)]
+pub enum DecodeError {
+    #[error("bytecode is truncated")]
+    Truncated,
+    #[error("invalid bytecode magic")]
+    BadMagic,
+    #[error("unsupported bytecode version {0}")]
+    UnsupportedVersion(u16),
+    #[error("invalid constant tag {0}")]
+    InvalidConstant(u8),
+    #[error("invalid constant encoding")]
+    InvalidConstantEncoding,
+    #[error("invalid UTF-8 in bytecode")]
+    Utf8(#[from] std::string::FromUtf8Error),
+    #[error("entry function index out of range")]
+    InvalidEntry,
+    #[error("trailing bytes after bytecode module")]
+    TrailingBytes,
+}
