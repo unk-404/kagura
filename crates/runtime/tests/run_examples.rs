@@ -58,6 +58,7 @@ const ARRAY_SORT: &str = include_str!("../../../examples/array_sort.ts");
 const FUNCTION_CALL_APPLY: &str = include_str!("../../../examples/function_call_apply.ts");
 const FUNCTION_BIND: &str = include_str!("../../../examples/function_bind.ts");
 const PROPERTY_DESCRIPTOR: &str = include_str!("../../../examples/property_descriptor.ts");
+const OBJECT_FREEZE: &str = include_str!("../../../examples/object_freeze.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -580,6 +581,14 @@ fn reads_and_creates_property_descriptors() {
     let mut runtime = Runtime::default();
     runtime.run(PROPERTY_DESCRIPTOR, &mut host).unwrap();
     assert_eq!(host.output(), "42\n42\nfalse\nfalse\n0\n");
+}
+
+#[test]
+fn freezes_objects_and_enforces_writable() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(OBJECT_FREEZE, &mut host).unwrap();
+    assert_eq!(host.output(), "1\nundefined\ntrue\nfalse\n");
 }
 
 #[test]

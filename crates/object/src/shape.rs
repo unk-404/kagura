@@ -120,6 +120,21 @@ impl ShapeTable {
         Ok(id)
     }
 
+    pub fn set_non_extensible(&mut self, shape: ShapeId) -> Result<ShapeId, ShapeError> {
+        let mut next = self.get(shape)?.clone();
+        next.id = ShapeId::new(self.shapes.len() as u32);
+        next.parent = Some(shape);
+        next.flags |= 1;
+        next.transitions = FastHashMap::default();
+        let id = next.id;
+        self.shapes.push(next);
+        Ok(id)
+    }
+
+    pub fn is_non_extensible(&self, shape: ShapeId) -> Result<bool, ShapeError> {
+        Ok(self.get(shape)?.flags & 1 != 0)
+    }
+
     pub fn get(&self, id: ShapeId) -> Result<&Shape, ShapeError> {
         self.shapes
             .get(id.index() as usize)

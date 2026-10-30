@@ -1,4 +1,4 @@
-﻿use kagura_object::{PropertyAttributes, PropertyKey, PropertyLocation};
+use kagura_object::{PropertyAttributes, PropertyKey, PropertyLocation};
 use kagura_support::Span;
 use kagura_value::Value;
 
@@ -98,11 +98,22 @@ impl<'a> Interpreter<'a> {
             .shape(id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         let key = PropertyKey::from_string(key);
-        let existing = self
+        let descriptor = self
             .shapes
             .lookup(shape, &key)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(descriptor) = descriptor {
+            if !descriptor.attributes.writable {
+                return Ok(());
+            }
+        } else if self
+            .shapes
+            .is_non_extensible(shape)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-            .map(|descriptor| descriptor.location);
+        {
+            return Ok(());
+        }
+        let existing = descriptor.map(|descriptor| descriptor.location);
         let location = match existing {
             Some(location) => location,
             None => {
