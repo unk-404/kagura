@@ -41,6 +41,7 @@ const BUILTINS_CALLBACKS_MORE: &str = include_str!("../../../examples/builtins_c
 const OBJECT_BUILTINS: &str = include_str!("../../../examples/object_builtins.ts");
 const PROTOTYPE_CHAIN: &str = include_str!("../../../examples/prototype_chain.ts");
 const BUILTINS_HOLES: &str = include_str!("../../../examples/builtins_holes.ts");
+const WHILE_CLOSURES: &str = include_str!("../../../examples/while_closures.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -432,6 +433,14 @@ fn runs_hole_aware_array_callbacks() {
     let mut runtime = Runtime::default();
     runtime.run(BUILTINS_HOLES, &mut host).unwrap();
     assert_eq!(host.output(), "2,,6\n1,3\n2\nfalse\n-1\ntrue\n4\n");
+}
+
+#[test]
+fn captures_while_body_bindings_per_iteration() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(WHILE_CLOSURES, &mut host).unwrap();
+    assert_eq!(host.output(), "0\n1\n");
 }
 
 #[test]

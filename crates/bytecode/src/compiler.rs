@@ -229,23 +229,53 @@ impl<'a> FunctionCompiler<'a> {
                 Ok(())
             }
             Stmt::While { cond, body, span } => {
+                let mut iteration_source = None;
+                if body_has_closure(std::slice::from_ref(body)) {
+                    let mut bindings = Vec::new();
+                    collect_iteration_locals(body, &mut bindings);
+                    if !bindings.is_empty() {
+                        let count = bindings.len();
+                        self.emit(Op::IterationBegin, *span);
+                        self.emit_u8_raw(count, *span);
+                        for _ in 0..count {
+                            self.emit_u16_raw(u16::MAX, *span);
+                        }
+                        self.iterations.push(IterationScope { bindings });
+                        iteration_source = Some(count);
+                    }
+                }
                 let loop_start = self.code.len();
                 self.compile_expr(cond)?;
                 let end_jump = self.emit_jump(Op::JumpIfFalse, *span);
                 self.loops.push(LoopContext {
                     break_patches: Vec::new(),
                     continue_patches: Vec::new(),
-                    continue_target: Some(loop_start),
+                    continue_target: None,
                 });
                 self.compile_stmt(body)?;
+                let fork_start = self.code.len();
+                if let Some(count) = iteration_source {
+                    self.emit(Op::IterationNext, *span);
+                    self.emit_u8_raw(count, *span);
+                }
                 let context = self.loops.pop().expect("loop context");
+                let continue_target = if iteration_source.is_some() {
+                    fork_start
+                } else {
+                    loop_start
+                };
                 for patch in context.continue_patches {
-                    self.patch_jump(patch, loop_start);
+                    self.patch_jump(patch, continue_target);
                 }
                 self.emit_jump_back(Op::Jump, loop_start, *span);
-                self.patch_jump(end_jump, self.code.len());
+                let cleanup = self.code.len();
+                if iteration_source.is_some() {
+                    self.emit(Op::IterationEnd, *span);
+                    self.iterations.pop();
+                }
+                self.patch_jump(end_jump, cleanup);
                 for patch in context.break_patches {
-                    self.patch_jump(patch, self.code.len());
+                    self.patch_jump(patch, cleanup);
                 }
                 Ok(())
             }

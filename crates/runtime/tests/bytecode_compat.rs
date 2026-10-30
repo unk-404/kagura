@@ -38,6 +38,8 @@ const PROTOTYPE_CHAIN: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/prototype_chain.kbc");
 const BUILTINS_HOLES: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/builtins_holes.kbc");
+const WHILE_CLOSURES: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/while_closures.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -254,4 +256,12 @@ fn executes_v1_hole_builtin_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(BUILTINS_HOLES, &mut host).unwrap();
     assert_eq!(host.output(), "2,,6\n1,3\n2\nfalse\n-1\ntrue\n4\n");
+}
+
+#[test]
+fn executes_v1_while_closure_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(WHILE_CLOSURES, &mut host).unwrap();
+    assert_eq!(host.output(), "0\n1\n");
 }
