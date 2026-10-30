@@ -68,6 +68,7 @@ pub struct Interpreter<'a> {
     heap: &'a mut Heap,
     objects: &'a mut ObjectHeap,
     shapes: &'a mut ShapeTable,
+    external_roots: &'a [Value],
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     builtin_cache: FastHashMap<String, Value>,
@@ -89,6 +90,7 @@ impl<'a> Interpreter<'a> {
         heap: &'a mut Heap,
         objects: &'a mut ObjectHeap,
         shapes: &'a mut ShapeTable,
+        external_roots: &'a [Value],
         host: &'a mut dyn Host,
         step_limit: u64,
     ) -> Self {
@@ -97,6 +99,7 @@ impl<'a> Interpreter<'a> {
             heap,
             objects,
             shapes,
+            external_roots,
             host,
             host_cache: vec![None; module.constants.len()],
             builtin_cache: FastHashMap::default(),
@@ -1350,10 +1353,12 @@ impl<'a> Interpreter<'a> {
                     self.safepoint_stats.last = Some(descriptor.clone());
                     if self.objects.live_bytes() >= GC_THRESHOLD {
                         let mut roots = Vec::with_capacity(
-                            caller_roots.len()
+                            self.external_roots.len()
+                                + caller_roots.len()
                                 + descriptor.local_count as usize
                                 + descriptor.operand_depth as usize,
                         );
+                        roots.extend_from_slice(self.external_roots);
                         roots.extend_from_slice(caller_roots);
                         for (value, is_defined) in locals
                             .iter()

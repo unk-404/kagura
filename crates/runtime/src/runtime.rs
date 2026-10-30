@@ -6,11 +6,13 @@ use kagura_value::{Heap, Value};
 use tracing::instrument;
 
 use crate::error::RunError;
+use crate::handles::{Handle, HandleTable};
 
 pub struct Runtime {
     heap: Heap,
     objects: ObjectHeap,
     shapes: ShapeTable,
+    handles: HandleTable,
     step_limit: u64,
     last_property_ic: (u64, u64),
     last_safepoints: SafepointStats,
@@ -28,6 +30,7 @@ impl Runtime {
             heap: Heap::new(heap_capacity),
             objects: ObjectHeap::new(heap_capacity),
             shapes: ShapeTable::new(),
+            handles: HandleTable::new(),
             step_limit: 1_000_000,
             last_property_ic: (0, 0),
             last_safepoints: SafepointStats::default(),
@@ -44,6 +47,30 @@ impl Runtime {
 
     pub fn safepoint_stats(&self) -> &SafepointStats {
         &self.last_safepoints
+    }
+
+    pub fn create_handle(&mut self, value: Value) -> Handle {
+        self.handles.create(value)
+    }
+
+    pub fn drop_handle(&mut self, handle: Handle) -> Option<Value> {
+        self.handles.drop_handle(handle)
+    }
+
+    pub fn handle_value(&self, handle: Handle) -> Option<Value> {
+        self.handles.get(handle)
+    }
+
+    pub fn handle_count(&self) -> usize {
+        self.handles.len()
+    }
+
+    /// Allocates a plain object owned by the embedder, not by a script.
+    pub fn allocate_object(&mut self) -> Option<Value> {
+        self.objects
+            .allocate(self.shapes.root())
+            .ok()
+            .map(ObjectHeap::value)
     }
 
     pub fn heap_used(&self) -> usize {
@@ -67,7 +94,9 @@ impl Runtime {
     }
 
     pub fn collect_garbage(&mut self, roots: &[Value]) -> GcStats {
-        self.objects.collect(roots)
+        let mut all_roots = roots.to_vec();
+        all_roots.extend(self.handles.roots());
+        self.objects.collect(&all_roots)
     }
 
     #[instrument(skip(self, source, host), fields(bytes = source.len()))]
@@ -85,12 +114,14 @@ impl Runtime {
 
     #[instrument(skip(self, module, host), fields(version = module.version))]
     pub fn run_module(&mut self, module: &Module, host: &mut dyn Host) -> Result<Value, RunError> {
+        let external_roots: Vec<Value> = self.handles.roots().collect();
         let (value, property_ic, safepoints) = {
             let mut interpreter = Interpreter::new(
                 module,
                 &mut self.heap,
                 &mut self.objects,
                 &mut self.shapes,
+                &external_roots,
                 host,
                 self.step_limit,
             );
@@ -103,7 +134,9 @@ impl Runtime {
         };
         self.last_property_ic = property_ic;
         self.last_safepoints = safepoints;
-        self.objects.collect(&[value]);
+        let mut roots = vec![value];
+        roots.extend(self.handles.roots());
+        self.objects.collect(&roots);
         #[cfg(feature = "debug")]
         tracing::debug!(
             heap_used = self.heap.used(),

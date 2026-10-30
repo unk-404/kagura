@@ -1290,6 +1290,27 @@ fn records_interpreter_safepoints() {
 }
 
 #[test]
+fn handle_table_roots_survive_gc() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::new(64 * 1024);
+    let value = runtime.allocate_object().expect("plain object");
+    assert!(value.is_object());
+    let handle = runtime.create_handle(value);
+    runtime
+        .run(
+            "for (let i = 0; i < 2000; i = i + 1) { let o = { x: i }; }",
+            &mut host,
+        )
+        .unwrap();
+    assert!(runtime.object_live_bytes() > 0);
+    assert!(runtime.handle_value(handle).is_some());
+    assert!(runtime.drop_handle(handle).is_some());
+    let stats = runtime.collect_garbage(&[]);
+    assert_eq!(stats.live_bytes_after, 0);
+    assert_eq!(runtime.handle_count(), 0);
+}
+
+#[test]
 fn gc_keeps_caller_roots_alive() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::new(64 * 1024);
