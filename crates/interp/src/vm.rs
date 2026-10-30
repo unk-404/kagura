@@ -1,6 +1,7 @@
 use kagura_bytecode::{Const, Module, Op};
 use kagura_object::{
     ObjectHeap, ObjectId, PropertyAttributes, PropertyKey, PropertyLocation, ShapeTable,
+    own_property_keys,
 };
 use kagura_support::Span;
 use kagura_value::{Heap, Value};
@@ -646,8 +647,15 @@ impl<'a> Interpreter<'a> {
                         args.push(pop(&mut stack, span)?);
                     }
                     args.reverse();
-                    let id = self.resolve_host(&path, index as usize, span)?;
-                    let value = match self.invoke_host(id, &args, span) {
+                    let dispatched = match self.resolve_host(&path, index as usize, span) {
+                        Ok(id) => self.invoke_host(id, &args, span),
+                        Err(host_error) => match self.call_global(&path, &args, span) {
+                            Ok(Some(value)) => Ok(value),
+                            Ok(None) => Err(host_error),
+                            Err(error) => Err(error),
+                        },
+                    };
+                    let value = match dispatched {
                         Ok(value) => value,
                         Err(error) => {
                             let catch_pc = self.catch_error(&mut handlers, &mut stack, error)?;
@@ -863,6 +871,117 @@ impl<'a> Interpreter<'a> {
         self.host
             .invoke(id, &mut call)
             .map_err(|error| RuntimeError::runtime(error.message, span))
+    }
+
+    fn call_global(
+        &mut self,
+        path: &str,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let mode = match path {
+            "Object.keys" => 0,
+            "Object.values" => 1,
+            "Object.entries" => 2,
+            _ => return Ok(None),
+        };
+        let Some(target) = args.first().copied() else {
+            return Err(RuntimeError::type_error(
+                "Object method requires an argument",
+                span,
+            ));
+        };
+        let mut pairs = Vec::new();
+        if let Some(text) = self.heap.as_str(target).map(|text| text.to_owned()) {
+            for (index, ch) in text.chars().enumerate() {
+                pairs.push((index.to_string(), self.heap.string(&ch.to_string())));
+            }
+        } else {
+            let object = self.object_id(target, span)?;
+            if self
+                .objects
+                .is_array(object)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                let length = self
+                    .objects
+                    .array_length(object)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                for index in 0..length {
+                    if !self
+                        .objects
+                        .array_has(object, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        continue;
+                    }
+                    let value = self
+                        .objects
+                        .array_get(object, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    pairs.push((index.to_string(), value));
+                }
+            } else {
+                let shape = self
+                    .objects
+                    .shape(object)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let keys = own_property_keys(self.shapes, shape)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                for key in keys {
+                    let descriptor = self
+                        .shapes
+                        .lookup(shape, &key)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if !descriptor.is_some_and(|descriptor| descriptor.attributes.enumerable) {
+                        continue;
+                    }
+                    let key_string = match &key {
+                        PropertyKey::Index(index) => index.to_string(),
+                        PropertyKey::String(key) => key.clone(),
+                        PropertyKey::Symbol(_) => continue,
+                    };
+                    let value = self.get_property(target, &key_string, span)?;
+                    pairs.push((key_string, value));
+                }
+            }
+        }
+        let result = self
+            .objects
+            .allocate_array(self.shapes.root())
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        for (key, value) in pairs {
+            match mode {
+                0 => {
+                    let key = self.heap.string(&key);
+                    self.objects
+                        .array_push(result, key)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                1 => {
+                    self.objects
+                        .array_push(result, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                _ => {
+                    let entry = self
+                        .objects
+                        .allocate_array(self.shapes.root())
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let key = self.heap.string(&key);
+                    self.objects
+                        .array_push(entry, key)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    self.objects
+                        .array_push(entry, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    self.objects
+                        .array_push(result, Value::object(entry.index()))
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+            }
+        }
+        Ok(Some(Value::object(result.index())))
     }
 
     fn invoke_callable(
