@@ -81,6 +81,13 @@ impl<'a> Interpreter<'a> {
         span: Span,
     ) -> Result<(), RuntimeError> {
         let id = self.object_id(object, span)?;
+        if self
+            .objects
+            .is_frozen(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Ok(());
+        }
         if key == "length"
             && self
                 .objects

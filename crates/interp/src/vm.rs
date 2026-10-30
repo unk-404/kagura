@@ -780,6 +780,14 @@ impl<'a> Interpreter<'a> {
                     let index = pop(&mut stack, span)?;
                     let object = pop(&mut stack, span)?;
                     let id = try_op!(self.object_id(object, span));
+                    if try_op!(
+                        self.objects
+                            .is_frozen(id)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+                    ) {
+                        push(&mut stack, value, span)?;
+                        continue;
+                    }
                     let index = try_op!(self.index_value(index, span));
                     try_op!(
                         self.objects

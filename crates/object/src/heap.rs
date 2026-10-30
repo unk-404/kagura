@@ -21,6 +21,7 @@ const FLAG_ARRAY: u32 = 1;
 const FLAG_MARK: u32 = 2;
 const FLAG_FUNCTION: u32 = 4;
 const FLAG_BOUND: u32 = 8;
+const FLAG_FROZEN: u32 = 16;
 const NO_BLOCK: u32 = u32::MAX;
 const MIN_ARRAY_CAPACITY: u32 = 4;
 
@@ -183,6 +184,23 @@ impl ObjectHeap {
             self.get_slot(object, 3)?,
             self.get_slot(object, 4)?,
         ))
+    }
+
+    pub fn mark_frozen(&mut self, object: ObjectId) -> Result<(), ObjectHeapError> {
+        let flags = read_u32(&self.arena, object.index() + FLAGS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        write_u32(
+            &mut self.arena,
+            object.index() + FLAGS_OFFSET,
+            flags | FLAG_FROZEN,
+        );
+        Ok(())
+    }
+
+    pub fn is_frozen(&self, object: ObjectId) -> Result<bool, ObjectHeapError> {
+        let flags = read_u32(&self.arena, object.index() + FLAGS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        Ok(flags & FLAG_FROZEN != 0)
     }
 
     pub fn shape(&self, object: ObjectId) -> Result<ShapeId, ObjectHeapError> {

@@ -59,6 +59,7 @@ const FUNCTION_CALL_APPLY: &str = include_str!("../../../examples/function_call_
 const FUNCTION_BIND: &str = include_str!("../../../examples/function_bind.ts");
 const PROPERTY_DESCRIPTOR: &str = include_str!("../../../examples/property_descriptor.ts");
 const OBJECT_FREEZE: &str = include_str!("../../../examples/object_freeze.ts");
+const ARRAY_FREEZE: &str = include_str!("../../../examples/array_freeze.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -589,6 +590,14 @@ fn freezes_objects_and_enforces_writable() {
     let mut runtime = Runtime::default();
     runtime.run(OBJECT_FREEZE, &mut host).unwrap();
     assert_eq!(host.output(), "1\nundefined\ntrue\nfalse\n");
+}
+
+#[test]
+fn freezes_arrays_and_ignores_mutation() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARRAY_FREEZE, &mut host).unwrap();
+    assert_eq!(host.output(), "1,2\n2\ntrue\n");
 }
 
 #[test]

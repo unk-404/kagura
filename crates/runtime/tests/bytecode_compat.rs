@@ -69,6 +69,7 @@ const PROPERTY_DESCRIPTOR: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/property_descriptor.kbc");
 const OBJECT_FREEZE: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/object_freeze.kbc");
+const ARRAY_FREEZE: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/array_freeze.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -441,4 +442,12 @@ fn executes_v1_object_freeze_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(OBJECT_FREEZE, &mut host).unwrap();
     assert_eq!(host.output(), "1\nundefined\ntrue\nfalse\n");
+}
+
+#[test]
+fn executes_v1_array_freeze_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(ARRAY_FREEZE, &mut host).unwrap();
+    assert_eq!(host.output(), "1,2\n2\ntrue\n");
 }

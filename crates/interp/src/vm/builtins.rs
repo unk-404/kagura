@@ -375,6 +375,16 @@ impl<'a> Interpreter<'a> {
 
     fn freeze_object(&mut self, target: Value, span: Span) -> Result<(), RuntimeError> {
         let target_id = self.object_id(target, span)?;
+        if self
+            .objects
+            .is_array(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return self
+                .objects
+                .mark_frozen(target_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+        }
         let mut shape = self
             .objects
             .shape(target_id)
@@ -410,11 +420,21 @@ impl<'a> Interpreter<'a> {
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         self.objects
             .set_shape(target_id, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        self.objects
+            .mark_frozen(target_id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))
     }
 
     fn is_frozen(&mut self, target: Value, span: Span) -> Result<bool, RuntimeError> {
         let target_id = self.object_id(target, span)?;
+        if self
+            .objects
+            .is_frozen(target_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Ok(true);
+        }
         let shape = self
             .objects
             .shape(target_id)
@@ -1016,10 +1036,16 @@ impl<'a> Interpreter<'a> {
         }
         Ok(Some(match key {
             "push" => {
-                for value in args {
-                    self.objects
-                        .array_push(object_id, *value)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let frozen = self
+                    .objects
+                    .is_frozen(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                if !frozen {
+                    for value in args {
+                        self.objects
+                            .array_push(object_id, *value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
                 }
                 let length = self
                     .objects
@@ -1027,10 +1053,19 @@ impl<'a> Interpreter<'a> {
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 self.heap.number(length as f64)
             }
-            "pop" => self
-                .objects
-                .array_pop(object_id)
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+            "pop" => {
+                if self
+                    .objects
+                    .is_frozen(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                {
+                    Value::undefined()
+                } else {
+                    self.objects
+                        .array_pop(object_id)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                }
+            }
             "join" => {
                 let separator = args
                     .first()
@@ -1129,6 +1164,13 @@ impl<'a> Interpreter<'a> {
                 Value::object(array.index())
             }
             "reverse" => {
+                if self
+                    .objects
+                    .is_frozen(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                {
+                    return Ok(Some(Value::object(object_id.index())));
+                }
                 let length = self
                     .objects
                     .array_length(object_id)
@@ -1230,6 +1272,13 @@ impl<'a> Interpreter<'a> {
                 Value::object(array.index())
             }
             "sort" => {
+                if self
+                    .objects
+                    .is_frozen(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                {
+                    return Ok(Some(Value::object(object_id.index())));
+                }
                 let length = self
                     .objects
                     .array_length(object_id)
