@@ -13,6 +13,13 @@ const MAX_CALL_DEPTH: usize = 256;
 const MAX_STACK: usize = 4096;
 const GC_THRESHOLD: u32 = 32 * 1024;
 
+struct FrameContext<'a> {
+    caller_roots: &'a [Value],
+    env: Option<ObjectId>,
+    closure_env: Option<ObjectId>,
+    self_value: Option<Value>,
+}
+
 pub struct Interpreter<'a> {
     module: &'a Module,
     heap: &'a mut Heap,
@@ -45,7 +52,7 @@ impl<'a> Interpreter<'a> {
     #[instrument(skip(self), fields(entry = self.module.entry))]
     pub fn run(&mut self) -> Result<Value, RuntimeError> {
         let entry = self.module.entry;
-        self.call(entry, &[], &[])
+        self.call(entry, &[], &[], None, None)
     }
 
     #[instrument(skip(self, args, caller_roots), fields(function = index, argc = args.len()))]
@@ -54,6 +61,8 @@ impl<'a> Interpreter<'a> {
         index: usize,
         args: &[Value],
         caller_roots: &[Value],
+        closure_env: Option<ObjectId>,
+        self_value: Option<Value>,
     ) -> Result<Value, RuntimeError> {
         if self.depth >= MAX_CALL_DEPTH {
             return Err(RuntimeError::range(
@@ -76,8 +85,50 @@ impl<'a> Interpreter<'a> {
         }
         defined[..function.param_count as usize].fill(true);
 
+        let env = if function.uses_env {
+            let env = self
+                .objects
+                .allocate_array(self.shapes.root())
+                .map_err(|error| RuntimeError::runtime(error.to_string(), Span::empty(0)))?;
+            for (slot, value) in locals.iter().enumerate() {
+                self.objects
+                    .array_push(env, *value)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), Span::empty(0)))?;
+                let _ = slot;
+            }
+            let parent = closure_env
+                .map(|parent| Value::object(parent.index()))
+                .unwrap_or_else(Value::undefined);
+            self.objects
+                .array_push(env, parent)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), Span::empty(0)))?;
+            Some(env)
+        } else {
+            None
+        };
+        if let (Some(slot), Some(value)) = (function.self_slot, self_value) {
+            let slot = slot as usize;
+            if slot < locals.len() {
+                locals[slot] = value;
+                defined[slot] = true;
+                if let Some(env) = env {
+                    self.objects
+                        .array_set(env, slot as u32, value)
+                        .map_err(|error| {
+                            RuntimeError::runtime(error.to_string(), Span::empty(0))
+                        })?;
+                }
+            }
+        }
+
         self.depth += 1;
-        let result = self.execute(index, &function, &mut locals, &mut defined, caller_roots);
+        let frame = FrameContext {
+            caller_roots,
+            env,
+            closure_env,
+            self_value,
+        };
+        let result = self.execute(index, &function, &mut locals, &mut defined, &frame);
         self.depth -= 1;
         result
     }
@@ -88,8 +139,12 @@ impl<'a> Interpreter<'a> {
         function: &kagura_bytecode::FunctionProto,
         locals: &mut [Value],
         defined: &mut [bool],
-        caller_roots: &[Value],
+        frame: &FrameContext<'_>,
     ) -> Result<Value, RuntimeError> {
+        let caller_roots = frame.caller_roots;
+        let env = frame.env;
+        let closure_env = frame.closure_env;
+        let self_value = frame.self_value;
         let mut stack: Vec<Value> = Vec::new();
         let mut pc = 0usize;
         loop {
@@ -140,7 +195,14 @@ impl<'a> Interpreter<'a> {
                             span,
                         ));
                     }
-                    push(&mut stack, locals[slot], span)?;
+                    let value = match env {
+                        Some(env) => self
+                            .objects
+                            .array_get(env, slot as u32)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+                        None => locals[slot],
+                    };
+                    push(&mut stack, value, span)?;
                 }
                 Op::StoreLocal => {
                     let slot = read_u16(&function.code, &mut pc, span)? as usize;
@@ -148,6 +210,11 @@ impl<'a> Interpreter<'a> {
                         return Err(RuntimeError::reference("invalid local slot", span));
                     }
                     let value = pop(&mut stack, span)?;
+                    if let Some(env) = env {
+                        self.objects
+                            .array_set(env, slot as u32, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
                     locals[slot] = value;
                     defined[slot] = true;
                 }
@@ -219,6 +286,14 @@ impl<'a> Interpreter<'a> {
                         "number"
                     } else if value.is_string() {
                         "string"
+                    } else if value.is_object()
+                        && value
+                            .object_offset()
+                            .map(ObjectId::new)
+                            .and_then(|object| self.objects.is_function(object).ok())
+                            .unwrap_or(false)
+                    {
+                        "function"
                     } else {
                         "object"
                     };
@@ -259,6 +334,31 @@ impl<'a> Interpreter<'a> {
                         pc = target;
                     }
                 }
+                Op::LoadCapture => {
+                    let level = read_u16(&function.code, &mut pc, span)?;
+                    let slot = read_u16(&function.code, &mut pc, span)?;
+                    let env = closure_env.ok_or_else(|| {
+                        RuntimeError::reference("capture used without a closure", span)
+                    })?;
+                    let env = self.capture_env(env, level, span)?;
+                    let value = self
+                        .objects
+                        .array_get(env, slot as u32)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    push(&mut stack, value, span)?;
+                }
+                Op::StoreCapture => {
+                    let level = read_u16(&function.code, &mut pc, span)?;
+                    let slot = read_u16(&function.code, &mut pc, span)?;
+                    let env = closure_env.ok_or_else(|| {
+                        RuntimeError::reference("capture used without a closure", span)
+                    })?;
+                    let env = self.capture_env(env, level, span)?;
+                    let value = pop(&mut stack, span)?;
+                    self.objects
+                        .array_set(env, slot as u32, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
                 Op::CallName => {
                     let index = read_u32(&function.code, &mut pc, span)?;
                     let argc = read_u8(&function.code, &mut pc, span)? as usize;
@@ -278,7 +378,7 @@ impl<'a> Interpreter<'a> {
                     }
                     args.reverse();
                     let mut roots =
-                        Vec::with_capacity(caller_roots.len() + locals.len() + stack.len());
+                        Vec::with_capacity(caller_roots.len() + locals.len() + stack.len() + 2);
                     roots.extend_from_slice(caller_roots);
                     for (value, is_defined) in locals.iter().zip(defined.iter()) {
                         if *is_defined {
@@ -286,7 +386,64 @@ impl<'a> Interpreter<'a> {
                         }
                     }
                     roots.extend_from_slice(&stack);
+                    if let Some(env) = env {
+                        roots.push(Value::object(env.index()));
+                    }
+                    if let Some(closure_env) = closure_env {
+                        roots.push(Value::object(closure_env.index()));
+                    }
                     let value = self.call_name(&name, index as usize, &args, span, &roots)?;
+                    push(&mut stack, value, span)?;
+                }
+                Op::NewClosure => {
+                    let function = read_u32(&function.code, &mut pc, span)?;
+                    let env = env.ok_or_else(|| {
+                        RuntimeError::runtime("closure created without an environment", span)
+                    })?;
+                    let object = self
+                        .objects
+                        .allocate_function(self.shapes.root(), function, Value::object(env.index()))
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    push(&mut stack, Value::object(object.index()), span)?;
+                }
+                Op::CallValue => {
+                    let argc = read_u8(&function.code, &mut pc, span)? as usize;
+                    let mut args = Vec::with_capacity(argc);
+                    for _ in 0..argc {
+                        args.push(pop(&mut stack, span)?);
+                    }
+                    args.reverse();
+                    let callee = pop(&mut stack, span)?;
+                    let object = self.object_id(callee, span)?;
+                    if !self
+                        .objects
+                        .is_function(object)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    {
+                        return Err(RuntimeError::type_error("value is not callable", span));
+                    }
+                    let (function, env_value) = self
+                        .objects
+                        .function_data(object)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let closure_env = env_value.object_offset().map(ObjectId::new);
+                    let mut roots =
+                        Vec::with_capacity(caller_roots.len() + locals.len() + stack.len() + 2);
+                    roots.extend_from_slice(caller_roots);
+                    for (value, is_defined) in locals.iter().zip(defined.iter()) {
+                        if *is_defined {
+                            roots.push(*value);
+                        }
+                    }
+                    roots.extend_from_slice(&stack);
+                    if let Some(env) = env {
+                        roots.push(Value::object(env.index()));
+                    }
+                    if let Some(closure_env) = closure_env {
+                        roots.push(Value::object(closure_env.index()));
+                    }
+                    let value =
+                        self.call(function as usize, &args, &roots, closure_env, Some(callee))?;
                     push(&mut stack, value, span)?;
                 }
                 Op::CallHost => {
@@ -432,6 +589,15 @@ impl<'a> Interpreter<'a> {
                             }
                         }
                         roots.extend_from_slice(&stack);
+                        if let Some(env) = env {
+                            roots.push(Value::object(env.index()));
+                        }
+                        if let Some(closure_env) = closure_env {
+                            roots.push(Value::object(closure_env.index()));
+                        }
+                        if let Some(self_value) = self_value {
+                            roots.push(self_value);
+                        }
                         self.objects.collect(&roots);
                     }
                 }
@@ -460,7 +626,7 @@ impl<'a> Interpreter<'a> {
         caller_roots: &[Value],
     ) -> Result<Value, RuntimeError> {
         if let Some(function) = self.module.find_function(name) {
-            return self.call(function, args, caller_roots);
+            return self.call(function, args, caller_roots, None, None);
         }
         let id = self.resolve_host(name, index, span)?;
         self.invoke_host(id, args, span)
@@ -495,6 +661,32 @@ impl<'a> Interpreter<'a> {
         self.host
             .invoke(id, &mut call)
             .map_err(|error| RuntimeError::runtime(error.message, span))
+    }
+
+    fn capture_env(
+        &mut self,
+        mut env: ObjectId,
+        level: u16,
+        span: Span,
+    ) -> Result<ObjectId, RuntimeError> {
+        if level == 0 {
+            return Err(RuntimeError::reference("invalid capture level", span));
+        }
+        for _ in 1..level {
+            let length = self
+                .objects
+                .array_length(env)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if length == 0 {
+                return Err(RuntimeError::reference("broken closure environment", span));
+            }
+            let parent = self
+                .objects
+                .array_get(env, length - 1)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            env = self.object_id(parent, span)?;
+        }
+        Ok(env)
     }
 
     fn object_id(&self, value: Value, span: Span) -> Result<ObjectId, RuntimeError> {

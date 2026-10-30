@@ -41,6 +41,10 @@ pub enum Op {
     LoadHole = 37,
     In = 38,
     TypeOf = 39,
+    NewClosure = 40,
+    CallValue = 41,
+    LoadCapture = 42,
+    StoreCapture = 43,
 }
 
 impl Op {
@@ -86,6 +90,10 @@ impl Op {
             37 => Self::LoadHole,
             38 => Self::In,
             39 => Self::TypeOf,
+            40 => Self::NewClosure,
+            41 => Self::CallValue,
+            42 => Self::LoadCapture,
+            43 => Self::StoreCapture,
             _ => return None,
         })
     }

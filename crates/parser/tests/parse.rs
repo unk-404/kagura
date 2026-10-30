@@ -65,6 +65,32 @@ fn rejects_lexical_declaration_in_statement_position() {
 }
 
 #[test]
+fn parses_function_expressions_and_arrows() {
+    let program =
+        parse("let f = function (a) { return a; }; let g = (a, b) => a + b; let h = x => x;")
+            .unwrap();
+    assert_eq!(program.body.len(), 3);
+    let kagura_ast::Stmt::Var(f) = &program.body[0] else {
+        panic!("expected variable declaration");
+    };
+    assert!(matches!(f.init, Some(kagura_ast::Expr::Function { .. })));
+    let kagura_ast::Stmt::Var(g) = &program.body[1] else {
+        panic!("expected variable declaration");
+    };
+    assert!(matches!(g.init, Some(kagura_ast::Expr::Arrow { .. })));
+    let kagura_ast::Stmt::Var(h) = &program.body[2] else {
+        panic!("expected variable declaration");
+    };
+    assert!(matches!(h.init, Some(kagura_ast::Expr::Arrow { .. })));
+}
+
+#[test]
+fn parenthesized_expression_is_not_an_arrow() {
+    let program = parse("let value = (1 + 2) * 3;").unwrap();
+    assert_eq!(program.body.len(), 1);
+}
+
+#[test]
 fn parses_array_holes() {
     let program = parse("let values = [1, , 3];").unwrap();
     let kagura_ast::Stmt::Var(decl) = &program.body[0] else {

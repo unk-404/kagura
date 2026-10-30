@@ -13,6 +13,18 @@ const ARRAYS_HOLES: &str = include_str!("../../../examples/arrays_holes.ts");
 const ARRAYS_IN: &str = include_str!("../../../examples/arrays_in.ts");
 const TYPEOF: &str = include_str!("../../../examples/typeof.ts");
 const VOID: &str = include_str!("../../../examples/void.ts");
+const FUNCTIONS: &str = include_str!("../../../examples/functions.ts");
+const CLOSURES: &str = include_str!("../../../examples/closures.ts");
+const CLOSURES_MUTABLE: &str = include_str!("../../../examples/closures_mutable.ts");
+const CLOSURES_NESTED: &str = include_str!("../../../examples/closures_nested.ts");
+const CLOSURES_DECL: &str = include_str!("../../../examples/closures_decl.ts");
+const CLOSURES_METHOD: &str = include_str!("../../../examples/closures_method.ts");
+const CLOSURES_GC: &str = include_str!("../../../examples/closures_gc.ts");
+const CLOSURES_SHARED: &str = include_str!("../../../examples/closures_shared.ts");
+const HOISTING: &str = include_str!("../../../examples/hoisting.ts");
+const HIGHER_ORDER: &str = include_str!("../../../examples/higher_order.ts");
+const TOP_CLOSURE: &str = include_str!("../../../examples/top_closure.ts");
+const NAMED_FUNCTION: &str = include_str!("../../../examples/named_function.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -103,6 +115,102 @@ fn runs_void_operator() {
     let mut runtime = Runtime::default();
     runtime.run(VOID, &mut host).unwrap();
     assert_eq!(host.output(), "undefined\nundefined\nundefined\n");
+}
+
+#[test]
+fn runs_function_expressions_and_arrows() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(FUNCTIONS, &mut host).unwrap();
+    assert_eq!(host.output(), "5\n12\n6\n");
+}
+
+#[test]
+fn runs_closures() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(CLOSURES, &mut host).unwrap();
+    assert_eq!(host.output(), "8\n");
+}
+
+#[test]
+fn runs_mutable_closures() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(CLOSURES_MUTABLE, &mut host).unwrap();
+    assert_eq!(host.output(), "1\n2\n");
+}
+
+#[test]
+fn runs_nested_closures() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(CLOSURES_NESTED, &mut host).unwrap();
+    assert_eq!(host.output(), "6\n");
+}
+
+#[test]
+fn runs_nested_function_declarations() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(CLOSURES_DECL, &mut host).unwrap();
+    assert_eq!(host.output(), "12\n");
+}
+
+#[test]
+fn runs_function_valued_properties() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(CLOSURES_METHOD, &mut host).unwrap();
+    assert_eq!(host.output(), "8\n");
+}
+
+#[test]
+fn keeps_closure_environments_alive_during_gc() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::new(64 * 1024);
+    runtime.run(CLOSURES_GC, &mut host).unwrap();
+    assert_eq!(host.output(), "function\n7\n");
+}
+
+#[test]
+fn closures_share_one_environment() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(CLOSURES_SHARED, &mut host).unwrap();
+    assert_eq!(host.output(), "1\n11\n");
+}
+
+#[test]
+fn hoists_functions_and_captures_later_bindings() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(HOISTING, &mut host).unwrap();
+    assert_eq!(host.output(), "7\n9\n");
+}
+
+#[test]
+fn passes_functions_and_returns_closures() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(HIGHER_ORDER, &mut host).unwrap();
+    assert_eq!(host.output(), "12\n11\n");
+}
+
+#[test]
+fn captures_top_level_script_bindings() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(TOP_CLOSURE, &mut host).unwrap();
+    assert_eq!(host.output(), "9\n");
+}
+
+#[test]
+fn named_function_expression_is_recursive() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(NAMED_FUNCTION, &mut host).unwrap();
+    assert_eq!(host.output(), "120\n");
 }
 
 #[test]

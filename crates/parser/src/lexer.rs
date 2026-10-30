@@ -97,6 +97,7 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
             bytes.get(pos + 1).copied(),
             bytes.get(pos + 2).copied(),
         ) {
+            (b'=', Some(b'>'), _) => (TokenKind::Arrow, 2),
             (b'=', Some(b'='), Some(b'=')) => (TokenKind::StrictEq, 3),
             (b'!', Some(b'='), Some(b'=')) => (TokenKind::StrictNotEq, 3),
             (b'=', Some(b'='), _) => (TokenKind::EqEq, 2),

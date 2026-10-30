@@ -1,6 +1,6 @@
 use kagura_ast::{
-    AssignTarget, BinaryOp, Expr, ForInit, FuncDecl, ObjectProperty, Param, Program, Stmt, TypeAnn,
-    UnaryOp, VarDecl, VarKind,
+    ArrowBody, AssignTarget, BinaryOp, Expr, ForInit, FuncDecl, ObjectProperty, Param, Program,
+    Stmt, TypeAnn, UnaryOp, VarDecl, VarKind,
 };
 use kagura_support::Span;
 use tracing::instrument;
@@ -109,6 +109,93 @@ impl Parser {
             init,
             span: start.merge(end),
         })
+    }
+
+    fn parse_params(&mut self, opener: &str) -> Result<Vec<Param>, ParseError> {
+        self.expect(&TokenKind::LParen, opener)?;
+        let mut params = Vec::new();
+        if !self.at(&TokenKind::RParen) {
+            loop {
+                let param_token = self.expect_ident("expected parameter name")?;
+                let param_name = match param_token.kind {
+                    TokenKind::Ident(name) => name,
+                    _ => unreachable!(),
+                };
+                let ty = if self.eat(&TokenKind::Colon) {
+                    Some(self.parse_type()?)
+                } else {
+                    None
+                };
+                params.push(Param {
+                    name: param_name,
+                    ty,
+                    span: param_token.span,
+                });
+                if !self.eat(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.expect(&TokenKind::RParen, "expected ')' after parameters")?;
+        Ok(params)
+    }
+
+    fn parse_function_expr(&mut self) -> Result<Expr, ParseError> {
+        let start = self.advance().span;
+        let name = if let TokenKind::Ident(name) = self.peek().kind.clone() {
+            self.advance();
+            Some(name)
+        } else {
+            None
+        };
+        let params = self.parse_params("expected '(' after function")?;
+        if self.eat(&TokenKind::Colon) {
+            self.parse_type()?;
+        }
+        let body_start = self.peek().span;
+        let body = self.parse_block()?;
+        let end = body_start.merge(
+            body.last()
+                .map(Stmt::span)
+                .unwrap_or_else(|| Span::empty(body_start.start)),
+        );
+        Ok(Expr::Function {
+            name,
+            params,
+            body,
+            span: start.merge(end),
+        })
+    }
+
+    fn parse_arrow_body(&mut self) -> Result<ArrowBody, ParseError> {
+        if self.at(&TokenKind::LBrace) {
+            Ok(ArrowBody::Block(self.parse_block()?))
+        } else {
+            Ok(ArrowBody::Expr(Box::new(self.parse_expr()?)))
+        }
+    }
+
+    fn try_parse_parenthesized_arrow(&mut self) -> Result<Option<Expr>, ParseError> {
+        let save = self.pos;
+        let start = self.peek().span;
+        let params = match self.parse_params("expected '(' after arrow parameters") {
+            Ok(params) => params,
+            Err(_) => {
+                self.pos = save;
+                return Ok(None);
+            }
+        };
+        if !self.eat(&TokenKind::Arrow) {
+            self.pos = save;
+            return Ok(None);
+        }
+        let body = self.parse_arrow_body()?;
+        let end = body_span(&body);
+        Ok(Some(Expr::Arrow {
+            params,
+            body,
+            span: start.merge(end),
+        }))
     }
 
     fn parse_func_decl(&mut self) -> Result<FuncDecl, ParseError> {
@@ -592,12 +679,29 @@ impl Parser {
             }
             TokenKind::Ident(name) => {
                 self.advance();
+                if self.eat(&TokenKind::Arrow) {
+                    let body = self.parse_arrow_body()?;
+                    let end = body_span(&body);
+                    return Ok(Expr::Arrow {
+                        params: vec![Param {
+                            name,
+                            ty: None,
+                            span: token.span,
+                        }],
+                        body,
+                        span: token.span.merge(end),
+                    });
+                }
                 Ok(Expr::Ident {
                     name,
                     span: token.span,
                 })
             }
+            TokenKind::Function => self.parse_function_expr(),
             TokenKind::LParen => {
+                if let Some(arrow) = self.try_parse_parenthesized_arrow()? {
+                    return Ok(arrow);
+                }
                 let start = self.advance().span;
                 let expr = self.parse_expr()?;
                 let end = self.expect(&TokenKind::RParen, "expected ')' after expression")?;
@@ -741,5 +845,15 @@ impl Parser {
             self.pos += 1;
         }
         token
+    }
+}
+
+fn body_span(body: &ArrowBody) -> Span {
+    match body {
+        ArrowBody::Expr(expr) => expr.span(),
+        ArrowBody::Block(body) => body
+            .first()
+            .map(Stmt::span)
+            .unwrap_or_else(|| Span::empty(0)),
     }
 }

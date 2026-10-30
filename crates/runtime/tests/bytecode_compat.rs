@@ -12,6 +12,11 @@ const ARRAYS_HOLES: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1
 const ARRAYS_IN: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/arrays_in.kbc");
 const TYPEOF: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/typeof.kbc");
 const VOID: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/void.kbc");
+const FUNCTIONS: &[u8] = include_bytes!("../../../testdata/compat/bytecode/v1/functions.kbc");
+const CLOSURES_NESTED: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/closures_nested.kbc");
+const CLOSURES_SHARED: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/closures_shared.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -96,6 +101,30 @@ fn executes_v1_void_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(VOID, &mut host).unwrap();
     assert_eq!(host.output(), "undefined\nundefined\nundefined\n");
+}
+
+#[test]
+fn executes_v1_function_value_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(FUNCTIONS, &mut host).unwrap();
+    assert_eq!(host.output(), "5\n12\n6\n");
+}
+
+#[test]
+fn executes_v1_nested_closure_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(CLOSURES_NESTED, &mut host).unwrap();
+    assert_eq!(host.output(), "6\n");
+}
+
+#[test]
+fn executes_v1_shared_closure_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(CLOSURES_SHARED, &mut host).unwrap();
+    assert_eq!(host.output(), "1\n11\n");
 }
 
 #[test]

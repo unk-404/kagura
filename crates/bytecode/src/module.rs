@@ -17,6 +17,8 @@ pub struct FunctionProto {
     pub name: String,
     pub param_count: u16,
     pub local_count: u16,
+    pub uses_env: bool,
+    pub self_slot: Option<u16>,
     pub code: Vec<u8>,
     pub spans: Vec<Span>,
 }
@@ -74,6 +76,8 @@ impl Module {
             write_string(&mut out, &function.name);
             out.extend_from_slice(&function.param_count.to_le_bytes());
             out.extend_from_slice(&function.local_count.to_le_bytes());
+            out.push(u8::from(function.uses_env));
+            out.extend_from_slice(&function.self_slot.unwrap_or(u16::MAX).to_le_bytes());
             write_u32(&mut out, function.code.len() as u32);
             out.extend_from_slice(&function.code);
             write_u32(&mut out, function.spans.len() as u32);
@@ -114,6 +118,11 @@ impl Module {
             let name = reader.string()?;
             let param_count = reader.u16()?;
             let local_count = reader.u16()?;
+            let uses_env = reader.u8()? != 0;
+            let self_slot = match reader.u16()? {
+                u16::MAX => None,
+                slot => Some(slot),
+            };
             let code_len = reader.u32()? as usize;
             let code = reader.bytes(code_len)?.to_vec();
             let span_count = reader.u32()? as usize;
@@ -125,6 +134,8 @@ impl Module {
                 name,
                 param_count,
                 local_count,
+                uses_env,
+                self_slot,
                 code,
                 spans,
             });

@@ -35,6 +35,7 @@ pub(crate) enum TokenKind {
     Comma,
     Colon,
     Assign,
+    Arrow,
     Plus,
     Minus,
     Star,

@@ -1,6 +1,4 @@
-use kagura_ast::{
-    AssignTarget, BinaryOp, Expr, ForInit, FuncDecl, Param, Program, Stmt, UnaryOp, VarDecl,
-};
+use kagura_ast::{AssignTarget, BinaryOp, Expr, ForInit, Param, Program, Stmt, UnaryOp, VarDecl};
 use kagura_support::{FastHashSet, Span};
 
 use crate::error::CompileError;
@@ -20,22 +18,39 @@ struct Compiler {
 
 impl Compiler {
     fn compile(&mut self, program: &Program) -> Result<Module, CompileError> {
-        let mut names = FastHashSet::default();
+        let mut script = FunctionCompiler::new(
+            "<script>",
+            &[],
+            &program.body,
+            true,
+            &mut self.constants,
+            &mut self.functions,
+        );
         for stmt in &program.body {
-            if let Stmt::Func(decl) = stmt {
-                if !names.insert(decl.name.clone()) {
-                    return Err(CompileError::new(
-                        format!("duplicate function '{}'", decl.name),
-                        decl.span,
-                    ));
+            match stmt {
+                Stmt::Var(decl) => script.predeclare_or_error(
+                    &decl.name,
+                    matches!(decl.kind, kagura_ast::VarKind::Let),
+                    decl.span,
+                )?,
+                Stmt::Func(decl) => {
+                    script.predeclare_or_error(&decl.name, true, decl.span)?;
                 }
-                let proto = compile_function(decl, &mut self.constants)?;
-                self.functions.push(proto);
+                _ => {}
             }
         }
-
-        let script = FunctionCompiler::new("<script>", &[], true, &mut self.constants);
-        let mut script = script;
+        for stmt in &program.body {
+            if let Stmt::Func(decl) = stmt {
+                let Some(Resolved::Local { slot, .. }) = script.resolve(&decl.name) else {
+                    return Err(CompileError::new(
+                        format!("unknown function '{}'", decl.name),
+                        decl.span,
+                    ));
+                };
+                script.compile_closure(&decl.name, &decl.params, &decl.body, None, decl.span)?;
+                script.emit_u16(Op::StoreLocal, slot, decl.span);
+            }
+        }
         for stmt in &program.body {
             if matches!(stmt, Stmt::Func(_)) {
                 continue;
@@ -44,8 +59,9 @@ impl Compiler {
         }
         script.emit_const(Const::Undefined, Span::empty(0));
         script.emit(Op::Return, Span::empty(0));
+        let script = script.finish();
         self.entry = self.functions.len();
-        self.functions.push(script.finish());
+        self.functions.push(script);
 
         Ok(Module {
             version: VERSION,
@@ -56,31 +72,32 @@ impl Compiler {
     }
 }
 
-fn compile_function(
-    decl: &FuncDecl,
-    constants: &mut Vec<Const>,
-) -> Result<FunctionProto, CompileError> {
-    let mut params = FastHashSet::default();
-    for param in &decl.params {
-        if !params.insert(param.name.as_str()) {
-            return Err(CompileError::new(
-                format!("duplicate parameter '{}'", param.name),
-                param.span,
-            ));
-        }
-    }
-    let mut compiler = FunctionCompiler::new(&decl.name, &decl.params, true, constants);
-    for stmt in &decl.body {
-        compiler.compile_stmt(stmt)?;
-    }
-    compiler.emit_const(Const::Undefined, decl.span);
-    compiler.emit(Op::Return, decl.span);
-    Ok(compiler.finish())
-}
-
+#[derive(Clone)]
 struct Local {
     name: String,
     mutable: bool,
+    predeclared: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Resolved {
+    Local {
+        slot: u16,
+        mutable: bool,
+    },
+    Capture {
+        level: u16,
+        slot: u16,
+        mutable: bool,
+    },
+}
+
+impl Resolved {
+    fn mutable(self) -> bool {
+        match self {
+            Self::Local { mutable, .. } | Self::Capture { mutable, .. } => mutable,
+        }
+    }
 }
 
 struct LoopContext {
@@ -98,11 +115,22 @@ struct FunctionCompiler<'a> {
     scopes: Vec<usize>,
     loops: Vec<LoopContext>,
     gc_safe: bool,
+    uses_env: bool,
+    self_slot: Option<u16>,
+    outer: Vec<Vec<Local>>,
     constants: &'a mut Vec<Const>,
+    functions: &'a mut Vec<FunctionProto>,
 }
 
 impl<'a> FunctionCompiler<'a> {
-    fn new(name: &str, params: &[Param], gc_safe: bool, constants: &'a mut Vec<Const>) -> Self {
+    fn new(
+        name: &str,
+        params: &[Param],
+        body: &[Stmt],
+        gc_safe: bool,
+        constants: &'a mut Vec<Const>,
+        functions: &'a mut Vec<FunctionProto>,
+    ) -> Self {
         let mut compiler = Self {
             name: name.to_owned(),
             param_count: params.len() as u16,
@@ -112,7 +140,11 @@ impl<'a> FunctionCompiler<'a> {
             scopes: vec![0],
             loops: Vec::new(),
             gc_safe,
+            uses_env: body_has_closure(body),
+            self_slot: None,
+            outer: Vec::new(),
             constants,
+            functions,
         };
         for param in params {
             compiler
@@ -127,6 +159,8 @@ impl<'a> FunctionCompiler<'a> {
             name: self.name,
             param_count: self.param_count,
             local_count: self.locals.len() as u16,
+            uses_env: self.uses_env,
+            self_slot: self.self_slot,
             code: self.code,
             spans: self.spans,
         }
@@ -138,10 +172,17 @@ impl<'a> FunctionCompiler<'a> {
         }
         match stmt {
             Stmt::Var(decl) => self.compile_var(decl),
-            Stmt::Func(decl) => Err(CompileError::new(
-                "nested function declarations are not supported yet",
-                decl.span,
-            )),
+            Stmt::Func(decl) => {
+                let Some(slot) = self.declare(&decl.name, true, decl.span) else {
+                    return Err(CompileError::new(
+                        format!("duplicate declaration '{}'", decl.name),
+                        decl.span,
+                    ));
+                };
+                self.compile_closure(&decl.name, &decl.params, &decl.body, None, decl.span)?;
+                self.emit_u16(Op::StoreLocal, slot, decl.span);
+                Ok(())
+            }
             Stmt::Block(body) => {
                 let base = self.locals.len();
                 self.scopes.push(base);
@@ -283,15 +324,26 @@ impl<'a> FunctionCompiler<'a> {
     }
 
     fn compile_var(&mut self, decl: &VarDecl) -> Result<(), CompileError> {
-        let Some(slot) = self.declare(
-            &decl.name,
-            matches!(decl.kind, kagura_ast::VarKind::Let),
-            decl.span,
-        ) else {
-            return Err(CompileError::new(
-                format!("duplicate declaration '{}'", decl.name),
+        let base = *self.scopes.last().expect("scope");
+        let predeclared = self.locals[base..]
+            .iter()
+            .position(|local| local.name == decl.name && local.predeclared)
+            .map(|offset| base + offset);
+        let slot = if let Some(slot) = predeclared {
+            self.locals[slot].predeclared = false;
+            slot as u16
+        } else {
+            let Some(slot) = self.declare(
+                &decl.name,
+                matches!(decl.kind, kagura_ast::VarKind::Let),
                 decl.span,
-            ));
+            ) else {
+                return Err(CompileError::new(
+                    format!("duplicate declaration '{}'", decl.name),
+                    decl.span,
+                ));
+            };
+            slot
         };
         if let Some(init) = &decl.init {
             self.compile_expr(init)?;
@@ -300,6 +352,62 @@ impl<'a> FunctionCompiler<'a> {
         }
         self.emit_u16(Op::StoreLocal, slot, decl.span);
         Ok(())
+    }
+
+    fn compile_closure(
+        &mut self,
+        name: &str,
+        params: &[Param],
+        body: &[Stmt],
+        self_name: Option<&str>,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        let mut names = FastHashSet::default();
+        for param in params {
+            if !names.insert(param.name.as_str()) {
+                return Err(CompileError::new(
+                    format!("duplicate parameter '{}'", param.name),
+                    param.span,
+                ));
+            }
+        }
+        let mut outer = Vec::with_capacity(self.outer.len() + 1);
+        outer.push(self.locals.clone());
+        outer.extend(self.outer.iter().cloned());
+        let mut compiler =
+            FunctionCompiler::new(name, params, body, true, self.constants, self.functions);
+        compiler.outer = outer;
+        if let Some(self_name) = self_name
+            && let Some(slot) = compiler.declare(self_name, false, span)
+        {
+            compiler.self_slot = Some(slot);
+        }
+        for stmt in body {
+            compiler.compile_stmt(stmt)?;
+        }
+        compiler.emit_const(Const::Undefined, span);
+        compiler.emit(Op::Return, span);
+        let function = compiler.finish();
+        let index = self.functions.len() as u32;
+        self.functions.push(function);
+        self.emit_u32(Op::NewClosure, index, span);
+        Ok(())
+    }
+
+    fn compile_arrow(
+        &mut self,
+        params: &[Param],
+        body: &kagura_ast::ArrowBody,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        let body = match body {
+            kagura_ast::ArrowBody::Block(body) => body.clone(),
+            kagura_ast::ArrowBody::Expr(expr) => vec![Stmt::Return {
+                value: Some((**expr).clone()),
+                span: expr.span(),
+            }],
+        };
+        self.compile_closure("<arrow>", params, &body, None, span)
     }
 
     fn compile_expr(&mut self, expr: &Expr) -> Result<(), CompileError> {
@@ -325,12 +433,19 @@ impl<'a> FunctionCompiler<'a> {
                 let index = self.add_const(Const::Undefined);
                 self.emit_u32(Op::LoadConst, index, *span);
             }
-            Expr::Ident { name, span } => {
-                let (slot, _) = self.resolve(name).ok_or_else(|| {
-                    CompileError::new(format!("unknown variable '{name}'"), *span)
-                })?;
-                self.emit_u16(Op::LoadLocal, slot, *span);
-            }
+            Expr::Ident { name, span } => match self.resolve(name) {
+                Some(Resolved::Local { slot, .. }) => self.emit_u16(Op::LoadLocal, slot, *span),
+                Some(Resolved::Capture { level, slot, .. }) => {
+                    self.emit_u16(Op::LoadCapture, level, *span);
+                    self.emit_u16_raw(slot, *span);
+                }
+                None => {
+                    return Err(CompileError::new(
+                        format!("unknown variable '{name}'"),
+                        *span,
+                    ));
+                }
+            },
             Expr::Unary { op, expr, span } => {
                 self.compile_expr(expr)?;
                 match op {
@@ -373,10 +488,10 @@ impl<'a> FunctionCompiler<'a> {
                 span,
             } => match target {
                 AssignTarget::Ident(name) => {
-                    let (slot, mutable) = self.resolve(name).ok_or_else(|| {
+                    let resolved = self.resolve(name).ok_or_else(|| {
                         CompileError::new(format!("unknown variable '{name}'"), *span)
                     })?;
-                    if !mutable {
+                    if !resolved.mutable() {
                         return Err(CompileError::new(
                             format!("assignment to constant '{name}'"),
                             *span,
@@ -384,7 +499,13 @@ impl<'a> FunctionCompiler<'a> {
                     }
                     self.compile_expr(value)?;
                     self.emit(Op::Dup, *span);
-                    self.emit_u16(Op::StoreLocal, slot, *span);
+                    match resolved {
+                        Resolved::Local { slot, .. } => self.emit_u16(Op::StoreLocal, slot, *span),
+                        Resolved::Capture { level, slot, .. } => {
+                            self.emit_u16(Op::StoreCapture, level, *span);
+                            self.emit_u16_raw(slot, *span);
+                        }
+                    }
                 }
                 AssignTarget::Member { object, property } => {
                     self.compile_expr(object)?;
@@ -401,20 +522,35 @@ impl<'a> FunctionCompiler<'a> {
             },
             Expr::Call { callee, args, span } => {
                 if let Expr::Ident { name, .. } = callee.as_ref() {
-                    self.compile_args(args)?;
-                    let index = self.add_const(Const::String(name.clone()));
-                    self.emit_u32(Op::CallName, index, *span);
-                    self.emit_u8_raw(args.len(), *span);
+                    if self.resolve(name).is_some() {
+                        self.compile_expr(callee)?;
+                        self.compile_args(args)?;
+                        self.emit(Op::CallValue, *span);
+                        self.emit_u8_raw(args.len(), *span);
+                    } else {
+                        self.compile_args(args)?;
+                        let index = self.add_const(Const::String(name.clone()));
+                        self.emit_u32(Op::CallName, index, *span);
+                        self.emit_u8_raw(args.len(), *span);
+                    }
                 } else if let Some(path) = member_path(callee) {
-                    self.compile_args(args)?;
-                    let index = self.add_const(Const::String(path));
-                    self.emit_u32(Op::CallHost, index, *span);
-                    self.emit_u8_raw(args.len(), *span);
+                    let root = path.split('.').next().unwrap_or_default();
+                    if self.resolve(root).is_some() {
+                        self.compile_expr(callee)?;
+                        self.compile_args(args)?;
+                        self.emit(Op::CallValue, *span);
+                        self.emit_u8_raw(args.len(), *span);
+                    } else {
+                        self.compile_args(args)?;
+                        let index = self.add_const(Const::String(path));
+                        self.emit_u32(Op::CallHost, index, *span);
+                        self.emit_u8_raw(args.len(), *span);
+                    }
                 } else {
-                    return Err(CompileError::new(
-                        "unsupported call target in M0",
-                        callee.span(),
-                    ));
+                    self.compile_expr(callee)?;
+                    self.compile_args(args)?;
+                    self.emit(Op::CallValue, *span);
+                    self.emit_u8_raw(args.len(), *span);
                 }
             }
             Expr::Member {
@@ -455,6 +591,18 @@ impl<'a> FunctionCompiler<'a> {
                 self.compile_expr(index)?;
                 self.emit(Op::GetIndex, *span);
             }
+            Expr::Function {
+                name,
+                params,
+                body,
+                span,
+            } => {
+                let display = name.as_deref().unwrap_or("<function>");
+                self.compile_closure(display, params, body, name.as_deref(), *span)?;
+            }
+            Expr::Arrow { params, body, span } => {
+                self.compile_arrow(params, body, *span)?;
+            }
             Expr::As { expr, .. } => self.compile_expr(expr)?,
         }
         Ok(())
@@ -470,6 +618,34 @@ impl<'a> FunctionCompiler<'a> {
         Ok(())
     }
 
+    fn predeclare_or_error(
+        &mut self,
+        name: &str,
+        mutable: bool,
+        span: Span,
+    ) -> Result<(), CompileError> {
+        if self.predeclare(name, mutable, span) {
+            Ok(())
+        } else {
+            Err(CompileError::new(
+                format!("duplicate declaration '{name}'"),
+                span,
+            ))
+        }
+    }
+
+    fn predeclare(&mut self, name: &str, mutable: bool, _span: Span) -> bool {
+        if self.locals.iter().any(|local| local.name == name) {
+            return false;
+        }
+        self.locals.push(Local {
+            name: name.to_owned(),
+            mutable,
+            predeclared: true,
+        });
+        true
+    }
+
     fn declare(&mut self, name: &str, mutable: bool, _span: Span) -> Option<u16> {
         let base = *self.scopes.last().expect("scope");
         if self.locals[base..].iter().any(|local| local.name == name) {
@@ -482,17 +658,40 @@ impl<'a> FunctionCompiler<'a> {
         self.locals.push(Local {
             name: name.to_owned(),
             mutable,
+            predeclared: false,
         });
         Some(slot as u16)
     }
 
-    fn resolve(&self, name: &str) -> Option<(u16, bool)> {
-        self.locals
+    fn resolve(&self, name: &str) -> Option<Resolved> {
+        if let Some((slot, local)) = self
+            .locals
             .iter()
             .enumerate()
             .rev()
             .find(|(_, local)| local.name == name)
-            .map(|(slot, local)| (slot as u16, local.mutable))
+            .map(|(slot, local)| (slot as u16, local))
+        {
+            return Some(Resolved::Local {
+                slot,
+                mutable: local.mutable,
+            });
+        }
+        for (level, scope) in self.outer.iter().enumerate() {
+            if let Some((slot, local)) = scope
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, local)| local.name == name)
+            {
+                return Some(Resolved::Capture {
+                    level: (level + 1) as u16,
+                    slot: slot as u16,
+                    mutable: local.mutable,
+                });
+            }
+        }
+        None
     }
 
     fn add_const(&mut self, constant: Const) -> u32 {
@@ -512,6 +711,12 @@ impl<'a> FunctionCompiler<'a> {
 
     fn emit_u8_raw(&mut self, value: usize, span: Span) {
         self.emit_raw(value as u8, span);
+    }
+
+    fn emit_u16_raw(&mut self, value: u16, span: Span) {
+        for byte in value.to_le_bytes() {
+            self.emit_raw(byte, span);
+        }
     }
 
     fn emit_u16(&mut self, op: Op, value: u16, span: Span) {
@@ -572,6 +777,84 @@ fn binary_op(op: BinaryOp) -> Op {
         BinaryOp::StrictNotEq => Op::StrictNotEq,
         BinaryOp::In => Op::In,
         BinaryOp::And | BinaryOp::Or => unreachable!(),
+    }
+}
+
+fn body_has_closure(body: &[Stmt]) -> bool {
+    body.iter().any(stmt_has_closure)
+}
+
+fn stmt_has_closure(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::Var(decl) => decl.init.as_ref().is_some_and(expr_has_closure),
+        Stmt::Func(_) => true,
+        Stmt::Block(body) => body_has_closure(body),
+        Stmt::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_has_closure(cond)
+                || stmt_has_closure(then_branch)
+                || else_branch.as_deref().is_some_and(stmt_has_closure)
+        }
+        Stmt::While { cond, body, .. } => expr_has_closure(cond) || stmt_has_closure(body),
+        Stmt::For {
+            init,
+            cond,
+            update,
+            body,
+            ..
+        } => {
+            init.as_ref().is_some_and(|init| match init {
+                ForInit::Var(decl) => decl.init.as_ref().is_some_and(expr_has_closure),
+                ForInit::Expr(expr) => expr_has_closure(expr),
+            }) || cond.as_ref().is_some_and(expr_has_closure)
+                || update.as_ref().is_some_and(expr_has_closure)
+                || stmt_has_closure(body)
+        }
+        Stmt::Return { value, .. } => value.as_ref().is_some_and(expr_has_closure),
+        Stmt::Expr { expr, .. } => expr_has_closure(expr),
+        Stmt::Break { .. }
+        | Stmt::Continue { .. }
+        | Stmt::TypeAlias { .. }
+        | Stmt::Interface { .. }
+        | Stmt::Empty { .. } => false,
+    }
+}
+
+fn expr_has_closure(expr: &Expr) -> bool {
+    match expr {
+        Expr::Function { .. } | Expr::Arrow { .. } => true,
+        Expr::Unary { expr, .. } | Expr::As { expr, .. } => expr_has_closure(expr),
+        Expr::Binary { left, right, .. } => expr_has_closure(left) || expr_has_closure(right),
+        Expr::Assign { target, value, .. } => target_has_closure(target) || expr_has_closure(value),
+        Expr::Call { callee, args, .. } => {
+            expr_has_closure(callee) || args.iter().any(expr_has_closure)
+        }
+        Expr::Member { object, .. } => expr_has_closure(object),
+        Expr::Index { object, index, .. } => expr_has_closure(object) || expr_has_closure(index),
+        Expr::Object { properties, .. } => properties
+            .iter()
+            .any(|property| expr_has_closure(&property.value)),
+        Expr::Array { elements, .. } => elements.iter().flatten().any(expr_has_closure),
+        Expr::Number { .. }
+        | Expr::String { .. }
+        | Expr::Boolean { .. }
+        | Expr::Null { .. }
+        | Expr::Undefined { .. }
+        | Expr::Ident { .. } => false,
+    }
+}
+
+fn target_has_closure(target: &AssignTarget) -> bool {
+    match target {
+        AssignTarget::Ident(_) => false,
+        AssignTarget::Member { object, .. } => expr_has_closure(object),
+        AssignTarget::Index { object, index } => {
+            expr_has_closure(object) || expr_has_closure(index)
+        }
     }
 }
 

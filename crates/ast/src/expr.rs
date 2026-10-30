@@ -1,5 +1,6 @@
 use kagura_support::Span;
 
+use crate::stmt::Stmt;
 use crate::types::{BinaryOp, TypeAnn, UnaryOp};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -65,11 +66,28 @@ pub enum Expr {
         index: Box<Expr>,
         span: Span,
     },
+    Function {
+        name: Option<String>,
+        params: Vec<Param>,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    Arrow {
+        params: Vec<Param>,
+        body: ArrowBody,
+        span: Span,
+    },
     As {
         expr: Box<Expr>,
         ty: TypeAnn,
         span: Span,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ArrowBody {
+    Expr(Box<Expr>),
+    Block(Vec<Stmt>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -103,6 +121,8 @@ impl Expr {
             | Self::Object { span, .. }
             | Self::Array { span, .. }
             | Self::Index { span, .. }
+            | Self::Function { span, .. }
+            | Self::Arrow { span, .. }
             | Self::As { span, .. } => *span,
         }
     }

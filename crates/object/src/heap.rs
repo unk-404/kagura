@@ -19,6 +19,7 @@ const BLOCK_CAPACITY_OFFSET: u32 = 8;
 
 const FLAG_ARRAY: u32 = 1;
 const FLAG_MARK: u32 = 2;
+const FLAG_FUNCTION: u32 = 4;
 const NO_BLOCK: u32 = u32::MAX;
 const MIN_ARRAY_CAPACITY: u32 = 4;
 
@@ -98,6 +99,40 @@ impl ObjectHeap {
         let object = self.allocate(shape)?;
         write_u32(&mut self.arena, object.index() + FLAGS_OFFSET, FLAG_ARRAY);
         Ok(object)
+    }
+
+    pub fn allocate_function(
+        &mut self,
+        shape: ShapeId,
+        function_index: u32,
+        env: Value,
+    ) -> Result<ObjectId, ObjectHeapError> {
+        let object = self.allocate(shape)?;
+        write_u32(
+            &mut self.arena,
+            object.index() + FLAGS_OFFSET,
+            FLAG_FUNCTION,
+        );
+        self.set_slot(object, 0, Value::smi(function_index as i32))?;
+        self.set_slot(object, 1, env)?;
+        Ok(object)
+    }
+
+    pub fn is_function(&self, object: ObjectId) -> Result<bool, ObjectHeapError> {
+        let flags = read_u32(&self.arena, object.index() + FLAGS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        Ok(flags & FLAG_FUNCTION != 0)
+    }
+
+    pub fn function_data(&self, object: ObjectId) -> Result<(u32, Value), ObjectHeapError> {
+        if !self.is_function(object)? {
+            return Err(ObjectHeapError::InvalidObject);
+        }
+        let index = self
+            .get_slot(object, 0)?
+            .as_smi()
+            .ok_or(ObjectHeapError::InvalidObject)? as u32;
+        Ok((index, self.get_slot(object, 1)?))
     }
 
     pub fn shape(&self, object: ObjectId) -> Result<ShapeId, ObjectHeapError> {
