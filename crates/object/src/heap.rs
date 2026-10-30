@@ -683,6 +683,15 @@ impl ObjectHeap {
             .sum()
     }
 
+    pub fn is_live_value(&self, value: Value) -> bool {
+        let Some(offset) = value.object_offset() else {
+            return false;
+        };
+        self.allocations
+            .iter()
+            .any(|allocation| allocation.offset == offset)
+    }
+
     pub fn value(object: ObjectId) -> Value {
         Value::object(object.index())
     }

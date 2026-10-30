@@ -6,13 +6,14 @@ use kagura_value::{Heap, Value};
 use tracing::instrument;
 
 use crate::error::RunError;
-use crate::handles::{Handle, HandleTable};
+use crate::handles::{Handle, HandleTable, WeakHandle, WeakHandleTable};
 
 pub struct Runtime {
     heap: Heap,
     objects: ObjectHeap,
     shapes: ShapeTable,
     handles: HandleTable,
+    weak_handles: WeakHandleTable,
     step_limit: u64,
     last_property_ic: (u64, u64),
     last_safepoints: SafepointStats,
@@ -31,6 +32,7 @@ impl Runtime {
             objects: ObjectHeap::new(heap_capacity),
             shapes: ShapeTable::new(),
             handles: HandleTable::new(),
+            weak_handles: WeakHandleTable::new(),
             step_limit: 1_000_000,
             last_property_ic: (0, 0),
             last_safepoints: SafepointStats::default(),
@@ -65,6 +67,24 @@ impl Runtime {
         self.handles.len()
     }
 
+    pub fn create_weak_handle(&mut self, value: Value) -> WeakHandle {
+        self.weak_handles.create(value)
+    }
+
+    pub fn weak_value(&self, handle: WeakHandle) -> Option<Value> {
+        self.weak_handles
+            .get(handle)
+            .filter(|value| self.objects.is_live_value(*value))
+    }
+
+    pub fn drop_weak_handle(&mut self, handle: WeakHandle) {
+        self.weak_handles.drop_handle(handle);
+    }
+
+    pub fn weak_handle_count(&self) -> usize {
+        self.weak_handles.len()
+    }
+
     /// Allocates a plain object owned by the embedder, not by a script.
     pub fn allocate_object(&mut self) -> Option<Value> {
         self.objects
@@ -96,7 +116,10 @@ impl Runtime {
     pub fn collect_garbage(&mut self, roots: &[Value]) -> GcStats {
         let mut all_roots = roots.to_vec();
         all_roots.extend(self.handles.roots());
-        self.objects.collect(&all_roots)
+        let stats = self.objects.collect(&all_roots);
+        self.weak_handles
+            .retain_live(|value| self.objects.is_live_value(value));
+        stats
     }
 
     #[instrument(skip(self, source, host), fields(bytes = source.len()))]
@@ -137,6 +160,8 @@ impl Runtime {
         let mut roots = vec![value];
         roots.extend(self.handles.roots());
         self.objects.collect(&roots);
+        self.weak_handles
+            .retain_live(|value| self.objects.is_live_value(value));
         #[cfg(feature = "debug")]
         tracing::debug!(
             heap_used = self.heap.used(),

@@ -1311,6 +1311,31 @@ fn handle_table_roots_survive_gc() {
 }
 
 #[test]
+fn weak_handles_do_not_root_their_target() {
+    let mut runtime = Runtime::new(64 * 1024);
+    let value = runtime.allocate_object().expect("plain object");
+    let weak = runtime.create_weak_handle(value);
+    assert!(runtime.weak_value(weak).is_some());
+    let stats = runtime.collect_garbage(&[]);
+    assert_eq!(stats.live_bytes_after, 0);
+    assert!(runtime.weak_value(weak).is_none());
+    assert_eq!(runtime.weak_handle_count(), 0);
+}
+
+#[test]
+fn weak_handle_follows_strong_handle_lifetime() {
+    let mut runtime = Runtime::new(64 * 1024);
+    let value = runtime.allocate_object().expect("plain object");
+    let strong = runtime.create_handle(value);
+    let weak = runtime.create_weak_handle(value);
+    runtime.collect_garbage(&[]);
+    assert!(runtime.weak_value(weak).is_some());
+    runtime.drop_handle(strong);
+    runtime.collect_garbage(&[]);
+    assert!(runtime.weak_value(weak).is_none());
+}
+
+#[test]
 fn gc_keeps_caller_roots_alive() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::new(64 * 1024);

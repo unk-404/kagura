@@ -82,6 +82,64 @@ impl HandleTable {
     }
 }
 
+/// A non-owning handle: it never keeps its target alive.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WeakHandle {
+    index: u32,
+}
+
+struct WeakSlot {
+    value: Option<Value>,
+}
+
+#[derive(Default)]
+pub struct WeakHandleTable {
+    slots: Vec<WeakSlot>,
+}
+
+impl WeakHandleTable {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn create(&mut self, value: Value) -> WeakHandle {
+        let index = self.slots.len() as u32;
+        self.slots.push(WeakSlot { value: Some(value) });
+        WeakHandle { index }
+    }
+
+    pub fn get(&self, handle: WeakHandle) -> Option<Value> {
+        self.slots.get(handle.index as usize)?.value
+    }
+
+    pub fn drop_handle(&mut self, handle: WeakHandle) {
+        if let Some(slot) = self.slots.get_mut(handle.index as usize) {
+            slot.value = None;
+        }
+    }
+
+    pub fn retain_live(&mut self, is_live: impl Fn(Value) -> bool) {
+        for slot in &mut self.slots {
+            if let Some(value) = slot.value
+                && !is_live(value)
+            {
+                slot.value = None;
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.slots
+            .iter()
+            .filter(|slot| slot.value.is_some())
+            .count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use kagura_value::Value;
