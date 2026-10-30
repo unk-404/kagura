@@ -196,7 +196,7 @@ impl<'a> FunctionCompiler<'a> {
             functions,
         };
         for param in params {
-            let _ = compiler.declare(&param.name, true, param.span);
+            compiler.declare_parameter(&param.name);
         }
         if !matches!(name, "<arrow>" | "<script>") {
             compiler.arguments_slot = compiler.declare("arguments", true, Span::empty(0));
@@ -952,8 +952,9 @@ impl<'a> FunctionCompiler<'a> {
     ) -> Result<(), CompileError> {
         let mut names = FastHashSet::default();
         let strict = self.strict || has_use_strict(body);
+        let arrow = name == "<arrow>";
         for param in params {
-            if !names.insert(param.name.as_str()) {
+            if !names.insert(param.name.as_str()) && (strict || arrow) {
                 return Err(CompileError::new(
                     format!("duplicate parameter '{}'", param.name),
                     param.span,
@@ -1151,6 +1152,12 @@ impl<'a> FunctionCompiler<'a> {
                 span,
             } => match target {
                 AssignTarget::Ident(name) => {
+                    if self.strict && matches!(name.as_str(), "eval" | "arguments") {
+                        return Err(CompileError::new(
+                            format!("assignment to '{name}' in strict mode"),
+                            *span,
+                        ));
+                    }
                     let resolved = self.resolve(name);
                     if resolved.is_none() {
                         self.compile_expr(value)?;
@@ -1202,6 +1209,12 @@ impl<'a> FunctionCompiler<'a> {
                 let op = if *decrement { Op::Sub } else { Op::Add };
                 match target {
                     AssignTarget::Ident(name) => {
+                        if self.strict && matches!(name.as_str(), "eval" | "arguments") {
+                            return Err(CompileError::new(
+                                format!("update of '{name}' in strict mode"),
+                                *span,
+                            ));
+                        }
                         let Some(resolved) = self.resolve(name) else {
                             return Err(CompileError::new(
                                 format!("unknown variable '{name}'"),
@@ -1488,6 +1501,17 @@ impl<'a> FunctionCompiler<'a> {
                 self.emit_u16_raw(slot, span);
             }
         }
+    }
+
+    fn declare_parameter(&mut self, name: &str) -> u16 {
+        let slot = self.locals.len() as u16;
+        self.locals.push(Local {
+            name: name.to_owned(),
+            mutable: true,
+            predeclared: false,
+            active: true,
+        });
+        slot
     }
 
     fn declare(&mut self, name: &str, mutable: bool, _span: Span) -> Option<u16> {

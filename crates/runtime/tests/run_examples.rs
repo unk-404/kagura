@@ -792,6 +792,19 @@ fn rejects_strict_mode_eval_bindings() {
 }
 
 #[test]
+fn allows_duplicate_parameters_in_sloppy_functions() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "function f(a, a) { return a; } console.log(f(1, 2));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "2\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
