@@ -54,6 +54,8 @@ const FINALLY_RETURN: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/finally_return.kbc");
 const OBJECT_ASSIGN: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/object_assign.kbc");
+const FINALLY_LOOPS: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/finally_loops.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -353,4 +355,12 @@ fn executes_v1_object_assign_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(OBJECT_ASSIGN, &mut host).unwrap();
     assert_eq!(host.output(), "true\n1\n2\n3\nx,y\n4\n");
+}
+
+#[test]
+fn executes_v1_finally_loop_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(FINALLY_LOOPS, &mut host).unwrap();
+    assert_eq!(host.output(), "0,f0,f1\n0ff2f\n");
 }

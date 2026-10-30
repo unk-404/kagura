@@ -51,6 +51,7 @@ const ARGUMENTS: &str = include_str!("../../../examples/arguments.ts");
 const OBJECT_CHECKS: &str = include_str!("../../../examples/object_checks.ts");
 const FINALLY_RETURN: &str = include_str!("../../../examples/finally_return.ts");
 const OBJECT_ASSIGN: &str = include_str!("../../../examples/object_assign.ts");
+const FINALLY_LOOPS: &str = include_str!("../../../examples/finally_loops.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -514,6 +515,14 @@ fn runs_object_assign() {
     let mut runtime = Runtime::default();
     runtime.run(OBJECT_ASSIGN, &mut host).unwrap();
     assert_eq!(host.output(), "true\n1\n2\n3\nx,y\n4\n");
+}
+
+#[test]
+fn runs_finally_on_break_and_continue() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(FINALLY_LOOPS, &mut host).unwrap();
+    assert_eq!(host.output(), "0,f0,f1\n0ff2f\n");
 }
 
 #[test]

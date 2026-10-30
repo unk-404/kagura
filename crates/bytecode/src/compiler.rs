@@ -126,7 +126,16 @@ struct LoopContext {
 struct FinallyContext {
     return_slot: u16,
     flag_slot: u16,
+    completion_slot: u16,
+    completions: Vec<Completion>,
     return_patches: Vec<usize>,
+    completion_jumps: Vec<usize>,
+}
+
+struct Completion {
+    code: u32,
+    loop_index: usize,
+    is_break: bool,
 }
 
 struct FunctionCompiler<'a> {
@@ -142,6 +151,7 @@ struct FunctionCompiler<'a> {
     self_slot: Option<u16>,
     arguments_slot: Option<u16>,
     finallys: Vec<FinallyContext>,
+    completion_counter: u32,
     iterations: Vec<IterationScope>,
     outer: Vec<Vec<Local>>,
     constants: &'a mut Vec<Const>,
@@ -170,6 +180,7 @@ impl<'a> FunctionCompiler<'a> {
             self_slot: None,
             arguments_slot: None,
             finallys: Vec::new(),
+            completion_counter: 1,
             iterations: Vec::new(),
             outer: Vec::new(),
             constants,
@@ -478,14 +489,20 @@ impl<'a> FunctionCompiler<'a> {
                 if finally_block.is_some() {
                     let return_slot = self.hidden_local(*span);
                     let flag_slot = self.hidden_local(*span);
+                    let completion_slot = self.hidden_local(*span);
                     self.emit_const(Const::False, *span);
                     self.emit_u16(Op::StoreLocal, flag_slot, *span);
+                    self.emit_const(Const::Number(0.0), *span);
+                    self.emit_u16(Op::StoreLocal, completion_slot, *span);
                     self.finallys.push(FinallyContext {
                         return_slot,
                         flag_slot,
+                        completion_slot,
+                        completions: Vec::new(),
                         return_patches: Vec::new(),
+                        completion_jumps: Vec::new(),
                     });
-                    finally_state = Some((return_slot, flag_slot));
+                    finally_state = Some((return_slot, flag_slot, completion_slot));
                 }
                 let rethrow = if finally_block.is_some() {
                     let error_slot = self.hidden_local(*span);
@@ -543,10 +560,13 @@ impl<'a> FunctionCompiler<'a> {
                 for patch in to_finally {
                     self.patch_jump(patch, finally_pc);
                 }
-                if let Some((return_slot, flag_slot)) = finally_state {
+                if let Some((return_slot, flag_slot, completion_slot)) = finally_state {
                     let context = self.finallys.pop().expect("finally context");
-                    for patch in context.return_patches {
-                        self.patch_jump(patch, finally_pc);
+                    for patch in &context.return_patches {
+                        self.patch_jump(*patch, finally_pc);
+                    }
+                    for patch in &context.completion_jumps {
+                        self.patch_jump(*patch, finally_pc);
                     }
                     if let Some(finally_block) = finally_block {
                         self.compile_block_body(finally_block)?;
@@ -567,6 +587,25 @@ impl<'a> FunctionCompiler<'a> {
                     self.emit_u16(Op::LoadLocal, return_slot, *span);
                     self.emit_return(*span);
                     self.patch_jump(no_return, self.code.len());
+                    for completion in context.completions {
+                        self.emit_u16(Op::LoadLocal, completion_slot, *span);
+                        self.emit_const(Const::Number(completion.code as f64), *span);
+                        self.emit(Op::StrictEq, *span);
+                        let next = self.emit_jump(Op::JumpIfFalse, *span);
+                        let jump = self.emit_jump(Op::Jump, *span);
+                        let Some(loop_context) = self.loops.get_mut(completion.loop_index) else {
+                            return Err(CompileError::new(
+                                "break/continue through finally crosses a loop boundary",
+                                *span,
+                            ));
+                        };
+                        if completion.is_break {
+                            loop_context.break_patches.push(jump);
+                        } else {
+                            loop_context.continue_patches.push(jump);
+                        }
+                        self.patch_jump(next, self.code.len());
+                    }
                 } else if let Some(finally_block) = finally_block {
                     self.compile_block_body(finally_block)?;
                 }
@@ -575,6 +614,28 @@ impl<'a> FunctionCompiler<'a> {
             Stmt::Break { span } => {
                 if self.loops.is_empty() {
                     return Err(CompileError::new("break outside loop", *span));
+                }
+                if let Some(slot) = self.finallys.last().map(|context| context.completion_slot) {
+                    if self.finallys.len() > 1 {
+                        return Err(CompileError::new(
+                            "break through nested finally is not supported",
+                            *span,
+                        ));
+                    }
+                    let code = self.completion_counter;
+                    self.completion_counter += 1;
+                    self.emit_const(Const::Number(code as f64), *span);
+                    self.emit_u16(Op::StoreLocal, slot, *span);
+                    let jump = self.emit_jump(Op::Jump, *span);
+                    let loop_index = self.loops.len() - 1;
+                    let context = self.finallys.last_mut().expect("finally context");
+                    context.completion_jumps.push(jump);
+                    context.completions.push(Completion {
+                        code,
+                        loop_index,
+                        is_break: true,
+                    });
+                    return Ok(());
                 }
                 let patch = self.emit_jump(Op::Jump, *span);
                 self.loops
@@ -587,6 +648,28 @@ impl<'a> FunctionCompiler<'a> {
             Stmt::Continue { span } => {
                 if self.loops.is_empty() {
                     return Err(CompileError::new("continue outside loop", *span));
+                }
+                if let Some(slot) = self.finallys.last().map(|context| context.completion_slot) {
+                    if self.finallys.len() > 1 {
+                        return Err(CompileError::new(
+                            "continue through nested finally is not supported",
+                            *span,
+                        ));
+                    }
+                    let code = self.completion_counter;
+                    self.completion_counter += 1;
+                    self.emit_const(Const::Number(code as f64), *span);
+                    self.emit_u16(Op::StoreLocal, slot, *span);
+                    let jump = self.emit_jump(Op::Jump, *span);
+                    let loop_index = self.loops.len() - 1;
+                    let context = self.finallys.last_mut().expect("finally context");
+                    context.completion_jumps.push(jump);
+                    context.completions.push(Completion {
+                        code,
+                        loop_index,
+                        is_break: false,
+                    });
+                    return Ok(());
                 }
                 let patch = self.emit_jump(Op::Jump, *span);
                 self.loops
