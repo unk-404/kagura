@@ -13,6 +13,7 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 kagura-object = { version = "0.1.0", path = "../object" }
 serde_json = { workspace = true }
+chrono = { workspace = true }
 
 [features]
 debug = []

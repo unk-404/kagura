@@ -8,6 +8,7 @@ use crate::error::{RuntimeError, RuntimeErrorKind};
 
 use super::Interpreter;
 
+mod date;
 mod json;
 
 impl<'a> Interpreter<'a> {
@@ -30,6 +31,22 @@ impl<'a> Interpreter<'a> {
                 | "Array"
         ) {
             return self.new_name(path, args, span).map(Some);
+        }
+        if path == "Date.now" {
+            return Ok(Some(self.heap.number(date::now_millis())));
+        }
+        if path == "Date.parse" {
+            let text = self
+                .heap
+                .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
+            return Ok(Some(self.heap.number(date::parse(&text))));
+        }
+        if path == "Date.UTC" {
+            return Ok(Some(self.heap.number(date::utc(args, self.heap))));
+        }
+        if path == "Date" {
+            let text = date::format_iso(date::now_millis());
+            return Ok(Some(self.heap.string(&text)));
         }
         if path == "Array.isArray" {
             let array = args.first().copied().is_some_and(|value| {
@@ -1273,6 +1290,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(Value::object(array.index()))
             }
+            "Date" => self.date_construct(args, span),
             _ => Err(RuntimeError::type_error(
                 format!("{name} is not a constructor"),
                 span,
@@ -1473,6 +1491,66 @@ impl<'a> Interpreter<'a> {
                 .allocate(self.shapes.root())
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
             return Ok(Value::object(object.index()));
+        }
+        if name == "Date" {
+            let object = self
+                .objects
+                .allocate_function(
+                    self.shapes.root(),
+                    u32::MAX,
+                    Value::undefined(),
+                    Value::undefined(),
+                )
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let value = Value::object(object.index());
+            let name_value = self.heap.string(name);
+            self.set_property(value, "name", name_value, span)?;
+            let prototype = self
+                .objects
+                .allocate(self.shapes.root())
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let prototype = Value::object(prototype.index());
+            for method in [
+                "getTime",
+                "valueOf",
+                "toISOString",
+                "toString",
+                "getYear",
+                "getUTCFullYear",
+                "getFullYear",
+                "getUTCMonth",
+                "getMonth",
+                "getUTCDate",
+                "getDate",
+                "getUTCDay",
+                "getDay",
+                "getUTCHours",
+                "getHours",
+                "getUTCMinutes",
+                "getMinutes",
+                "getUTCSeconds",
+                "getSeconds",
+                "getUTCMilliseconds",
+                "getMilliseconds",
+                "getTimezoneOffset",
+                "setTime",
+            ] {
+                let function = self
+                    .objects
+                    .allocate_function(
+                        self.shapes.root(),
+                        u32::MAX,
+                        Value::undefined(),
+                        Value::undefined(),
+                    )
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let function = Value::object(function.index());
+                let name_value = self.heap.string(method);
+                self.set_property(function, "name", name_value, span)?;
+                self.set_property(prototype, method, function, span)?;
+            }
+            self.set_property(value, "prototype", prototype, span)?;
+            return Ok(value);
         }
         let object = self
             .objects
@@ -2026,6 +2104,14 @@ impl<'a> Interpreter<'a> {
                 .unwrap_or(0)
                 .max(0) as usize
         };
+        if object.object_offset().is_some() {
+            let marker = self.get_property(object, "__date", span)?;
+            if marker.as_boolean() == Some(true)
+                && let Some(value) = self.call_date_method(object, key, args, span)?
+            {
+                return Ok(Some(value));
+            }
+        }
         if object.is_string() {
             let text = self.heap.as_str(object).unwrap_or_default().to_owned();
             return Ok(Some(match key {

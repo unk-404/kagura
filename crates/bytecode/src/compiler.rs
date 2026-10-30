@@ -1587,6 +1587,7 @@ fn is_builtin_global(name: &str) -> bool {
             | "Array"
             | "Math"
             | "JSON"
+            | "Date"
             | "Number"
             | "String"
             | "Boolean"

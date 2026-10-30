@@ -72,6 +72,7 @@ const NEW_CONSTRUCTOR: &str = include_str!("../../../examples/new_constructor.ts
 const GLOBALS_MATH: &str = include_str!("../../../examples/globals_math.ts");
 const FOR_IN: &str = include_str!("../../../examples/for_in.ts");
 const JSON_PARSE: &str = include_str!("../../../examples/json_parse.ts");
+const DATE_BASIC: &str = include_str!("../../../examples/date_basic.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -714,6 +715,17 @@ fn runs_json_parse_from_serde() {
     assert_eq!(
         host.output(),
         "1 null x 2\n{\"a\":1,\"b\":[true,null,\"x\"],\"c\":{\"d\":2}}\n3\nhello\n"
+    );
+}
+
+#[test]
+fn runs_date_utc_operations() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(DATE_BASIC, &mut host).unwrap();
+    assert_eq!(
+        host.output(),
+        "0\n1970-01-01T00:00:00.000Z\n1970 0 1 4\n2020-01-02T03:04:05.006Z 3 4 5 6\n1577934245006\n1577934245006\n"
     );
 }
 
