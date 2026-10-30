@@ -1666,6 +1666,7 @@ fn is_builtin_global(name: &str) -> bool {
             | "Function"
             | "NaN"
             | "Infinity"
+            | "globalThis"
     )
 }
 

@@ -75,6 +75,7 @@ The current P1 slice adds:
   `SyntaxError`, `Test262Error`, `Object`, and `Array` targets
 - `JSON.parse` backed by `serde_json`; `JSON.stringify` uses the existing
   object/array serializer
+- `globalThis` global object and stable script `this`
 - stable builtin identity through a per-interpreter builtin cache
 - logical assignment (`&&=`, `||=`, `??=`), nullish coalescing, and fixed
   conditional-expression stack handling
@@ -154,14 +155,21 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-54029 selected, 19187 executed, 4154 passed, 15033 failed, 34842 skipped
-oracle node: 4154 checked, 4153 matched, 1 mismatched
+54029 selected, 19237 executed, 4188 passed, 15049 failed, 34792 skipped
+oracle node: 4188 checked, 4183 matched, 5 mismatched
 ```
 
-The single Node mismatch is tracked as a differential warning, not hidden:
+The five Node mismatches are tracked as differential warnings, not hidden:
 
-- an Annex-B function-declaration test where Node 22 evaluates `f()` as `2`
-  while test262 asserts `1`.
+- Annex-B function-declaration case where Node 22 evaluates `f()` as `2`
+  while test262 asserts `1`;
+- two `eval-code/direct` cases where the Node harness reports failure while
+  Kagura completes;
+- `assign-to-global-undefined`, where the Node vm context accepts an
+  assignment that test262 treats as an error;
+- one staging `regress-633741` case.
+
+They are counted as mismatches, not as passes.
 
 The full report is informational while the engine is pre-0.0.1; the gated
 suite remains `cargo test --workspace`.

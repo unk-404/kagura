@@ -41,6 +41,7 @@ pub struct Interpreter<'a> {
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     builtin_cache: FastHashMap<String, Value>,
+    global_object: Option<ObjectId>,
     array_prototype: Option<ObjectId>,
     object_prototype: Option<ObjectId>,
     depth: usize,
@@ -64,6 +65,7 @@ impl<'a> Interpreter<'a> {
             host,
             host_cache: vec![None; module.constants.len()],
             builtin_cache: FastHashMap::default(),
+            global_object: None,
             array_prototype: None,
             object_prototype: None,
             depth: 0,
@@ -74,7 +76,8 @@ impl<'a> Interpreter<'a> {
     #[instrument(skip(self), fields(entry = self.module.entry))]
     pub fn run(&mut self) -> Result<Value, RuntimeError> {
         let entry = self.module.entry;
-        self.call(entry, &[], &[], None, None, None)
+        let global = self.global_object(Span::empty(0))?;
+        self.call(entry, &[], &[], None, None, Some(global))
     }
 
     #[instrument(skip(self, locals, defined, frame), fields(function = function_index))]
@@ -1101,6 +1104,9 @@ impl<'a> Interpreter<'a> {
                         }
                         if let Some(prototype) = self.object_prototype {
                             roots.push(Value::object(prototype.index()));
+                        }
+                        if let Some(global) = self.global_object {
+                            roots.push(Value::object(global.index()));
                         }
                         roots.extend(self.builtin_cache.values().copied());
                         self.objects.collect(&roots);

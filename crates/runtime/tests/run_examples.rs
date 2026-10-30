@@ -905,6 +905,19 @@ fn keeps_builtin_identity_stable() {
 }
 
 #[test]
+fn exposes_global_this() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(this === globalThis, globalThis.Array === Array, globalThis.undefined, typeof globalThis);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "true true undefined object\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

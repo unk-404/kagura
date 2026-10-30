@@ -700,14 +700,11 @@ impl Parser {
                 continue;
             }
             if self.eat(&TokenKind::Dot) {
-                let property = self.expect_ident("expected property name")?;
-                let span = expr.span().merge(property.span);
+                let (property, property_span) = self.expect_property_name()?;
+                let span = expr.span().merge(property_span);
                 expr = Expr::Member {
                     object: Box::new(expr),
-                    property: match property.kind {
-                        TokenKind::Ident(name) => name,
-                        _ => unreachable!(),
-                    },
+                    property,
                     span,
                 };
                 continue;
@@ -751,14 +748,11 @@ impl Parser {
         let mut callee = self.parse_primary()?;
         loop {
             if self.eat(&TokenKind::Dot) {
-                let property = self.expect_ident("expected property name")?;
-                let span = callee.span().merge(property.span);
+                let (property, property_span) = self.expect_property_name()?;
+                let span = callee.span().merge(property_span);
                 callee = Expr::Member {
                     object: Box::new(callee),
-                    property: match property.kind {
-                        TokenKind::Ident(name) => name,
-                        _ => unreachable!(),
-                    },
+                    property,
                     span,
                 };
                 continue;
@@ -987,6 +981,21 @@ impl Parser {
             Expr::Index { object, index, .. } => Ok(AssignTarget::Index { object, index }),
             _ => Err(ParseError::new("invalid update target", span)),
         }
+    }
+
+    fn expect_property_name(&mut self) -> Result<(String, Span), ParseError> {
+        let token = self.advance();
+        let name = match token.kind {
+            TokenKind::Ident(name) => name,
+            TokenKind::Undefined => "undefined".into(),
+            TokenKind::True => "true".into(),
+            TokenKind::False => "false".into(),
+            TokenKind::Null => "null".into(),
+            _ => {
+                return Err(ParseError::new("expected property name", token.span));
+            }
+        };
+        Ok((name, token.span))
     }
 
     fn expect_ident(&mut self, message: &str) -> Result<Token, ParseError> {

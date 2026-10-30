@@ -1694,7 +1694,49 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub(super) fn global_object(&mut self, span: Span) -> Result<Value, RuntimeError> {
+        if let Some(global) = self.global_object {
+            return Ok(Value::object(global.index()));
+        }
+        let shape = self.object_shape(span)?;
+        let object = self
+            .objects
+            .allocate(shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let value = Value::object(object.index());
+        self.global_object = Some(object);
+        for name in [
+            "Object",
+            "Array",
+            "String",
+            "Number",
+            "Boolean",
+            "Function",
+            "Math",
+            "JSON",
+            "Date",
+            "Error",
+            "TypeError",
+            "RangeError",
+            "ReferenceError",
+            "SyntaxError",
+            "EvalError",
+            "URIError",
+            "NaN",
+            "Infinity",
+        ] {
+            let builtin = self.load_builtin(name, span)?;
+            self.set_non_enumerable_property(value, name, builtin, span)?;
+        }
+        self.set_non_enumerable_property(value, "undefined", Value::undefined(), span)?;
+        self.set_non_enumerable_property(value, "globalThis", value, span)?;
+        Ok(value)
+    }
+
     pub(super) fn load_builtin(&mut self, name: &str, span: Span) -> Result<Value, RuntimeError> {
+        if name == "globalThis" {
+            return self.global_object(span);
+        }
         if let Some(value) = self.builtin_cache.get(name).copied() {
             return Ok(value);
         }
