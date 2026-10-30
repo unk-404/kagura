@@ -879,6 +879,77 @@ impl<'a> Interpreter<'a> {
         args: &[Value],
         span: Span,
     ) -> Result<Option<Value>, RuntimeError> {
+        if path == "Object.create" {
+            let Some(prototype) = args.first().copied() else {
+                return Err(RuntimeError::type_error(
+                    "Object.create requires a prototype",
+                    span,
+                ));
+            };
+            let prototype = if prototype.is_null() {
+                None
+            } else {
+                Some(self.object_id(prototype, span)?)
+            };
+            let shape = self
+                .shapes
+                .with_prototype(self.shapes.root(), prototype)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let object = self
+                .objects
+                .allocate(shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            return Ok(Some(Value::object(object.index())));
+        }
+        if path == "Object.getPrototypeOf" {
+            let Some(target) = args.first().copied() else {
+                return Err(RuntimeError::type_error(
+                    "Object.getPrototypeOf requires an object",
+                    span,
+                ));
+            };
+            let object = self.object_id(target, span)?;
+            let shape = self
+                .objects
+                .shape(object)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let prototype = self
+                .shapes
+                .get(shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .prototype;
+            return Ok(Some(
+                prototype
+                    .map(|prototype| Value::object(prototype.index()))
+                    .unwrap_or_else(Value::null),
+            ));
+        }
+        if path == "Object.setPrototypeOf" {
+            let target = args.first().copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.setPrototypeOf requires an object", span)
+            })?;
+            let prototype = args.get(1).copied().ok_or_else(|| {
+                RuntimeError::type_error("Object.setPrototypeOf requires a prototype", span)
+            })?;
+            let object = self.object_id(target, span)?;
+            let prototype = if prototype.is_null() {
+                None
+            } else {
+                Some(self.object_id(prototype, span)?)
+            };
+            let shape = self
+                .objects
+                .shape(object)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let shape = self
+                .shapes
+                .with_prototype(shape, prototype)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            self.objects
+                .set_shape(object, shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            return Ok(Some(target));
+        }
         let mode = match path {
             "Object.keys" => 0,
             "Object.values" => 1,
@@ -1404,26 +1475,42 @@ impl<'a> Interpreter<'a> {
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
             return Ok(self.heap.number(length as f64));
         }
-        let shape = self
+        let mut shape = self
             .objects
             .shape(id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let mut owner = id;
         let key = PropertyKey::from_string(key);
-        let location = self
-            .shapes
-            .lookup(shape, &key)
-            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-            .map(|descriptor| descriptor.location);
-        match location {
-            Some(PropertyLocation::InObject(slot)) => self
+        loop {
+            let descriptor = self
+                .shapes
+                .lookup(shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if let Some(descriptor) = descriptor {
+                return match descriptor.location {
+                    PropertyLocation::InObject(slot) => self
+                        .objects
+                        .get_slot(owner, slot)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+                    PropertyLocation::PropertyArray(index) => self
+                        .objects
+                        .get_property_array(owner, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
+                };
+            }
+            let prototype = self
+                .shapes
+                .get(shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .prototype;
+            let Some(prototype) = prototype else {
+                return Ok(Value::undefined());
+            };
+            owner = prototype;
+            shape = self
                 .objects
-                .get_slot(id, slot)
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
-            Some(PropertyLocation::PropertyArray(index)) => self
-                .objects
-                .get_property_array(id, index)
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span)),
-            None => Ok(Value::undefined()),
+                .shape(prototype)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         }
     }
 
@@ -1595,16 +1682,33 @@ impl<'a> Interpreter<'a> {
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span));
             }
         }
-        let shape = self
+        let mut shape = self
             .objects
             .shape(id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         let key = PropertyKey::from_string(key);
-        Ok(self
-            .shapes
-            .lookup(shape, &key)
-            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-            .is_some())
+        loop {
+            if self
+                .shapes
+                .lookup(shape, &key)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .is_some()
+            {
+                return Ok(true);
+            }
+            let prototype = self
+                .shapes
+                .get(shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                .prototype;
+            let Some(prototype) = prototype else {
+                return Ok(false);
+            };
+            shape = self
+                .objects
+                .shape(prototype)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        }
     }
 }
 

@@ -86,6 +86,19 @@ impl ShapeTable {
         ShapeId::new(0)
     }
 
+    pub fn with_prototype(
+        &mut self,
+        shape: ShapeId,
+        prototype: Option<ObjectId>,
+    ) -> Result<ShapeId, ShapeError> {
+        let mut next = self.get(shape)?.clone();
+        next.id = ShapeId::new(self.shapes.len() as u32);
+        next.prototype = prototype;
+        let id = next.id;
+        self.shapes.push(next);
+        Ok(id)
+    }
+
     pub fn get(&self, id: ShapeId) -> Result<&Shape, ShapeError> {
         self.shapes
             .get(id.index() as usize)

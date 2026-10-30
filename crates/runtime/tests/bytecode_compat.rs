@@ -34,6 +34,8 @@ const BUILTINS_CALLBACKS_MORE: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/builtins_callbacks_more.kbc");
 const OBJECT_BUILTINS: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/object_builtins.kbc");
+const PROTOTYPE_CHAIN: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/prototype_chain.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -234,4 +236,12 @@ fn executes_v1_object_builtin_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(OBJECT_BUILTINS, &mut host).unwrap();
     assert_eq!(host.output(), "a,b\n1,2\na:1\n0,2\n");
+}
+
+#[test]
+fn executes_v1_prototype_chain_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(PROTOTYPE_CHAIN, &mut host).unwrap();
+    assert_eq!(host.output(), "1\n2\ntrue\ntrue\n3\n");
 }

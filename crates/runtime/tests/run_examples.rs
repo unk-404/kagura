@@ -39,6 +39,7 @@ const BUILTINS_CALLBACKS: &str = include_str!("../../../examples/builtins_callba
 const BUILTINS_CHAIN: &str = include_str!("../../../examples/builtins_chain.ts");
 const BUILTINS_CALLBACKS_MORE: &str = include_str!("../../../examples/builtins_callbacks_more.ts");
 const OBJECT_BUILTINS: &str = include_str!("../../../examples/object_builtins.ts");
+const PROTOTYPE_CHAIN: &str = include_str!("../../../examples/prototype_chain.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -388,6 +389,14 @@ fn runs_object_builtins() {
     let mut runtime = Runtime::default();
     runtime.run(OBJECT_BUILTINS, &mut host).unwrap();
     assert_eq!(host.output(), "a,b\n1,2\na:1\n0,2\n");
+}
+
+#[test]
+fn follows_object_prototype_chain() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(PROTOTYPE_CHAIN, &mut host).unwrap();
+    assert_eq!(host.output(), "1\n2\ntrue\ntrue\n3\n");
 }
 
 #[test]
