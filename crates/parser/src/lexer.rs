@@ -127,6 +127,12 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
             continue;
         }
 
+        if source.as_bytes()[pos..].starts_with(b">>>=") {
+            tokens.push(Token::new(TokenKind::UShrEq, span(pos, pos + 4)));
+            pos += 4;
+            continue;
+        }
+
         let (kind, len) = match (
             byte,
             bytes.get(pos + 1).copied(),
@@ -141,6 +147,11 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
             (b'>', Some(b'='), _) => (TokenKind::Ge, 2),
             (b'&', Some(b'&'), Some(b'=')) => (TokenKind::AndEq, 3),
             (b'|', Some(b'|'), Some(b'=')) => (TokenKind::OrEq, 3),
+            (b'&', Some(b'='), _) => (TokenKind::AmpEq, 2),
+            (b'|', Some(b'='), _) => (TokenKind::PipeEq, 2),
+            (b'^', Some(b'='), _) => (TokenKind::CaretEq, 2),
+            (b'<', Some(b'<'), Some(b'=')) => (TokenKind::ShlEq, 3),
+            (b'>', Some(b'>'), Some(b'=')) => (TokenKind::ShrEq, 3),
             (b'?', Some(b'?'), Some(b'=')) => (TokenKind::NullishEq, 3),
             (b'?', Some(b'?'), _) => (TokenKind::Nullish, 2),
             (b'&', Some(b'&'), _) => (TokenKind::AndAnd, 2),

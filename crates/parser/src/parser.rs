@@ -618,6 +618,12 @@ impl Parser {
             TokenKind::StarEq => Some(BinaryOp::Mul),
             TokenKind::SlashEq => Some(BinaryOp::Div),
             TokenKind::PercentEq => Some(BinaryOp::Mod),
+            TokenKind::AmpEq => Some(BinaryOp::BitAnd),
+            TokenKind::PipeEq => Some(BinaryOp::BitOr),
+            TokenKind::CaretEq => Some(BinaryOp::BitXor),
+            TokenKind::ShlEq => Some(BinaryOp::Shl),
+            TokenKind::ShrEq => Some(BinaryOp::Shr),
+            TokenKind::UShrEq => Some(BinaryOp::UShr),
             _ => None,
         } {
             self.advance();

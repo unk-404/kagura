@@ -299,8 +299,8 @@ impl<'a> Interpreter<'a> {
                 Op::BitOr | Op::BitXor | Op::BitAnd | Op::Shl | Op::Shr | Op::UShr => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;
-                    let left = try_op!(self.number(left, span)) as i32;
-                    let right = try_op!(self.number(right, span)) as i32;
+                    let left = to_int32(self.heap.to_number(left).unwrap_or(f64::NAN));
+                    let right = to_int32(self.heap.to_number(right).unwrap_or(f64::NAN));
                     let value = match op {
                         Op::BitOr => (left | right) as f64,
                         Op::BitXor => (left ^ right) as f64,
@@ -392,7 +392,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Op::BitNot => {
                     let value = pop(&mut stack, span)?;
-                    let number = try_op!(self.number(value, span)) as i32;
+                    let number = to_int32(self.heap.to_number(value).unwrap_or(f64::NAN));
                     push(&mut stack, self.heap.number((!number) as f64), span)?;
                 }
                 Op::Not => {
@@ -1473,6 +1473,19 @@ impl<'a> Interpreter<'a> {
         }
         self.heap.strict_eq(left, right)
     }
+}
+
+fn to_int32(number: f64) -> i32 {
+    if !number.is_finite() || number == 0.0 {
+        return 0;
+    }
+    let modulo = number.trunc() % 4_294_967_296.0;
+    let unsigned = if modulo < 0.0 {
+        modulo + 4_294_967_296.0
+    } else {
+        modulo
+    };
+    unsigned as u32 as i32
 }
 
 fn push(stack: &mut Vec<Value>, value: Value, span: Span) -> Result<(), RuntimeError> {

@@ -1152,6 +1152,19 @@ fn runs_do_while_and_math_random() {
 }
 
 #[test]
+fn runs_bitwise_compound_assignment() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var x = 0; x |= 5; x ^= 1; x &= 7; x <<= 2; x >>>= 1; console.log(x, (-1) >>> 0);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "8 4294967295\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

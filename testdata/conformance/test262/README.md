@@ -82,6 +82,8 @@ The current P1 slice adds:
 - array/object destructuring declarations (`var [a,b]`, `var {x,y}`),
   including nested, renamed, default-valued, array rest, object rest,
   destructuring parameters, and destructuring assignment expressions
+- bitwise compound assignment operators and proper `ToInt32` wrapping for
+  bitwise/shift operands
 - `do...while` and a deterministic seeded `Math.random()`
 - function-scope `var`/function hoisting before nested closures are compiled
 - test262 `_FIXTURE.js` helper files are excluded from selection instead of
@@ -181,19 +183,23 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-53733 selected, 22267 executed, 5309 passed, 16958 failed, 31466 skipped
-oracle node: 5309 checked, 5305 matched, 4 mismatched
+53733 selected, 22267 executed, 5403 passed, 16864 failed, 31466 skipped
+oracle node: 5403 checked, 5393 matched, 10 mismatched
 ```
 
-The four Node mismatches are tracked as differential warnings, not hidden:
+The ten Node mismatches are tracked as differential warnings, not hidden:
 
+- six `compound-assignment` cases where Node 22's V8 calls `ToPropertyKey`
+  twice and fails the test262 once-only assertion;
 - two `eval-code/direct` cases where the Node harness reports failure while
   Kagura completes;
 - `assign-to-global-undefined`, where the Node vm context accepts an
   assignment that test262 treats as an error;
 - one staging `regress-633741` case.
 
-They are counted as mismatches, not as passes.
+They are counted as mismatches, not as passes. The compound-assignment result
+also exposes that Kagura does not yet call `ToPropertyKey` for object keys;
+that semantic gap must be fixed rather than counted as clean conformance.
 
 The full report is informational while the engine is pre-0.0.1; the gated
 suite remains `cargo test --workspace`.
