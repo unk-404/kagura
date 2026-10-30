@@ -1192,6 +1192,32 @@ fn grows_value_heap_for_many_numbers() {
 }
 
 #[test]
+fn creates_implicit_global_in_sloppy_mode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "function set() { implicitGlobal = 3; implicitGlobal++; } set(); console.log(implicitGlobal);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "4\n");
+}
+
+#[test]
+fn coerces_non_numbers_in_arithmetic_and_comparison() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(-undefined, undefined < 1, +'3', 1 + undefined);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "NaN false 3 NaN\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

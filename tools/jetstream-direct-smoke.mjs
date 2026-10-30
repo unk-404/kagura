@@ -19,6 +19,7 @@ const entry = arg("entry", "runRichards");
 const iterations = Number(arg("iterations", "1"));
 const heapSize = arg("heap-size", "8388608");
 const stepLimit = arg("step-limit", "1000000000");
+const timeoutMs = Number(arg("timeout-ms", "120000"));
 if (!file) {
   console.error("usage: node tools/jetstream-direct-smoke.mjs --file FILE --entry FN [--iterations N] [--engine node|kagura]");
   process.exit(2);
@@ -40,7 +41,7 @@ const command =
     ? [path.resolve("target/release/kagura.exe"), ["run", "--heap-size", heapSize, "--step-limit", stepLimit, script]]
     : ["node", [script]];
 const started = performance.now();
-const result = spawnSync(command[0], command[1], { encoding: "utf8" });
+const result = spawnSync(command[0], command[1], { encoding: "utf8", timeout: timeoutMs });
 const elapsed = performance.now() - started;
 fs.rmSync(directory, { recursive: true, force: true });
 
@@ -52,6 +53,7 @@ console.log(
       entry,
       iterations,
       exitCode: result.status,
+      timedOut: result.error?.code === "ETIMEDOUT",
       elapsedMs: Math.round(elapsed),
       stdout: result.stdout.trim(),
       stderrTail: result.stderr.trim().split("\n").slice(-3).join("\n"),

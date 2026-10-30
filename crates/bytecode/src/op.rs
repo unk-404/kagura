@@ -82,6 +82,8 @@ pub enum Op {
     Shr = 78,
     UShr = 79,
     BitNot = 80,
+    LoadGlobal = 81,
+    StoreGlobal = 82,
 }
 
 impl Op {
@@ -168,6 +170,8 @@ impl Op {
             78 => Self::Shr,
             79 => Self::UShr,
             80 => Self::BitNot,
+            81 => Self::LoadGlobal,
+            82 => Self::StoreGlobal,
             _ => return None,
         })
     }

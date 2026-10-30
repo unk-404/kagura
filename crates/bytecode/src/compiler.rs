@@ -1557,10 +1557,8 @@ impl<'a> FunctionCompiler<'a> {
                         let index = self.add_const(Const::String(name.clone()));
                         self.emit_u32(Op::LoadBuiltin, index, *span);
                     } else {
-                        return Err(CompileError::new(
-                            format!("unknown variable '{name}'"),
-                            *span,
-                        ));
+                        let index = self.add_const(Const::String(name.clone()));
+                        self.emit_u32(Op::LoadGlobal, index, *span);
                     }
                 }
             },
@@ -1606,7 +1604,10 @@ impl<'a> FunctionCompiler<'a> {
                     UnaryOp::Neg => self.emit(Op::Neg, *span),
                     UnaryOp::Not => self.emit(Op::Not, *span),
                     UnaryOp::BitNot => self.emit(Op::BitNot, *span),
-                    UnaryOp::Plus => {}
+                    UnaryOp::Plus => {
+                        self.emit(Op::Neg, *span);
+                        self.emit(Op::Neg, *span);
+                    }
                     UnaryOp::TypeOf => self.emit(Op::TypeOf, *span),
                     UnaryOp::Void => {
                         self.emit(Op::Pop, *span);
@@ -1652,10 +1653,16 @@ impl<'a> FunctionCompiler<'a> {
                     }
                     let resolved = self.resolve(name);
                     if resolved.is_none() {
+                        if self.strict {
+                            return Err(CompileError::new(
+                                format!("assignment to undeclared '{name}' in strict mode"),
+                                *span,
+                            ));
+                        }
                         self.compile_expr(value)?;
-                        self.emit(Op::Pop, *span);
+                        self.emit(Op::Dup, *span);
                         let index = self.add_const(Const::String(name.clone()));
-                        self.emit_u32(Op::ThrowReference, index, *span);
+                        self.emit_u32(Op::StoreGlobal, index, *span);
                         return Ok(());
                     }
                     let resolved = resolved.expect("resolved assignment");
@@ -1746,10 +1753,28 @@ impl<'a> FunctionCompiler<'a> {
                             ));
                         }
                         let Some(resolved) = self.resolve(name) else {
-                            return Err(CompileError::new(
-                                format!("unknown variable '{name}'"),
-                                *span,
-                            ));
+                            if self.strict {
+                                return Err(CompileError::new(
+                                    format!("update of undeclared '{name}' in strict mode"),
+                                    *span,
+                                ));
+                            }
+                            let index = self.add_const(Const::String(name.clone()));
+                            self.emit_u32(Op::LoadGlobal, index, *span);
+                            if *prefix {
+                                self.emit_const(Const::Number(1.0), *span);
+                                self.emit(op, *span);
+                                self.emit(Op::Dup, *span);
+                                self.emit_u32(Op::StoreGlobal, index, *span);
+                            } else {
+                                self.emit(Op::Dup, *span);
+                                self.emit_const(Const::Number(1.0), *span);
+                                self.emit(op, *span);
+                                self.emit_u32(Op::StoreGlobal, index, *span);
+                                self.emit(Op::Pop, *span);
+                                self.emit_u32(Op::LoadGlobal, index, *span);
+                            }
+                            return Ok(());
                         };
                         if !resolved.mutable() {
                             return Err(CompileError::new(

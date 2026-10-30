@@ -85,6 +85,8 @@ The current P1 slice adds:
 - bitwise compound assignment operators and proper `ToInt32` wrapping for
   bitwise/shift operands
 - `do...while` and a deterministic seeded `Math.random()`
+- sloppy-mode implicit global creation and global name opcodes
+- `ToNumber`-based arithmetic/comparison coercion (including `NaN` ordering)
 - growing value heap instead of panicking on many boxed numbers
 - nested conditional expressions parsed right-associatively
 - function-scope `var`/function hoisting before nested closures are compiled
@@ -185,22 +187,24 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-53733 selected, 22267 executed, 5403 passed, 16864 failed, 31466 skipped
-oracle node: 5403 checked, 5393 matched, 10 mismatched
+53733 selected, 22267 executed, 5838 passed, 16429 failed, 31466 skipped
+oracle node: 5838 checked, 5819 matched, 19 mismatched
 ```
 
-The ten Node mismatches are tracked as differential warnings, not hidden:
+The nineteen Node mismatches are tracked as differential warnings, not hidden:
 
-- six `compound-assignment` cases where Node 22's V8 calls `ToPropertyKey`
+- ten `compound-assignment` cases where Node 22's V8 calls `ToPropertyKey`
   twice and fails the test262 once-only assertion;
+- four prefix/postfix increment/decrement `A6_T3` cases with the same
+  Node-side key-conversion failure;
+- two staging cases (`set-property-non-extensible`, `regress-633741`);
 - two `eval-code/direct` cases where the Node harness reports failure while
   Kagura completes;
 - `assign-to-global-undefined`, where the Node vm context accepts an
-  assignment that test262 treats as an error;
-- one staging `regress-633741` case.
+  assignment that test262 treats as an error.
 
-They are counted as mismatches, not as passes. The compound-assignment result
-also exposes that Kagura does not yet call `ToPropertyKey` for object keys;
+They are counted as mismatches, not as passes. The compound/update results
+also expose that Kagura does not yet call `ToPropertyKey` for object keys;
 that semantic gap must be fixed rather than counted as clean conformance.
 
 The full report is informational while the engine is pre-0.0.1; the gated

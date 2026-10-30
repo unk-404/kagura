@@ -229,8 +229,8 @@ impl<'a> Interpreter<'a> {
                 Op::Sub | Op::Mul | Op::Div | Op::Mod | Op::Pow => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;
-                    let left = try_op!(self.number(left, span));
-                    let right = try_op!(self.number(right, span));
+                    let left = self.heap.to_number(left).unwrap_or(f64::NAN);
+                    let right = self.heap.to_number(right).unwrap_or(f64::NAN);
                     let value = match op {
                         Op::Sub => left - right,
                         Op::Mul => left * right,
@@ -387,7 +387,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Op::Neg => {
                     let value = pop(&mut stack, span)?;
-                    let number = try_op!(self.number(value, span));
+                    let number = self.heap.to_number(value).unwrap_or(f64::NAN);
                     push(&mut stack, self.heap.number(-number), span)?;
                 }
                 Op::BitNot => {
@@ -454,6 +454,40 @@ impl<'a> Interpreter<'a> {
                     self.objects
                         .array_set(env, slot as u32, value)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                Op::LoadGlobal => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let name = match self.module.constants.get(index as usize) {
+                        Some(Const::String(name)) => name.clone(),
+                        _ => return Err(RuntimeError::runtime("invalid global name", span)),
+                    };
+                    let value = if let Some(global) = self.global_object {
+                        let target = Value::object(global.index());
+                        let key = self.heap.string(&name);
+                        if !try_op!(self.has_property(key, target, span)) {
+                            return Err(RuntimeError::reference(
+                                format!("{name} is not defined"),
+                                span,
+                            ));
+                        }
+                        try_op!(self.get_property(target, &name, span))
+                    } else {
+                        Value::undefined()
+                    };
+                    push(&mut stack, value, span)?;
+                }
+                Op::StoreGlobal => {
+                    let index = read_u32(&function.code, &mut pc, span)?;
+                    let name = match self.module.constants.get(index as usize) {
+                        Some(Const::String(name)) => name.clone(),
+                        _ => return Err(RuntimeError::runtime("invalid global name", span)),
+                    };
+                    let value = pop(&mut stack, span)?;
+                    let Some(global) = self.global_object else {
+                        return Err(RuntimeError::runtime("global object is missing", span));
+                    };
+                    try_op!(self.set_property(Value::object(global.index()), &name, value, span));
+                    push(&mut stack, value, span)?;
                 }
                 Op::LoadBuiltin => {
                     let index = read_u32(&function.code, &mut pc, span)?;
@@ -1403,8 +1437,8 @@ impl<'a> Interpreter<'a> {
             }
             return Ok(self.heap.string(&text));
         }
-        let left = self.number(left, span)?;
-        let right = self.number(right, span)?;
+        let left = self.heap.to_number(left).unwrap_or(f64::NAN);
+        let right = self.heap.to_number(right).unwrap_or(f64::NAN);
         Ok(self.heap.number(left + right))
     }
 
@@ -1418,32 +1452,24 @@ impl<'a> Interpreter<'a> {
     fn compare(&self, op: Op, left: Value, right: Value, span: Span) -> Result<bool, RuntimeError> {
         let ordering =
             if let (Some(left), Some(right)) = (self.heap.as_str(left), self.heap.as_str(right)) {
-                left.partial_cmp(right).map(std::cmp::Ordering::is_lt)
+                left.partial_cmp(right)
             } else {
-                let left = self.number(left, span)?;
-                let right = self.number(right, span)?;
-                Some(
-                    left.partial_cmp(&right)
-                        .map(std::cmp::Ordering::is_lt)
-                        .unwrap_or(false),
-                )
+                let left = self.heap.to_number(left).unwrap_or(f64::NAN);
+                let right = self.heap.to_number(right).unwrap_or(f64::NAN);
+                left.partial_cmp(&right)
             };
-        let less = ordering.unwrap_or(false);
-        let equal =
-            if let (Some(left), Some(right)) = (self.heap.as_str(left), self.heap.as_str(right)) {
-                left == right
-            } else {
-                self.heap
-                    .to_number(left)
-                    .zip(self.heap.to_number(right))
-                    .map(|(left, right)| left == right)
-                    .unwrap_or(false)
-            };
+        let _ = span;
         Ok(match op {
-            Op::Lt => less,
-            Op::Le => less || equal,
-            Op::Gt => !less && !equal,
-            Op::Ge => !less,
+            Op::Lt => matches!(ordering, Some(std::cmp::Ordering::Less)),
+            Op::Le => matches!(
+                ordering,
+                Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+            ),
+            Op::Gt => matches!(ordering, Some(std::cmp::Ordering::Greater)),
+            Op::Ge => matches!(
+                ordering,
+                Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
+            ),
             _ => unreachable!(),
         })
     }
