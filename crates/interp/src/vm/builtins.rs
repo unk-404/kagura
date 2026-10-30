@@ -1230,6 +1230,24 @@ impl<'a> Interpreter<'a> {
                 "toUpperCase" => self.heap.string(&text.to_uppercase()),
                 "toLowerCase" => self.heap.string(&text.to_lowercase()),
                 "trim" => self.heap.string(text.trim()),
+                "trimStart" => self.heap.string(text.trim_start()),
+                "trimEnd" => self.heap.string(text.trim_end()),
+                "replace" | "replaceAll" => {
+                    let search = args
+                        .first()
+                        .map(|value| self.heap.to_js_string(*value))
+                        .unwrap_or_default();
+                    let replacement = args
+                        .get(1)
+                        .map(|value| self.heap.to_js_string(*value))
+                        .unwrap_or_default();
+                    let value = if key == "replace" {
+                        text.replacen(&search, &replacement, 1)
+                    } else {
+                        text.replace(&search, &replacement)
+                    };
+                    self.heap.string(&value)
+                }
                 "startsWith" => {
                     let needle = args
                         .first()

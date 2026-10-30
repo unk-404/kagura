@@ -80,6 +80,8 @@ const OWN_PROPERTIES: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/own_properties.kbc");
 const EXTENSIBILITY: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/extensibility.kbc");
+const STRING_REPLACE: &[u8] =
+    include_bytes!("../../../testdata/compat/bytecode/v1/string_replace.kbc");
 const ARRAYS_LENGTH: &[u8] =
     include_bytes!("../../../testdata/compat/bytecode/v1/arrays_length.kbc");
 
@@ -513,4 +515,12 @@ fn executes_v1_extensibility_bytecode() {
     let mut runtime = Runtime::default();
     runtime.run_bytecode(EXTENSIBILITY, &mut host).unwrap();
     assert_eq!(host.output(), "undefined\nfalse\ntrue\n1\ntrue\n");
+}
+
+#[test]
+fn executes_v1_string_replace_bytecode() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run_bytecode(STRING_REPLACE, &mut host).unwrap();
+    assert_eq!(host.output(), "x-b-a\nx-b-x\n[hi  ]\n[  hi]\n");
 }

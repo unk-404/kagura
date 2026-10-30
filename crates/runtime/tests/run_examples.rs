@@ -66,6 +66,7 @@ const CONFIGURABLE_PROPERTY: &str = include_str!("../../../examples/configurable
 const DELETE_OPERATOR: &str = include_str!("../../../examples/delete_operator.ts");
 const OWN_PROPERTIES: &str = include_str!("../../../examples/own_properties.ts");
 const EXTENSIBILITY: &str = include_str!("../../../examples/extensibility.ts");
+const STRING_REPLACE: &str = include_str!("../../../examples/string_replace.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -655,6 +656,14 @@ fn runs_extensibility_and_descriptor_map() {
     let mut runtime = Runtime::default();
     runtime.run(EXTENSIBILITY, &mut host).unwrap();
     assert_eq!(host.output(), "undefined\nfalse\ntrue\n1\ntrue\n");
+}
+
+#[test]
+fn runs_string_replace_and_trim() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(STRING_REPLACE, &mut host).unwrap();
+    assert_eq!(host.output(), "x-b-a\nx-b-x\n[hi  ]\n[  hi]\n");
 }
 
 #[test]
