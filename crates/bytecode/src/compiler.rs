@@ -28,6 +28,7 @@ impl Compiler {
             &[],
             &program.body,
             true,
+            has_use_strict(&program.body),
             &mut self.constants,
             &mut self.functions,
         );
@@ -152,6 +153,7 @@ struct FunctionCompiler<'a> {
     scopes: Vec<usize>,
     loops: Vec<LoopContext>,
     gc_safe: bool,
+    strict: bool,
     uses_env: bool,
     self_slot: Option<u16>,
     arguments_slot: Option<u16>,
@@ -169,6 +171,7 @@ impl<'a> FunctionCompiler<'a> {
         params: &[Param],
         body: &[Stmt],
         gc_safe: bool,
+        strict: bool,
         constants: &'a mut Vec<Const>,
         functions: &'a mut Vec<FunctionProto>,
     ) -> Self {
@@ -181,6 +184,7 @@ impl<'a> FunctionCompiler<'a> {
             scopes: vec![0],
             loops: Vec::new(),
             gc_safe,
+            strict,
             uses_env: body_has_closure(body) || params_have_closure(params),
             self_slot: None,
             arguments_slot: None,
@@ -283,6 +287,12 @@ impl<'a> FunctionCompiler<'a> {
         match stmt {
             Stmt::Var(decl) => self.compile_var(decl),
             Stmt::Func(decl) => {
+                if self.strict && matches!(decl.name.as_str(), "eval" | "arguments") {
+                    return Err(CompileError::new(
+                        format!("invalid strict-mode function name '{}'", decl.name),
+                        decl.span,
+                    ));
+                }
                 let Some(slot) = self.declare(&decl.name, true, decl.span) else {
                     return Err(CompileError::new(
                         format!("duplicate declaration '{}'", decl.name),
@@ -873,6 +883,12 @@ impl<'a> FunctionCompiler<'a> {
     }
 
     fn compile_var(&mut self, decl: &VarDecl) -> Result<(), CompileError> {
+        if self.strict && matches!(decl.name.as_str(), "eval" | "arguments") {
+            return Err(CompileError::new(
+                format!("invalid strict-mode binding '{}'", decl.name),
+                decl.span,
+            ));
+        }
         if let Some(scope) = self.iterations.last()
             && let Some((slot, _)) = scope
                 .bindings
@@ -935,10 +951,17 @@ impl<'a> FunctionCompiler<'a> {
         span: Span,
     ) -> Result<(), CompileError> {
         let mut names = FastHashSet::default();
+        let strict = self.strict || has_use_strict(body);
         for param in params {
             if !names.insert(param.name.as_str()) {
                 return Err(CompileError::new(
                     format!("duplicate parameter '{}'", param.name),
+                    param.span,
+                ));
+            }
+            if strict && matches!(param.name.as_str(), "eval" | "arguments") {
+                return Err(CompileError::new(
+                    format!("invalid strict-mode parameter '{}'", param.name),
                     param.span,
                 ));
             }
@@ -955,8 +978,15 @@ impl<'a> FunctionCompiler<'a> {
                 .collect(),
         );
         outer.extend(self.outer.iter().cloned());
-        let mut compiler =
-            FunctionCompiler::new(name, params, body, true, self.constants, self.functions);
+        let mut compiler = FunctionCompiler::new(
+            name,
+            params,
+            body,
+            true,
+            strict,
+            self.constants,
+            self.functions,
+        );
         compiler.outer = outer;
         if let Some(self_name) = self_name
             && let Some(slot) = compiler.declare(self_name, false, span)
@@ -1045,6 +1075,12 @@ impl<'a> FunctionCompiler<'a> {
             Expr::Unary { op, expr, span } => {
                 if matches!(op, UnaryOp::Delete) {
                     match expr.as_ref() {
+                        Expr::Ident { span: target, .. } if self.strict => {
+                            return Err(CompileError::new(
+                                "delete of an unqualified identifier in strict mode",
+                                *target,
+                            ));
+                        }
                         Expr::Member {
                             object, property, ..
                         } => {
@@ -1606,6 +1642,23 @@ fn is_builtin_global(name: &str) -> bool {
             | "String"
             | "Boolean"
     )
+}
+
+fn has_use_strict(body: &[Stmt]) -> bool {
+    for stmt in body {
+        match stmt {
+            Stmt::Expr {
+                expr: Expr::String { value, .. },
+                ..
+            } => {
+                if value == "use strict" {
+                    return true;
+                }
+            }
+            _ => break,
+        }
+    }
+    false
 }
 
 fn binary_op(op: BinaryOp) -> Op {

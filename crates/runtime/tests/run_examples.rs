@@ -781,6 +781,17 @@ fn runs_primitive_wrappers() {
 }
 
 #[test]
+fn rejects_strict_mode_eval_bindings() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    let result = runtime.run(
+        "\"use strict\"; function strictFunction(eval) { return eval; }",
+        &mut host,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
