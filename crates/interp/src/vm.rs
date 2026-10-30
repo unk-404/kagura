@@ -330,6 +330,45 @@ impl<'a> Interpreter<'a> {
                     self.set_property(object, &key, value, span)?;
                     push(&mut stack, value, span)?;
                 }
+                Op::NewArray => {
+                    let shape = self.shapes.root();
+                    let object = self
+                        .objects
+                        .allocate_array(shape)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    push(&mut stack, Value::object(object.index()), span)?;
+                }
+                Op::ArrayPush => {
+                    let value = pop(&mut stack, span)?;
+                    let object = pop(&mut stack, span)?;
+                    let id = self.object_id(object, span)?;
+                    self.objects
+                        .array_push(id, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    push(&mut stack, object, span)?;
+                }
+                Op::GetIndex => {
+                    let index = pop(&mut stack, span)?;
+                    let object = pop(&mut stack, span)?;
+                    let id = self.object_id(object, span)?;
+                    let index = self.index_value(index, span)?;
+                    let value = self
+                        .objects
+                        .array_get(id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    push(&mut stack, value, span)?;
+                }
+                Op::SetIndexValue => {
+                    let value = pop(&mut stack, span)?;
+                    let index = pop(&mut stack, span)?;
+                    let object = pop(&mut stack, span)?;
+                    let id = self.object_id(object, span)?;
+                    let index = self.index_value(index, span)?;
+                    self.objects
+                        .array_set(id, index, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    push(&mut stack, value, span)?;
+                }
                 Op::Pop => {
                     pop(&mut stack, span)?;
                 }
@@ -396,6 +435,27 @@ impl<'a> Interpreter<'a> {
             .object_offset()
             .map(ObjectId::new)
             .ok_or_else(|| RuntimeError::type_error("value is not an object", span))
+    }
+
+    fn index_value(&self, value: Value, span: Span) -> Result<u32, RuntimeError> {
+        if let Some(index) = value.as_smi()
+            && index >= 0
+        {
+            return Ok(index as u32);
+        }
+        if let Some(number) = self.heap.as_number(value)
+            && number >= 0.0
+            && number.fract() == 0.0
+            && number <= u32::MAX as f64
+        {
+            return Ok(number as u32);
+        }
+        if let Some(text) = self.heap.as_str(value)
+            && let Ok(index) = text.parse::<u32>()
+        {
+            return Ok(index);
+        }
+        Err(RuntimeError::type_error("invalid array index", span))
     }
 
     fn get_property(

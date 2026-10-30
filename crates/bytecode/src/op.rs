@@ -33,6 +33,10 @@ pub enum Op {
     GetProp = 29,
     SetProp = 30,
     SetPropValue = 31,
+    NewArray = 32,
+    ArrayPush = 33,
+    GetIndex = 34,
+    SetIndexValue = 35,
 }
 
 impl Op {
@@ -70,6 +74,10 @@ impl Op {
             29 => Self::GetProp,
             30 => Self::SetProp,
             31 => Self::SetPropValue,
+            32 => Self::NewArray,
+            33 => Self::ArrayPush,
+            34 => Self::GetIndex,
+            35 => Self::SetIndexValue,
             _ => return None,
         })
     }

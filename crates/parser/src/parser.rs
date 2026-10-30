@@ -328,6 +328,11 @@ impl Parser {
                     value: Box::new(value),
                     span,
                 }),
+                Expr::Index { object, index, .. } => Ok(Expr::Assign {
+                    target: AssignTarget::Index { object, index },
+                    value: Box::new(value),
+                    span,
+                }),
                 _ => Err(ParseError::new("invalid assignment target", span)),
             };
         }
@@ -517,6 +522,17 @@ impl Parser {
                 };
                 continue;
             }
+            if self.eat(&TokenKind::LBracket) {
+                let index = self.parse_expr()?;
+                let end = self.expect(&TokenKind::RBracket, "expected ']' after index")?;
+                let span = expr.span().merge(end.span);
+                expr = Expr::Index {
+                    object: Box::new(expr),
+                    index: Box::new(index),
+                    span,
+                };
+                continue;
+            }
             break;
         }
         Ok(expr)
@@ -581,8 +597,27 @@ impl Parser {
                 })
             }
             TokenKind::LBrace => self.parse_object_literal(),
+            TokenKind::LBracket => self.parse_array_literal(),
             _ => Err(ParseError::new("expected expression", token.span)),
         }
+    }
+
+    fn parse_array_literal(&mut self) -> Result<Expr, ParseError> {
+        let start = self.advance().span;
+        let mut elements = Vec::new();
+        if !self.at(&TokenKind::RBracket) {
+            loop {
+                elements.push(self.parse_expr()?);
+                if !self.eat(&TokenKind::Comma) || self.at(&TokenKind::RBracket) {
+                    break;
+                }
+            }
+        }
+        let end = self.expect(&TokenKind::RBracket, "expected ']' after array literal")?;
+        Ok(Expr::Array {
+            elements,
+            span: start.merge(end.span),
+        })
     }
 
     fn parse_object_literal(&mut self) -> Result<Expr, ParseError> {

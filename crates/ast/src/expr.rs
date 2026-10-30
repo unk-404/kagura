@@ -56,6 +56,15 @@ pub enum Expr {
         properties: Vec<ObjectProperty>,
         span: Span,
     },
+    Array {
+        elements: Vec<Expr>,
+        span: Span,
+    },
+    Index {
+        object: Box<Expr>,
+        index: Box<Expr>,
+        span: Span,
+    },
     As {
         expr: Box<Expr>,
         ty: TypeAnn,
@@ -67,6 +76,7 @@ pub enum Expr {
 pub enum AssignTarget {
     Ident(String),
     Member { object: Box<Expr>, property: String },
+    Index { object: Box<Expr>, index: Box<Expr> },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -91,6 +101,8 @@ impl Expr {
             | Self::Call { span, .. }
             | Self::Member { span, .. }
             | Self::Object { span, .. }
+            | Self::Array { span, .. }
+            | Self::Index { span, .. }
             | Self::As { span, .. } => *span,
         }
     }

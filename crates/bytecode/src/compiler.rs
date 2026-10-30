@@ -382,6 +382,12 @@ impl<'a> FunctionCompiler<'a> {
                     let index = self.add_const(Const::String(property.clone()));
                     self.emit_u32(Op::SetPropValue, index, *span);
                 }
+                AssignTarget::Index { object, index } => {
+                    self.compile_expr(object)?;
+                    self.compile_expr(index)?;
+                    self.compile_expr(value)?;
+                    self.emit(Op::SetIndexValue, *span);
+                }
             },
             Expr::Call { callee, args, span } => {
                 if let Expr::Ident { name, .. } = callee.as_ref() {
@@ -418,6 +424,23 @@ impl<'a> FunctionCompiler<'a> {
                     let index = self.add_const(Const::String(property.key.clone()));
                     self.emit_u32(Op::SetProp, index, property.span);
                 }
+            }
+            Expr::Array { elements, span } => {
+                self.emit(Op::NewArray, *span);
+                for element in elements {
+                    self.emit(Op::Dup, *span);
+                    self.compile_expr(element)?;
+                    self.emit(Op::ArrayPush, *span);
+                }
+            }
+            Expr::Index {
+                object,
+                index,
+                span,
+            } => {
+                self.compile_expr(object)?;
+                self.compile_expr(index)?;
+                self.emit(Op::GetIndex, *span);
             }
             Expr::As { expr, .. } => self.compile_expr(expr)?,
         }

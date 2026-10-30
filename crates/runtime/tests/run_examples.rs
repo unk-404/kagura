@@ -6,6 +6,7 @@ const FIB: &str = include_str!("../../../examples/fib.ts");
 const OBJECTS: &str = include_str!("../../../examples/objects.ts");
 const OBJECTS_WRITE: &str = include_str!("../../../examples/objects_write.ts");
 const OBJECTS_MANY: &str = include_str!("../../../examples/objects_many.ts");
+const ARRAYS: &str = include_str!("../../../examples/arrays.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -45,6 +46,14 @@ fn grows_property_arrays() {
     let mut runtime = Runtime::default();
     runtime.run(OBJECTS_MANY, &mut host).unwrap();
     assert_eq!(host.output(), "9\n");
+}
+
+#[test]
+fn runs_arrays_and_index_writes() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(ARRAYS, &mut host).unwrap();
+    assert_eq!(host.output(), "13\n");
 }
 
 #[test]

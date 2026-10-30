@@ -10,10 +10,12 @@ const FLAGS_OFFSET: u32 = 4;
 const SLOTS_OFFSET: u32 = 8;
 const PROPERTIES_OFFSET: u32 =
     SLOTS_OFFSET + (TAGGED_BYTES_32 as u32) * (MAX_IN_OBJECT_SLOTS as u32);
-const RECORD_SIZE: usize = PROPERTIES_OFFSET as usize + 4;
-const PROPERTY_ARRAY_HEADER: u32 = 8;
-const NO_PROPERTY_ARRAY: u32 = u32::MAX;
-const MIN_PROPERTY_ARRAY_CAPACITY: u32 = 4;
+const ELEMENTS_OFFSET: u32 = PROPERTIES_OFFSET + 4;
+const RECORD_SIZE: usize = ELEMENTS_OFFSET as usize + 4;
+const ELEMENT_ARRAY_HEADER: u32 = 8;
+const NO_ARRAY: u32 = u32::MAX;
+const MIN_ARRAY_CAPACITY: u32 = 4;
+const FLAG_ARRAY: u32 = 1;
 
 #[derive(Debug, Error)]
 pub enum ObjectHeapError {
@@ -25,6 +27,8 @@ pub enum ObjectHeapError {
     InvalidSlot,
     #[error("invalid property array reference")]
     InvalidPropertyArray,
+    #[error("value is not an array")]
+    NotArray,
 }
 
 pub struct ObjectHeap {
@@ -52,12 +56,152 @@ impl ObjectHeap {
                 Value::undefined().raw(),
             );
         }
+        write_u32(&mut self.arena, offset + PROPERTIES_OFFSET, NO_ARRAY);
+        write_u32(&mut self.arena, offset + ELEMENTS_OFFSET, NO_ARRAY);
+        Ok(ObjectId::new(offset))
+    }
+
+    pub fn allocate_array(&mut self, shape: ShapeId) -> Result<ObjectId, ObjectHeapError> {
+        let object = self.allocate(shape)?;
+        write_u32(&mut self.arena, object.index() + FLAGS_OFFSET, FLAG_ARRAY);
+        Ok(object)
+    }
+
+    pub fn is_array(&self, object: ObjectId) -> Result<bool, ObjectHeapError> {
+        let flags = read_u32(&self.arena, object.index() + FLAGS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        Ok(flags & FLAG_ARRAY != 0)
+    }
+
+    pub fn array_length(&self, object: ObjectId) -> Result<u32, ObjectHeapError> {
+        if !self.is_array(object)? {
+            return Err(ObjectHeapError::NotArray);
+        }
+        let elements = read_u32(&self.arena, object.index() + ELEMENTS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        if elements == NO_ARRAY {
+            return Ok(0);
+        }
+        read_u32(&self.arena, elements).ok_or(ObjectHeapError::InvalidPropertyArray)
+    }
+
+    pub fn array_get(&self, object: ObjectId, index: u32) -> Result<Value, ObjectHeapError> {
+        if !self.is_array(object)? {
+            return Err(ObjectHeapError::NotArray);
+        }
+        let elements = read_u32(&self.arena, object.index() + ELEMENTS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        if elements == NO_ARRAY {
+            return Ok(Value::undefined());
+        }
+        let length =
+            read_u32(&self.arena, elements).ok_or(ObjectHeapError::InvalidPropertyArray)?;
+        if index >= length {
+            return Ok(Value::undefined());
+        }
+        let raw = read_u32(&self.arena, elements + ELEMENT_ARRAY_HEADER + index * 4)
+            .ok_or(ObjectHeapError::InvalidPropertyArray)?;
+        Ok(Value::from_raw(raw))
+    }
+
+    pub fn array_set(
+        &mut self,
+        object: ObjectId,
+        index: u32,
+        value: Value,
+    ) -> Result<(), ObjectHeapError> {
+        if !self.is_array(object)? {
+            return Err(ObjectHeapError::NotArray);
+        }
+        let required = index.checked_add(1).ok_or(ObjectHeapError::OutOfMemory)?;
+        let elements = self.ensure_elements(object, required)?;
+        let length =
+            read_u32(&self.arena, elements).ok_or(ObjectHeapError::InvalidPropertyArray)?;
+        let new_length = length.max(required);
+        write_u32(&mut self.arena, elements, new_length);
         write_u32(
             &mut self.arena,
-            offset + PROPERTIES_OFFSET,
-            NO_PROPERTY_ARRAY,
+            elements + ELEMENT_ARRAY_HEADER + index * 4,
+            value.raw(),
         );
-        Ok(ObjectId::new(offset))
+        Ok(())
+    }
+
+    pub fn array_push(&mut self, object: ObjectId, value: Value) -> Result<(), ObjectHeapError> {
+        if !self.is_array(object)? {
+            return Err(ObjectHeapError::NotArray);
+        }
+        let length = self.array_length(object)?;
+        let required = length.checked_add(1).ok_or(ObjectHeapError::OutOfMemory)?;
+        let elements = self.ensure_elements(object, required)?;
+        write_u32(&mut self.arena, elements, required);
+        write_u32(
+            &mut self.arena,
+            elements + ELEMENT_ARRAY_HEADER + length * 4,
+            value.raw(),
+        );
+        Ok(())
+    }
+
+    fn ensure_elements(&mut self, object: ObjectId, required: u32) -> Result<u32, ObjectHeapError> {
+        let mut elements = read_u32(&self.arena, object.index() + ELEMENTS_OFFSET)
+            .ok_or(ObjectHeapError::InvalidObject)?;
+        if elements == NO_ARRAY {
+            elements = self.allocate_elements(MIN_ARRAY_CAPACITY.max(required))?;
+            write_u32(&mut self.arena, object.index() + ELEMENTS_OFFSET, elements);
+        }
+        let capacity =
+            read_u32(&self.arena, elements + 4).ok_or(ObjectHeapError::InvalidPropertyArray)?;
+        if required > capacity {
+            let new_capacity = capacity
+                .max(required)
+                .checked_next_power_of_two()
+                .ok_or(ObjectHeapError::OutOfMemory)?;
+            let new_elements = self.allocate_elements(new_capacity)?;
+            let length =
+                read_u32(&self.arena, elements).ok_or(ObjectHeapError::InvalidPropertyArray)?;
+            for slot in 0..length {
+                let value = read_u32(&self.arena, elements + ELEMENT_ARRAY_HEADER + slot * 4)
+                    .ok_or(ObjectHeapError::InvalidPropertyArray)?;
+                write_u32(
+                    &mut self.arena,
+                    new_elements + ELEMENT_ARRAY_HEADER + slot * 4,
+                    value,
+                );
+            }
+            write_u32(&mut self.arena, new_elements, length);
+            write_u32(
+                &mut self.arena,
+                object.index() + ELEMENTS_OFFSET,
+                new_elements,
+            );
+            elements = new_elements;
+        }
+        Ok(elements)
+    }
+
+    fn allocate_elements(&mut self, capacity: u32) -> Result<u32, ObjectHeapError> {
+        let size = ELEMENT_ARRAY_HEADER
+            .checked_add(
+                capacity
+                    .checked_mul(4)
+                    .ok_or(ObjectHeapError::OutOfMemory)?,
+            )
+            .ok_or(ObjectHeapError::OutOfMemory)?;
+        let offset = self
+            .arena
+            .alloc(size as usize, 4)
+            .ok_or(ObjectHeapError::OutOfMemory)?;
+        write_u32(&mut self.arena, offset, 0);
+        write_u32(&mut self.arena, offset + 4, capacity);
+        for slot in 0..capacity {
+            write_u32(
+                &mut self.arena,
+                offset + ELEMENT_ARRAY_HEADER + slot * 4,
+                Value::undefined().raw(),
+            );
+        }
+        Ok(offset)
     }
 
     pub fn shape(&self, object: ObjectId) -> Result<ShapeId, ObjectHeapError> {
@@ -107,14 +251,14 @@ impl ObjectHeap {
     ) -> Result<Value, ObjectHeapError> {
         let array = read_u32(&self.arena, object.index() + PROPERTIES_OFFSET)
             .ok_or(ObjectHeapError::InvalidObject)?;
-        if array == NO_PROPERTY_ARRAY {
+        if array == NO_ARRAY {
             return Ok(Value::undefined());
         }
         let length = read_u32(&self.arena, array).ok_or(ObjectHeapError::InvalidPropertyArray)?;
         if index >= length {
             return Ok(Value::undefined());
         }
-        let raw = read_u32(&self.arena, array + PROPERTY_ARRAY_HEADER + index * 4)
+        let raw = read_u32(&self.arena, array + ELEMENT_ARRAY_HEADER + index * 4)
             .ok_or(ObjectHeapError::InvalidPropertyArray)?;
         Ok(Value::from_raw(raw))
     }
@@ -128,8 +272,8 @@ impl ObjectHeap {
         let required = index.checked_add(1).ok_or(ObjectHeapError::OutOfMemory)?;
         let mut array = read_u32(&self.arena, object.index() + PROPERTIES_OFFSET)
             .ok_or(ObjectHeapError::InvalidObject)?;
-        if array == NO_PROPERTY_ARRAY {
-            array = self.allocate_property_array(MIN_PROPERTY_ARRAY_CAPACITY.max(required))?;
+        if array == NO_ARRAY {
+            array = self.allocate_property_array(MIN_ARRAY_CAPACITY.max(required))?;
             write_u32(&mut self.arena, object.index() + PROPERTIES_OFFSET, array);
         }
 
@@ -144,11 +288,11 @@ impl ObjectHeap {
             let length =
                 read_u32(&self.arena, array).ok_or(ObjectHeapError::InvalidPropertyArray)?;
             for slot in 0..length {
-                let value = read_u32(&self.arena, array + PROPERTY_ARRAY_HEADER + slot * 4)
+                let value = read_u32(&self.arena, array + ELEMENT_ARRAY_HEADER + slot * 4)
                     .ok_or(ObjectHeapError::InvalidPropertyArray)?;
                 write_u32(
                     &mut self.arena,
-                    new_array + PROPERTY_ARRAY_HEADER + slot * 4,
+                    new_array + ELEMENT_ARRAY_HEADER + slot * 4,
                     value,
                 );
             }
@@ -166,7 +310,7 @@ impl ObjectHeap {
         write_u32(&mut self.arena, array, new_length);
         write_u32(
             &mut self.arena,
-            array + PROPERTY_ARRAY_HEADER + index * 4,
+            array + ELEMENT_ARRAY_HEADER + index * 4,
             value.raw(),
         );
         Ok(())
@@ -185,7 +329,7 @@ impl ObjectHeap {
     }
 
     fn allocate_property_array(&mut self, capacity: u32) -> Result<u32, ObjectHeapError> {
-        let size = PROPERTY_ARRAY_HEADER
+        let size = ELEMENT_ARRAY_HEADER
             .checked_add(
                 capacity
                     .checked_mul(4)

@@ -26,6 +26,8 @@ pub(crate) enum TokenKind {
     RParen,
     LBrace,
     RBrace,
+    LBracket,
+    RBracket,
     Semi,
     Comma,
     Colon,

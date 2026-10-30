@@ -44,6 +44,21 @@ fn grows_property_array_without_realloc() {
 }
 
 #[test]
+fn grows_elements_and_preserves_holes() {
+    let shapes = ShapeTable::new();
+    let mut heap = ObjectHeap::new(4096);
+    let object = heap.allocate_array(shapes.root()).unwrap();
+    heap.array_push(object, Value::smi(1)).unwrap();
+    heap.array_push(object, Value::smi(2)).unwrap();
+    assert_eq!(heap.array_length(object).unwrap(), 2);
+    heap.array_set(object, 4, Value::smi(5)).unwrap();
+    assert_eq!(heap.array_length(object).unwrap(), 5);
+    assert_eq!(heap.array_get(object, 0).unwrap(), Value::smi(1));
+    assert_eq!(heap.array_get(object, 2).unwrap(), Value::undefined());
+    assert_eq!(heap.array_get(object, 4).unwrap(), Value::smi(5));
+}
+
+#[test]
 fn rejects_slot_outside_record() {
     let shapes = ShapeTable::new();
     let mut heap = ObjectHeap::new(4096);

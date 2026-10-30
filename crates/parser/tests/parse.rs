@@ -40,6 +40,25 @@ fn parses_member_assignment_target() {
 }
 
 #[test]
+fn parses_array_literal_and_index_assignment() {
+    let program = parse("let values = [1, 2]; values[0] = 3;").unwrap();
+    let kagura_ast::Stmt::Var(decl) = &program.body[0] else {
+        panic!("expected var declaration");
+    };
+    assert!(matches!(decl.init, Some(kagura_ast::Expr::Array { .. })));
+    let kagura_ast::Stmt::Expr { expr, .. } = &program.body[1] else {
+        panic!("expected expression statement");
+    };
+    assert!(matches!(
+        expr,
+        kagura_ast::Expr::Assign {
+            target: kagura_ast::AssignTarget::Index { .. },
+            ..
+        }
+    ));
+}
+
+#[test]
 fn rejects_unterminated_string() {
     let error = parse("let value = \"oops;").unwrap_err();
     assert!(error.message.contains("unterminated string"));
