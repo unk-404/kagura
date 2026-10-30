@@ -1205,6 +1205,19 @@ fn creates_implicit_global_in_sloppy_mode() {
 }
 
 #[test]
+fn hoists_catch_var_to_function_scope() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "try { throw 1; } catch (e) { var foo = 2; } console.log(foo); function f() { try { throw 1; } catch (e) { var bar = 3; } return bar; } console.log(f());",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "2\n3\n");
+}
+
+#[test]
 fn global_assignment_leaves_no_operand_residue() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

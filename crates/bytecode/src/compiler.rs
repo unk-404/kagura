@@ -72,6 +72,7 @@ impl Compiler {
                 _ => {}
             }
         }
+        script.hoist_vars(&program.body);
         for stmt in &program.body {
             if let Stmt::Func(decl) = stmt {
                 let Some(Resolved::Local { slot, .. }) = script.resolve(&decl.name) else {
@@ -237,6 +238,84 @@ impl<'a> FunctionCompiler<'a> {
             compiler.arguments_slot = compiler.declare("arguments", true, Span::empty(0));
         }
         compiler
+    }
+
+    fn hoist_vars(&mut self, body: &[Stmt]) {
+        for stmt in body {
+            self.hoist_var_stmt(stmt);
+        }
+    }
+
+    fn hoist_var_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Var(decl) if matches!(decl.kind, kagura_ast::VarKind::Var) => {
+                self.predeclare(&decl.name, true, decl.span);
+            }
+            Stmt::VarList(decls) => {
+                for decl in decls {
+                    if matches!(decl.kind, kagura_ast::VarKind::Var) {
+                        self.predeclare(&decl.name, true, decl.span);
+                    }
+                }
+            }
+            Stmt::Block(body) => self.hoist_vars(body),
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.hoist_var_stmt(then_branch);
+                if let Some(else_branch) = else_branch {
+                    self.hoist_var_stmt(else_branch);
+                }
+            }
+            Stmt::While { body, .. } | Stmt::DoWhile { body, .. } => {
+                self.hoist_var_stmt(body);
+            }
+            Stmt::For { init, body, .. } => {
+                if let Some(ForInit::Var(decl)) = init
+                    && matches!(decl.kind, kagura_ast::VarKind::Var)
+                {
+                    self.predeclare(&decl.name, true, decl.span);
+                }
+                self.hoist_var_stmt(body);
+            }
+            Stmt::ForIn {
+                declaration, body, ..
+            }
+            | Stmt::ForOf {
+                declaration, body, ..
+            } => {
+                if let Some(decl) = declaration
+                    && matches!(decl.kind, kagura_ast::VarKind::Var)
+                {
+                    self.predeclare(&decl.name, true, decl.span);
+                }
+                self.hoist_var_stmt(body);
+            }
+            Stmt::Switch { cases, .. } => {
+                for case in cases {
+                    for stmt in &case.body {
+                        self.hoist_var_stmt(stmt);
+                    }
+                }
+            }
+            Stmt::Try {
+                block,
+                catch_block,
+                finally_block,
+                ..
+            } => {
+                self.hoist_vars(block);
+                if let Some(block) = catch_block {
+                    self.hoist_vars(block);
+                }
+                if let Some(block) = finally_block {
+                    self.hoist_vars(block);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn hoist_function_scope(&mut self, body: &[Stmt]) {
