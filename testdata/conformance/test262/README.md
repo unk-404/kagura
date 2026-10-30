@@ -88,6 +88,21 @@ test262 conformance.
 The full-corpus job requires at least 1200 passing cases by default, to catch
 gross regressions without pretending the whole suite is green.
 
+## Differential sample
+
+To keep a full `--node-all` run bounded, the first 5000 discovered cases give
+this taxonomy:
+
+```text
+selected 5000, executed 2606, passed 54, failed 2552, skipped 2394
+oracle checked 2606, matched 53, mismatched 2459, both_failed 94
+mismatched split: 2458 kagura-fail/node-pass, 1 kagura-pass/node-fail
+```
+
+The dominant bucket is therefore **Kagura fail / Node pass**: missing engine
+semantics and built-ins, not Node disagreements. The one `kagura-pass/node-fail`
+case is the Annex-B divergence described below.
+
 ## Report baseline
 
 Local full-corpus run on 2026-10-30 against pinned test262
