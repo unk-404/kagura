@@ -853,6 +853,19 @@ fn runs_string_statics_and_boolean_methods() {
 }
 
 #[test]
+fn exposes_function_constructor_surface() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(typeof Function('return 1'), typeof Function.prototype, typeof Function.prototype.call);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "function function function\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

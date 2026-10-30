@@ -24,6 +24,9 @@ impl<'a> Interpreter<'a> {
                 span,
             ));
         }
+        if path == "Function" {
+            return self.anonymous_function(span).map(Some);
+        }
         if path == "Number.isNaN" {
             let value = args.first().copied().unwrap_or_else(Value::undefined);
             return Ok(Some(Value::boolean(
@@ -1331,6 +1334,24 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    fn anonymous_function(&mut self, span: Span) -> Result<Value, RuntimeError> {
+        let object = self
+            .objects
+            .allocate_function(
+                self.shapes.function_shape(),
+                u32::MAX,
+                Value::undefined(),
+                Value::undefined(),
+            )
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let object = Value::object(object.index());
+        let name_value = self.heap.string("anonymous");
+        self.set_property(object, "name", name_value, span)?;
+        let length = self.heap.number(0.0);
+        self.set_property(object, "length", length, span)?;
+        Ok(object)
+    }
+
     pub(super) fn new_name(
         &mut self,
         name: &str,
@@ -1425,6 +1446,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Ok(Value::object(array.index()))
             }
+            "Function" => self.anonymous_function(span),
             "Date" => self.date_construct(args, span),
             _ => Err(RuntimeError::type_error(
                 format!("{name} is not a constructor"),
