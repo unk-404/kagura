@@ -35,6 +35,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace
 
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p kagura-runtime --test bytecode_compat
+
   linux-x86:
     runs-on: ubuntu-latest
     steps:

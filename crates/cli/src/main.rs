@@ -1,11 +1,11 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand};
 use kagura_bytecode::compile;
 use kagura_diagnostics::{Diagnostic, render};
 use kagura_interp::Host;
 use kagura_parser::parse;
-use kagura_runtime::{RunError, Runtime};
+use kagura_runtime::Runtime;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -29,6 +29,16 @@ enum Command {
         #[arg(long)]
         trace: bool,
     },
+    Build {
+        file: PathBuf,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    RunBytecode {
+        file: PathBuf,
+        #[arg(long)]
+        trace: bool,
+    },
 }
 
 struct StdoutHost;
@@ -48,6 +58,8 @@ fn main() {
             print_bytecode,
             trace,
         } => run_file(file, print_ast, print_bytecode, trace),
+        Command::Build { file, output } => build_file(file, output),
+        Command::RunBytecode { file, trace } => run_bytecode(file, trace),
     };
     std::process::exit(code);
 }
@@ -55,10 +67,7 @@ fn main() {
 fn run_file(file: PathBuf, print_ast: bool, print_bytecode: bool, trace: bool) -> i32 {
     let source = match std::fs::read_to_string(&file) {
         Ok(source) => source,
-        Err(error) => {
-            eprintln!("kagura: cannot read {}: {error}", file.display());
-            return 2;
-        }
+        Err(error) => return read_error(&file, &error),
     };
     let path = file.display().to_string();
 
@@ -98,20 +107,72 @@ fn run_file(file: PathBuf, print_ast: bool, print_bytecode: bool, trace: bool) -
     let mut host = StdoutHost;
     match runtime.run(&source, &mut host) {
         Ok(_) => 0,
-        Err(error) => match error {
-            RunError::Parse(error) => report(
-                &source,
-                &path,
-                &Diagnostic::syntax(error.message, error.span),
-            ),
-            RunError::Compile(error) => report(
-                &source,
-                &path,
-                &Diagnostic::syntax(error.message, error.span),
-            ),
-            RunError::Runtime(error) => report(&source, &path, &error.diagnostic()),
-        },
+        Err(error) => report(&source, &path, &error.diagnostic()),
     }
+}
+
+fn build_file(file: PathBuf, output: PathBuf) -> i32 {
+    let source = match std::fs::read_to_string(&file) {
+        Ok(source) => source,
+        Err(error) => return read_error(&file, &error),
+    };
+    let path = file.display().to_string();
+    let program = match parse(&source) {
+        Ok(program) => program,
+        Err(error) => {
+            return report(
+                &source,
+                &path,
+                &Diagnostic::syntax(error.message, error.span),
+            );
+        }
+    };
+    let module = match compile(&program) {
+        Ok(module) => module,
+        Err(error) => {
+            return report(
+                &source,
+                &path,
+                &Diagnostic::syntax(error.message, error.span),
+            );
+        }
+    };
+    if let Some(parent) = output.parent()
+        && !parent.as_os_str().is_empty()
+        && let Err(error) = std::fs::create_dir_all(parent)
+    {
+        eprintln!("kagura: cannot create {}: {error}", parent.display());
+        return 2;
+    }
+    if let Err(error) = std::fs::write(&output, module.encode()) {
+        eprintln!("kagura: cannot write {}: {error}", output.display());
+        return 2;
+    }
+    0
+}
+
+fn run_bytecode(file: PathBuf, trace: bool) -> i32 {
+    let bytes = match std::fs::read(&file) {
+        Ok(bytes) => bytes,
+        Err(error) => return read_error(&file, &error),
+    };
+    if trace {
+        init_tracing();
+    }
+    let mut runtime = Runtime::default();
+    let mut host = StdoutHost;
+    match runtime.run_bytecode(&bytes, &mut host) {
+        Ok(_) => 0,
+        Err(error) => {
+            eprintln!("{}: {error}", file.display());
+            1
+        }
+    }
+}
+
+fn read_error(path: &Path, error: &std::io::Error) -> i32 {
+    eprintln!("kagura: cannot read {}: {error}", path.display());
+    2
 }
 
 fn report(source: &str, path: &str, diagnostic: &Diagnostic) -> i32 {
