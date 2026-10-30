@@ -212,6 +212,7 @@ fn keyword_or_ident(text: &str) -> TokenKind {
         "interface" => TokenKind::Interface,
         "as" => TokenKind::As,
         "in" => TokenKind::In,
+        "typeof" => TokenKind::TypeOf,
         _ => TokenKind::Ident(text.to_owned()),
     }
 }

@@ -11,6 +11,7 @@ const ARRAYS_LENGTH: &str = include_str!("../../../examples/arrays_length.ts");
 const STRINGS: &str = include_str!("../../../examples/strings.ts");
 const ARRAYS_HOLES: &str = include_str!("../../../examples/arrays_holes.ts");
 const ARRAYS_IN: &str = include_str!("../../../examples/arrays_in.ts");
+const TYPEOF: &str = include_str!("../../../examples/typeof.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -82,6 +83,17 @@ fn runs_in_operator() {
     let mut runtime = Runtime::default();
     runtime.run(ARRAYS_IN, &mut host).unwrap();
     assert_eq!(host.output(), "true\nfalse\ntrue\ntrue\ntrue\nfalse\n");
+}
+
+#[test]
+fn runs_typeof_operator() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(TYPEOF, &mut host).unwrap();
+    assert_eq!(
+        host.output(),
+        "undefined\nobject\nboolean\nnumber\nstring\nobject\nobject\n"
+    );
 }
 
 #[test]

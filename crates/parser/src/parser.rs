@@ -483,6 +483,7 @@ impl Parser {
             TokenKind::Minus => Some(UnaryOp::Neg),
             TokenKind::Plus => Some(UnaryOp::Plus),
             TokenKind::Bang => Some(UnaryOp::Not),
+            TokenKind::TypeOf => Some(UnaryOp::TypeOf),
             _ => None,
         };
         if let Some(op) = op {

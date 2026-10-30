@@ -207,6 +207,24 @@ impl<'a> Interpreter<'a> {
                     let found = self.has_property(key, target, span)?;
                     push(&mut stack, Value::boolean(found), span)?;
                 }
+                Op::TypeOf => {
+                    let value = pop(&mut stack, span)?;
+                    let type_name = if value.is_undefined() || value.is_hole() {
+                        "undefined"
+                    } else if value.is_null() {
+                        "object"
+                    } else if value.as_boolean().is_some() {
+                        "boolean"
+                    } else if value.is_number() {
+                        "number"
+                    } else if value.is_string() {
+                        "string"
+                    } else {
+                        "object"
+                    };
+                    let value = self.heap.string(type_name);
+                    push(&mut stack, value, span)?;
+                }
                 Op::Neg => {
                     let value = pop(&mut stack, span)?;
                     let number = self.number(value, span)?;

@@ -39,4 +39,5 @@ pub enum UnaryOp {
     Neg,
     Not,
     Plus,
+    TypeOf,
 }

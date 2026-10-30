@@ -337,6 +337,7 @@ impl<'a> FunctionCompiler<'a> {
                     UnaryOp::Neg => self.emit(Op::Neg, *span),
                     UnaryOp::Not => self.emit(Op::Not, *span),
                     UnaryOp::Plus => {}
+                    UnaryOp::TypeOf => self.emit(Op::TypeOf, *span),
                 }
             }
             Expr::Binary {

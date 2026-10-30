@@ -40,6 +40,7 @@ pub enum Op {
     GcCheck = 36,
     LoadHole = 37,
     In = 38,
+    TypeOf = 39,
 }
 
 impl Op {
@@ -84,6 +85,7 @@ impl Op {
             36 => Self::GcCheck,
             37 => Self::LoadHole,
             38 => Self::In,
+            39 => Self::TypeOf,
             _ => return None,
         })
     }
