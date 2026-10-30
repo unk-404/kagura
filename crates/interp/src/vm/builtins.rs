@@ -18,6 +18,23 @@ impl<'a> Interpreter<'a> {
         args: &[Value],
         span: Span,
     ) -> Result<Option<Value>, RuntimeError> {
+        if path == "Object" {
+            let value = args.first().copied().unwrap_or_else(Value::undefined);
+            if value.is_undefined() || value.is_null() {
+                return self.new_name("Object", args, span).map(Some);
+            }
+            if value.is_object() {
+                return Ok(Some(value));
+            }
+            let wrapper = if value.is_string() {
+                "String"
+            } else if value.is_number() {
+                "Number"
+            } else {
+                "Boolean"
+            };
+            return self.new_name(wrapper, args, span).map(Some);
+        }
         if matches!(
             path,
             "Error"
@@ -1681,6 +1698,7 @@ impl<'a> Interpreter<'a> {
                     "isPrototypeOf",
                     "propertyIsEnumerable",
                     "toString",
+                    "toLocaleString",
                     "valueOf",
                 ]
             };
@@ -1712,6 +1730,7 @@ impl<'a> Interpreter<'a> {
             let name_value = self.heap.string(name);
             self.set_property(value, "name", name_value, span)?;
             self.set_property(value, "prototype", prototype_value, span)?;
+            self.set_non_enumerable_property(prototype_value, "constructor", value, span)?;
             return Ok(value);
         }
         if name == "JSON" {
@@ -2773,7 +2792,7 @@ impl<'a> Interpreter<'a> {
         if key == "valueOf" {
             return Ok(Some(object));
         }
-        if key == "toString" {
+        if key == "toString" || key == "toLocaleString" {
             let tag = self.object_to_string_tag(object, span)?;
             return Ok(Some(self.heap.string(&format!("[object {tag}]"))));
         }
