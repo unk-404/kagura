@@ -1119,6 +1119,70 @@ impl<'a> Interpreter<'a> {
                 }
                 result.map_or_else(Value::undefined, |array| Value::object(array.index()))
             }
+            "some" | "every" | "find" => {
+                let callback = args.first().copied().unwrap_or_else(Value::undefined);
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let roots = roots.to_vec();
+                for index in 0..length {
+                    let value = self
+                        .objects
+                        .array_get(object_id, index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let callback_args = [value, self.heap.number(index as f64), object];
+                    let result = self.invoke_callable(callback, &callback_args, &roots, span)?;
+                    let truthy = self.heap.truthy(result);
+                    match key {
+                        "some" if truthy => return Ok(Some(Value::boolean(true))),
+                        "every" if !truthy => return Ok(Some(Value::boolean(false))),
+                        "find" if truthy => return Ok(Some(value)),
+                        _ => {}
+                    }
+                }
+                if key == "some" {
+                    Value::boolean(false)
+                } else if key == "every" {
+                    Value::boolean(true)
+                } else {
+                    Value::undefined()
+                }
+            }
+            "reduce" => {
+                let callback = args.first().copied().unwrap_or_else(Value::undefined);
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let mut index = 0;
+                let mut accumulator = if let Some(initial) = args.get(1) {
+                    *initial
+                } else if length > 0 {
+                    index = 1;
+                    self.objects
+                        .array_get(object_id, 0)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                } else {
+                    return Err(RuntimeError::type_error(
+                        "reduce of empty array with no initial value",
+                        span,
+                    ));
+                };
+                let mut roots = roots.to_vec();
+                roots.push(accumulator);
+                for current in index..length {
+                    let value = self
+                        .objects
+                        .array_get(object_id, current)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let callback_args =
+                        [accumulator, value, self.heap.number(current as f64), object];
+                    accumulator = self.invoke_callable(callback, &callback_args, &roots, span)?;
+                    roots.push(accumulator);
+                }
+                accumulator
+            }
             _ => return Ok(None),
         }))
     }

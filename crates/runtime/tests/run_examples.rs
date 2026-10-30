@@ -37,6 +37,7 @@ const TRY_CROSS_FUNCTION: &str = include_str!("../../../examples/try_cross_funct
 const BUILTINS: &str = include_str!("../../../examples/builtins.ts");
 const BUILTINS_CALLBACKS: &str = include_str!("../../../examples/builtins_callbacks.ts");
 const BUILTINS_CHAIN: &str = include_str!("../../../examples/builtins_chain.ts");
+const BUILTINS_CALLBACKS_MORE: &str = include_str!("../../../examples/builtins_callbacks_more.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -370,6 +371,14 @@ fn runs_chained_array_callbacks() {
     let mut runtime = Runtime::default();
     runtime.run(BUILTINS_CHAIN, &mut host).unwrap();
     assert_eq!(host.output(), "2,3,4\n");
+}
+
+#[test]
+fn runs_search_and_reduce_array_callbacks() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(BUILTINS_CALLBACKS_MORE, &mut host).unwrap();
+    assert_eq!(host.output(), "true\ntrue\n2\n10\n10\n");
 }
 
 #[test]
