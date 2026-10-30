@@ -15,3 +15,4 @@ dashmap = { version = "6.2.1", default-features = false }
 once_cell = { version = "1.21.4", default-features = false }
 bytes = { version = "1.12.1", default-features = false }
 tracing = { version = "0.1", default-features = false, features = ["std", "attributes"] }
+thiserror = { version = "2", default-features = false, features = ["std"] }

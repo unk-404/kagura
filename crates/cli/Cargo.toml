@@ -9,6 +9,7 @@ name = "kagura"
 path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4.6.7", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
 kagura-diagnostics = { version = "0.1.0", path = "../diagnostics" }
 kagura-runtime = { version = "0.1.0", path = "../runtime" }
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }

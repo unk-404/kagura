@@ -1,0 +1,106 @@
+use kagura_support::Span;
+
+use crate::expr::{Expr, Param};
+use crate::types::{TypeAnn, VarKind};
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Program {
+    pub body: Vec<Stmt>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct VarDecl {
+    pub kind: VarKind,
+    pub name: String,
+    pub ty: Option<TypeAnn>,
+    pub init: Option<Expr>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FuncDecl {
+    pub name: String,
+    pub params: Vec<Param>,
+    pub ret: Option<TypeAnn>,
+    pub body: Vec<Stmt>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ForInit {
+    Var(VarDecl),
+    Expr(Expr),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Stmt {
+    Var(VarDecl),
+    Func(FuncDecl),
+    Block(Vec<Stmt>),
+    If {
+        cond: Expr,
+        then_branch: Box<Stmt>,
+        else_branch: Option<Box<Stmt>>,
+        span: Span,
+    },
+    While {
+        cond: Expr,
+        body: Box<Stmt>,
+        span: Span,
+    },
+    For {
+        init: Option<ForInit>,
+        cond: Option<Expr>,
+        update: Option<Expr>,
+        body: Box<Stmt>,
+        span: Span,
+    },
+    Return {
+        value: Option<Expr>,
+        span: Span,
+    },
+    Break {
+        span: Span,
+    },
+    Continue {
+        span: Span,
+    },
+    Expr {
+        expr: Expr,
+        span: Span,
+    },
+    TypeAlias {
+        name: String,
+        span: Span,
+    },
+    Interface {
+        name: String,
+        span: Span,
+    },
+    Empty {
+        span: Span,
+    },
+}
+
+impl Stmt {
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Var(decl) => decl.span,
+            Self::Func(decl) => decl.span,
+            Self::Block(body) => body
+                .first()
+                .map(Stmt::span)
+                .unwrap_or_else(|| Span::empty(0)),
+            Self::If { span, .. }
+            | Self::While { span, .. }
+            | Self::For { span, .. }
+            | Self::Return { span, .. }
+            | Self::Break { span }
+            | Self::Continue { span }
+            | Self::Expr { span, .. }
+            | Self::TypeAlias { span, .. }
+            | Self::Interface { span, .. }
+            | Self::Empty { span } => *span,
+        }
+    }
+}
