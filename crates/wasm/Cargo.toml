@@ -1,0 +1,10 @@
+[package]
+name = "kagura-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Kagura WebAssembly v1 foundation: decoder, validator, MVP interpreter, and linear memory."
+
+[dependencies]
+thiserror.workspace = true
+wasmparser = { version = "0.262.0", default-features = false, features = ["std", "validate", "features"] }
