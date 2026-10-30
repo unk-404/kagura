@@ -7,6 +7,37 @@ use crate::error::RuntimeError;
 use super::Interpreter;
 
 impl<'a> Interpreter<'a> {
+    pub(super) fn get_own_data_property(
+        &mut self,
+        object: Value,
+        key: &str,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let span = Span::empty(0);
+        let id = self.object_id(object, span)?;
+        let shape = self
+            .objects
+            .shape(id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let Some(descriptor) = self
+            .shapes
+            .lookup(shape, &PropertyKey::from_string(key))
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        else {
+            return Ok(None);
+        };
+        let value = match descriptor.location {
+            PropertyLocation::InObject(slot) => self
+                .objects
+                .get_slot(id, slot)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+            PropertyLocation::PropertyArray(index) => self
+                .objects
+                .get_property_array(id, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+        };
+        Ok(Some(value))
+    }
+
     pub(super) fn get_property(
         &mut self,
         object: Value,
@@ -22,6 +53,30 @@ impl<'a> Interpreter<'a> {
             return Ok(self.heap.number(length));
         }
         let id = self.object_id(object, span)?;
+        if let Some(wrapper) = self.get_own_data_property(object, "__wrapper")? {
+            let wrapper = self.heap.as_str(wrapper).unwrap_or_default().to_owned();
+            if wrapper == "string" {
+                let primitive = self
+                    .get_own_data_property(object, "__primitive")?
+                    .and_then(|value| self.heap.as_str(value).map(str::to_owned));
+                if let Some(text) = primitive {
+                    if key == "length" {
+                        return Ok(self.heap.number(text.encode_utf16().count() as f64));
+                    }
+                    if let Ok(index) = key.parse::<u32>()
+                        && index.to_string() == key
+                    {
+                        let value = text
+                            .encode_utf16()
+                            .nth(index as usize)
+                            .and_then(|unit| String::from_utf16(&[unit]).ok())
+                            .map(|unit| self.heap.string(&unit))
+                            .unwrap_or_else(Value::undefined);
+                        return Ok(value);
+                    }
+                }
+            }
+        }
         if key == "length"
             && self
                 .objects

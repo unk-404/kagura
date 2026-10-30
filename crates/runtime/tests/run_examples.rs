@@ -77,6 +77,7 @@ const ARRAY_INDEX: &str = include_str!("../../../examples/array_index.ts");
 const ARRAY_METHODS: &str = include_str!("../../../examples/array_methods.ts");
 const DUPLICATE_VAR: &str = include_str!("../../../examples/duplicate_var.ts");
 const FUNCTION_CALL: &str = include_str!("../../../examples/function_call.ts");
+const PRIMITIVE_WRAPPERS: &str = include_str!("../../../examples/primitive_wrappers.ts");
 
 #[test]
 fn runs_hello_world() {
@@ -769,6 +770,14 @@ fn runs_function_call_and_array_prototype_methods() {
         host.output(),
         "1,2 2\ntrue\n[object Array]\n[object Array]\n"
     );
+}
+
+#[test]
+fn runs_primitive_wrappers() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime.run(PRIMITIVE_WRAPPERS, &mut host).unwrap();
+    assert_eq!(host.output(), "3 b c abc abc\n5 5\nfalse false true\n");
 }
 
 #[test]

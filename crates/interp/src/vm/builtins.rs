@@ -1280,6 +1280,40 @@ impl<'a> Interpreter<'a> {
                 self.set_property(object, "message", message_value, span)?;
                 Ok(object)
             }
+            "String" | "Number" | "Boolean" => {
+                let primitive = match name {
+                    "String" => {
+                        if args.is_empty() {
+                            self.heap.string("")
+                        } else {
+                            let text = self.heap.to_js_string(args[0]);
+                            self.heap.string(&text)
+                        }
+                    }
+                    "Number" => {
+                        let value = if args.is_empty() {
+                            0.0
+                        } else {
+                            self.heap.to_number(args[0]).unwrap_or(f64::NAN)
+                        };
+                        self.heap.number(value)
+                    }
+                    _ => {
+                        let value = args.first().copied().unwrap_or_else(Value::undefined);
+                        Value::boolean(self.heap.truthy(value))
+                    }
+                };
+                let shape = self.object_shape(span)?;
+                let object = self
+                    .objects
+                    .allocate(shape)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let object = Value::object(object.index());
+                let wrapper = self.heap.string(&name.to_lowercase());
+                self.set_non_enumerable_property(object, "__wrapper", wrapper, span)?;
+                self.set_non_enumerable_property(object, "__primitive", primitive, span)?;
+                Ok(object)
+            }
             "Object" => {
                 let shape = self.object_shape(span)?;
                 let object = self
@@ -2356,6 +2390,19 @@ impl<'a> Interpreter<'a> {
                 .max(0) as usize
         };
         if object.object_offset().is_some() {
+            if let Some(wrapper) = self.get_own_data_property(object, "__wrapper")?
+                && self.heap.as_str(wrapper).is_some()
+                && let Some(primitive) = self.get_own_data_property(object, "__primitive")?
+            {
+                if key == "valueOf" {
+                    return Ok(Some(primitive));
+                }
+                if key == "toString" {
+                    let text = self.heap.to_js_string(primitive);
+                    return Ok(Some(self.heap.string(&text)));
+                }
+                return self.call_builtin(primitive, key, args, span, roots);
+            }
             let marker = self.get_property(object, "__date", span)?;
             if marker.as_boolean() == Some(true)
                 && let Some(value) = self.call_date_method(object, key, args, span)?
@@ -2482,6 +2529,87 @@ impl<'a> Interpreter<'a> {
                     };
                     let value: String = text.chars().skip(start).take(end - start).collect();
                     self.heap.string(&value)
+                }
+                "substr" => {
+                    let length = text.chars().count() as i64;
+                    let start = args
+                        .first()
+                        .and_then(|value| self.heap.to_number(*value))
+                        .unwrap_or(0.0) as i64;
+                    let start = if start < 0 {
+                        (length + start).max(0)
+                    } else {
+                        start.min(length)
+                    };
+                    let count = args
+                        .get(1)
+                        .and_then(|value| self.heap.to_number(*value))
+                        .map(|value| value.max(0.0) as usize)
+                        .unwrap_or(length as usize);
+                    let value: String = text.chars().skip(start as usize).take(count).collect();
+                    self.heap.string(&value)
+                }
+                "at" => {
+                    let length = text.chars().count() as i64;
+                    let mut index = args
+                        .first()
+                        .and_then(|value| self.heap.to_number(*value))
+                        .unwrap_or(0.0) as i64;
+                    if index < 0 {
+                        index += length;
+                    }
+                    text.chars()
+                        .nth(index.max(0) as usize)
+                        .filter(|_| index >= 0 && index < length)
+                        .map(|ch| self.heap.string(&ch.to_string()))
+                        .unwrap_or_else(Value::undefined)
+                }
+                "codePointAt" => text
+                    .chars()
+                    .nth(arg_index(args, 0))
+                    .map(|ch| self.heap.number(ch as u32 as f64))
+                    .unwrap_or_else(Value::undefined),
+                "concat" => {
+                    let mut result = text.clone();
+                    for value in args {
+                        result.push_str(&self.heap.to_js_string(*value));
+                    }
+                    self.heap.string(&result)
+                }
+                "toString" | "valueOf" => self.heap.string(&text),
+                "localeCompare" => {
+                    let other = args
+                        .first()
+                        .map(|value| self.heap.to_js_string(*value))
+                        .unwrap_or_default();
+                    self.heap.number(match text.cmp(&other) {
+                        std::cmp::Ordering::Less => -1.0,
+                        std::cmp::Ordering::Equal => 0.0,
+                        std::cmp::Ordering::Greater => 1.0,
+                    })
+                }
+                "padStart" | "padEnd" => {
+                    let target = args
+                        .first()
+                        .and_then(|value| self.heap.to_number(*value))
+                        .unwrap_or(0.0)
+                        .max(0.0) as usize;
+                    let filler = args
+                        .get(1)
+                        .map(|value| self.heap.to_js_string(*value))
+                        .unwrap_or_else(|| " ".into());
+                    let current = text.chars().count();
+                    if current >= target || filler.is_empty() {
+                        self.heap.string(&text)
+                    } else {
+                        let needed = target - current;
+                        let padding: String = filler.chars().cycle().take(needed).collect();
+                        self.heap.string(&if key == "padStart" {
+                            format!("{padding}{text}")
+                        } else {
+                            format!("{text}{padding}")
+                        })
+                    }
                 }
                 "split" => {
                     let limit = args

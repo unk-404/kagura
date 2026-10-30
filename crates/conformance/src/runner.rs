@@ -78,6 +78,13 @@ pub fn skip_reason(metadata: &Metadata) -> Option<&'static str> {
         "String.prototype.trimStart",
         "String.prototype.trimEnd",
         "String.prototype.split",
+        "String.prototype.padStart",
+        "String.prototype.padEnd",
+        "String.prototype.codePointAt",
+        "String.prototype.substr",
+        "String.prototype.at",
+        "String.prototype.concat",
+        "String.prototype.localeCompare",
     ];
     if metadata
         .flags
