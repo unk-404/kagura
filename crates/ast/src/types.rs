@@ -35,6 +35,12 @@ pub enum BinaryOp {
     InstanceOf,
     And,
     Or,
+    BitOr,
+    BitXor,
+    BitAnd,
+    Shl,
+    Shr,
+    UShr,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,4 +51,5 @@ pub enum UnaryOp {
     TypeOf,
     Void,
     Delete,
+    BitNot,
 }

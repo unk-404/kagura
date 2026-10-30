@@ -56,7 +56,7 @@ impl Parser {
                     )?;
                     let init = self.parse_expr()?;
                     let end = init.span();
-                    self.expect(&TokenKind::Semi, "expected ';' after declaration")?;
+                    self.eat(&TokenKind::Semi);
                     Ok(Stmt::Destructure(DestructureDecl {
                         kind,
                         pattern,
@@ -100,7 +100,7 @@ impl Parser {
                             break;
                         }
                     }
-                    self.expect(&TokenKind::Semi, "expected ';' after declaration")?;
+                    self.eat(&TokenKind::Semi);
                     if declarations.len() == 1 {
                         Ok(Stmt::Var(declarations.remove(0)))
                     } else {
@@ -144,14 +144,14 @@ impl Parser {
                 } else {
                     let expr = self.parse_expr()?;
                     let span = expr.span();
-                    self.expect(&TokenKind::Semi, "expected ';' after expression")?;
+                    self.eat(&TokenKind::Semi);
                     Ok(Stmt::Expr { expr, span })
                 }
             }
             _ => {
                 let expr = self.parse_expr()?;
                 let span = expr.span();
-                self.expect(&TokenKind::Semi, "expected ';' after expression")?;
+                self.eat(&TokenKind::Semi);
                 Ok(Stmt::Expr { expr, span })
             }
         }
@@ -258,7 +258,7 @@ impl Parser {
         }
         let end = init.as_ref().map(Expr::span).unwrap_or(name_token.span);
         if expect_semi {
-            self.expect(&TokenKind::Semi, "expected ';' after declaration")?;
+            self.eat(&TokenKind::Semi);
         }
         Ok(VarDecl {
             kind,
@@ -755,12 +755,79 @@ impl Parser {
     }
 
     fn parse_and(&mut self) -> Result<Expr, ParseError> {
-        let mut expr = self.parse_equality()?;
+        let mut expr = self.parse_bit_or()?;
         while self.eat(&TokenKind::AndAnd) {
-            let right = self.parse_equality()?;
+            let right = self.parse_bit_or()?;
             let span = expr.span().merge(right.span());
             expr = Expr::Binary {
                 op: BinaryOp::And,
+                left: Box::new(expr),
+                right: Box::new(right),
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_bit_or(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_bit_xor()?;
+        while self.eat(&TokenKind::Pipe) {
+            let right = self.parse_bit_xor()?;
+            let span = expr.span().merge(right.span());
+            expr = Expr::Binary {
+                op: BinaryOp::BitOr,
+                left: Box::new(expr),
+                right: Box::new(right),
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_bit_xor(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_bit_and()?;
+        while self.eat(&TokenKind::Caret) {
+            let right = self.parse_bit_and()?;
+            let span = expr.span().merge(right.span());
+            expr = Expr::Binary {
+                op: BinaryOp::BitXor,
+                left: Box::new(expr),
+                right: Box::new(right),
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_bit_and(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_shift()?;
+        while self.eat(&TokenKind::Amp) {
+            let right = self.parse_shift()?;
+            let span = expr.span().merge(right.span());
+            expr = Expr::Binary {
+                op: BinaryOp::BitAnd,
+                left: Box::new(expr),
+                right: Box::new(right),
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_shift(&mut self) -> Result<Expr, ParseError> {
+        let mut expr = self.parse_equality()?;
+        loop {
+            let op = match self.peek().kind {
+                TokenKind::Shl => BinaryOp::Shl,
+                TokenKind::Shr => BinaryOp::Shr,
+                TokenKind::UShr => BinaryOp::UShr,
+                _ => break,
+            };
+            self.advance();
+            let right = self.parse_equality()?;
+            let span = expr.span().merge(right.span());
+            expr = Expr::Binary {
+                op,
                 left: Box::new(expr),
                 right: Box::new(right),
                 span,
@@ -905,6 +972,7 @@ impl Parser {
             TokenKind::TypeOf => Some(UnaryOp::TypeOf),
             TokenKind::Void => Some(UnaryOp::Void),
             TokenKind::Delete => Some(UnaryOp::Delete),
+            TokenKind::Tilde => Some(UnaryOp::BitNot),
             _ => None,
         };
         if let Some(op) = op {

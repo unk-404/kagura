@@ -32,6 +32,8 @@ enum Command {
         print_bytecode: bool,
         #[arg(long)]
         trace: bool,
+        #[arg(long, default_value_t = 1 << 20)]
+        heap_size: usize,
     },
     Build {
         file: PathBuf,
@@ -77,7 +79,8 @@ fn main() {
             print_ast,
             print_bytecode,
             trace,
-        } => run_file(file, print_ast, print_bytecode, trace),
+            heap_size,
+        } => run_file(file, print_ast, print_bytecode, trace, heap_size),
         Command::Build { file, output } => build_file(file, output),
         Command::RunBytecode { file, trace } => run_bytecode(file, trace),
         Command::Typescript { path } => run_typescript(path),
@@ -126,7 +129,13 @@ fn stdout_print(call: &mut HostCall<'_>) -> Result<Value, HostError> {
     Ok(Value::undefined())
 }
 
-fn run_file(file: PathBuf, print_ast: bool, print_bytecode: bool, trace: bool) -> i32 {
+fn run_file(
+    file: PathBuf,
+    print_ast: bool,
+    print_bytecode: bool,
+    trace: bool,
+    heap_size: usize,
+) -> i32 {
     let source = match std::fs::read_to_string(&file) {
         Ok(source) => source,
         Err(error) => return read_error(&file, &error),
@@ -165,7 +174,7 @@ fn run_file(file: PathBuf, print_ast: bool, print_bytecode: bool, trace: bool) -
         init_tracing();
     }
 
-    let mut runtime = Runtime::default();
+    let mut runtime = Runtime::new(heap_size);
     let mut host = stdout_bindings();
     match runtime.run(&source, &mut host) {
         Ok(_) => 0,

@@ -49,6 +49,40 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
         }
         if byte.is_ascii_digit() {
             let start = pos;
+            if bytes.get(pos) == Some(&b'0')
+                && let Some(prefix) = bytes.get(pos + 1).copied()
+                && matches!(prefix, b'x' | b'X' | b'b' | b'B' | b'o' | b'O')
+            {
+                let radix = match prefix {
+                    b'x' | b'X' => 16,
+                    b'b' | b'B' => 2,
+                    _ => 8,
+                };
+                pos += 2;
+                let digits = pos;
+                while pos < bytes.len()
+                    && (bytes[pos].is_ascii_hexdigit()
+                        || bytes[pos].is_ascii_digit()
+                        || bytes[pos] == b'_')
+                {
+                    pos += 1;
+                }
+                if digits == pos {
+                    return Err(ParseError::new(
+                        "expected digits after numeric prefix",
+                        Span::new(start as u32, pos as u32),
+                    ));
+                }
+                let text = source[digits..pos].replace('_', "");
+                let value = u64::from_str_radix(&text, radix).map_err(|_| {
+                    ParseError::new(
+                        "invalid number literal",
+                        Span::new(start as u32, pos as u32),
+                    )
+                })? as f64;
+                tokens.push(Token::new(TokenKind::Number(value), span(start, pos)));
+                continue;
+            }
             while pos < bytes.len() && (bytes[pos].is_ascii_digit() || bytes[pos] == b'_') {
                 pos += 1;
             }
@@ -117,6 +151,13 @@ pub(crate) fn lex(source: &str) -> Result<Vec<Token>, ParseError> {
             (b'*', Some(b'='), _) => (TokenKind::StarEq, 2),
             (b'/', Some(b'='), _) => (TokenKind::SlashEq, 2),
             (b'%', Some(b'='), _) => (TokenKind::PercentEq, 2),
+            (b'<', Some(b'<'), _) => (TokenKind::Shl, 2),
+            (b'>', Some(b'>'), Some(b'>')) => (TokenKind::UShr, 3),
+            (b'>', Some(b'>'), _) => (TokenKind::Shr, 2),
+            (b'&', ..) => (TokenKind::Amp, 1),
+            (b'|', ..) => (TokenKind::Pipe, 1),
+            (b'^', ..) => (TokenKind::Caret, 1),
+            (b'~', ..) => (TokenKind::Tilde, 1),
             (b'(', ..) => (TokenKind::LParen, 1),
             (b')', ..) => (TokenKind::RParen, 1),
             (b'{', ..) => (TokenKind::LBrace, 1),

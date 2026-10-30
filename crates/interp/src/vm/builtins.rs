@@ -1319,7 +1319,7 @@ impl<'a> Interpreter<'a> {
         {
             return Err(RuntimeError::type_error("value is not a constructor", span));
         }
-        let (function_index, _) = self
+        let (function_index, closure_env) = self
             .objects
             .function_data(callee_id)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
@@ -1380,7 +1380,7 @@ impl<'a> Interpreter<'a> {
             function_index as usize,
             args,
             &all_roots,
-            None,
+            closure_env.object_offset().map(ObjectId::new),
             None,
             Some(object),
         ) {

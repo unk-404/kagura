@@ -1419,6 +1419,7 @@ impl<'a> FunctionCompiler<'a> {
             Expr::Ident { name, span } => match self.resolve(name) {
                 Some(Resolved::Local { slot, .. }) => self.emit_u16(Op::LoadLocal, slot, *span),
                 Some(Resolved::Capture { level, slot, .. }) => {
+                    self.uses_env = true;
                     self.emit_u16(Op::LoadCapture, level, *span);
                     self.emit_u16_raw(slot, *span);
                 }
@@ -1479,6 +1480,7 @@ impl<'a> FunctionCompiler<'a> {
                 match op {
                     UnaryOp::Neg => self.emit(Op::Neg, *span),
                     UnaryOp::Not => self.emit(Op::Not, *span),
+                    UnaryOp::BitNot => self.emit(Op::BitNot, *span),
                     UnaryOp::Plus => {}
                     UnaryOp::TypeOf => self.emit(Op::TypeOf, *span),
                     UnaryOp::Void => {
@@ -1543,6 +1545,7 @@ impl<'a> FunctionCompiler<'a> {
                     match resolved {
                         Resolved::Local { slot, .. } => self.emit_u16(Op::StoreLocal, slot, *span),
                         Resolved::Capture { level, slot, .. } => {
+                            self.uses_env = true;
                             self.emit_u16(Op::StoreCapture, level, *span);
                             self.emit_u16_raw(slot, *span);
                         }
@@ -1643,20 +1646,27 @@ impl<'a> FunctionCompiler<'a> {
                         }
                     }
                     AssignTarget::Member { object, property } => {
+                        let object_slot = self.hidden_local(*span);
+                        let old_slot = self.hidden_local(*span);
+                        let new_slot = self.hidden_local(*span);
                         self.compile_expr(object)?;
-                        self.emit(Op::Dup, *span);
+                        self.emit_u16(Op::StoreLocal, object_slot, *span);
                         let key = self.add_const(Const::String(property.clone()));
+                        self.emit_u16(Op::LoadLocal, object_slot, *span);
                         self.emit_u32(Op::GetProp, key, *span);
-                        if !*prefix {
-                            self.emit(Op::Dup, *span);
-                        }
+                        self.emit_u16(Op::StoreLocal, old_slot, *span);
+                        self.emit_u16(Op::LoadLocal, old_slot, *span);
                         self.emit_const(Const::Number(1.0), *span);
                         self.emit(op, *span);
+                        self.emit_u16(Op::StoreLocal, new_slot, *span);
+                        self.emit_u16(Op::LoadLocal, object_slot, *span);
+                        self.emit_u16(Op::LoadLocal, new_slot, *span);
+                        self.emit_u32(Op::SetPropValue, key, *span);
                         if *prefix {
-                            self.emit_u32(Op::SetPropValue, key, *span);
+                            self.emit_u16(Op::LoadLocal, new_slot, *span);
                         } else {
-                            self.emit_u32(Op::SetPropValue, key, *span);
                             self.emit(Op::Pop, *span);
+                            self.emit_u16(Op::LoadLocal, old_slot, *span);
                         }
                     }
                     AssignTarget::Index { object, index } => {
@@ -1902,6 +1912,7 @@ impl<'a> FunctionCompiler<'a> {
         match resolved {
             Resolved::Local { slot, .. } => self.emit_u16(Op::LoadLocal, slot, span),
             Resolved::Capture { level, slot, .. } => {
+                self.uses_env = true;
                 self.emit_u16(Op::LoadCapture, level, span);
                 self.emit_u16_raw(slot, span);
             }
@@ -1916,6 +1927,7 @@ impl<'a> FunctionCompiler<'a> {
         match resolved {
             Resolved::Local { slot, .. } => self.emit_u16(Op::StoreLocal, slot, span),
             Resolved::Capture { level, slot, .. } => {
+                self.uses_env = true;
                 self.emit_u16(Op::StoreCapture, level, span);
                 self.emit_u16_raw(slot, span);
             }
@@ -2130,6 +2142,12 @@ fn binary_op(op: BinaryOp) -> Op {
         BinaryOp::StrictNotEq => Op::StrictNotEq,
         BinaryOp::In => Op::In,
         BinaryOp::InstanceOf => Op::InstanceOf,
+        BinaryOp::BitOr => Op::BitOr,
+        BinaryOp::BitXor => Op::BitXor,
+        BinaryOp::BitAnd => Op::BitAnd,
+        BinaryOp::Shl => Op::Shl,
+        BinaryOp::Shr => Op::Shr,
+        BinaryOp::UShr => Op::UShr,
         BinaryOp::And | BinaryOp::Or => unreachable!(),
     }
 }

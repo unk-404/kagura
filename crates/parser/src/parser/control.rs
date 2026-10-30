@@ -9,7 +9,7 @@ impl Parser {
     pub(super) fn parse_throw(&mut self) -> Result<Stmt, ParseError> {
         let start = self.advance().span;
         let value = self.parse_expr()?;
-        self.expect(&TokenKind::Semi, "expected ';' after throw")?;
+        self.eat(&TokenKind::Semi);
         let span = start.merge(value.span());
         Ok(Stmt::Throw { value, span })
     }
@@ -57,7 +57,7 @@ impl Parser {
         } else {
             Some(self.parse_expr()?)
         };
-        self.expect(&TokenKind::Semi, "expected ';' after return")?;
+        self.eat(&TokenKind::Semi);
         Ok(Stmt::Return { value, span: start })
     }
 }

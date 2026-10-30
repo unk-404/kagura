@@ -75,6 +75,13 @@ pub enum Op {
     SetPrototype = 71,
     CallThis = 72,
     Await = 73,
+    BitOr = 74,
+    BitXor = 75,
+    BitAnd = 76,
+    Shl = 77,
+    Shr = 78,
+    UShr = 79,
+    BitNot = 80,
 }
 
 impl Op {
@@ -154,6 +161,13 @@ impl Op {
             71 => Self::SetPrototype,
             72 => Self::CallThis,
             73 => Self::Await,
+            74 => Self::BitOr,
+            75 => Self::BitXor,
+            76 => Self::BitAnd,
+            77 => Self::Shl,
+            78 => Self::Shr,
+            79 => Self::UShr,
+            80 => Self::BitNot,
             _ => return None,
         })
     }

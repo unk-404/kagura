@@ -84,6 +84,8 @@ The current P1 slice adds:
   destructuring parameters, and destructuring assignment expressions
 - test262 `_FIXTURE.js` helper files are excluded from selection instead of
   being counted as tests
+- bitwise operators, hexadecimal literals, and ASI for expression/return/
+  throw/var statements
 - async-function syntax with a synchronous `await` execution shim; full
   Promise job semantics are not implemented
 - basic class declarations: constructor, non-enumerable prototype methods,
@@ -177,8 +179,8 @@ Local full-corpus run on 2026-10-30 against pinned test262
 `91c70759363c46557b694792bf34a2551a7af5ba`, Node 22.14.0:
 
 ```text
-53733 selected, 22267 executed, 5095 passed, 17172 failed, 31466 skipped
-oracle node: 5095 checked, 5090 matched, 5 mismatched
+53733 selected, 22267 executed, 5274 passed, 16993 failed, 31466 skipped
+oracle node: 5274 checked, 5269 matched, 5 mismatched
 ```
 
 The five Node mismatches are tracked as differential warnings, not hidden:

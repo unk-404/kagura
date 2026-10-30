@@ -294,6 +294,22 @@ impl<'a> Interpreter<'a> {
                     };
                     push(&mut stack, resolved, span)?;
                 }
+                Op::BitOr | Op::BitXor | Op::BitAnd | Op::Shl | Op::Shr | Op::UShr => {
+                    let right = pop(&mut stack, span)?;
+                    let left = pop(&mut stack, span)?;
+                    let left = try_op!(self.number(left, span)) as i32;
+                    let right = try_op!(self.number(right, span)) as i32;
+                    let value = match op {
+                        Op::BitOr => (left | right) as f64,
+                        Op::BitXor => (left ^ right) as f64,
+                        Op::BitAnd => (left & right) as f64,
+                        Op::Shl => left.wrapping_shl((right as u32) & 31) as f64,
+                        Op::Shr => left.wrapping_shr((right as u32) & 31) as f64,
+                        Op::UShr => ((left as u32) >> ((right as u32) & 31)) as f64,
+                        _ => unreachable!(),
+                    };
+                    push(&mut stack, self.heap.number(value), span)?;
+                }
                 Op::Lt | Op::Le | Op::Gt | Op::Ge => {
                     let right = pop(&mut stack, span)?;
                     let left = pop(&mut stack, span)?;
@@ -371,6 +387,11 @@ impl<'a> Interpreter<'a> {
                     let value = pop(&mut stack, span)?;
                     let number = try_op!(self.number(value, span));
                     push(&mut stack, self.heap.number(-number), span)?;
+                }
+                Op::BitNot => {
+                    let value = pop(&mut stack, span)?;
+                    let number = try_op!(self.number(value, span)) as i32;
+                    push(&mut stack, self.heap.number((!number) as f64), span)?;
                 }
                 Op::Not => {
                     let value = pop(&mut stack, span)?;

@@ -1113,6 +1113,19 @@ fn runs_synchronous_async_await_shim() {
 }
 
 #[test]
+fn runs_bitwise_operators_and_asi() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "function f() { return 7 }\nvar x = 0xD008;\nconsole.log(x, (5 & 3) | 8, 1 << 4, 16 >> 2, ~0, f());",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "53256 9 16 4 -1 7\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
