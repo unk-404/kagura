@@ -157,6 +157,7 @@ impl Expr {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Param {
     pub name: String,
+    pub pattern: Option<crate::Pattern>,
     pub ty: Option<TypeAnn>,
     pub default: Option<Box<Expr>>,
     pub rest: bool,

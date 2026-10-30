@@ -945,6 +945,7 @@ impl Parser {
                     return Ok(Expr::Arrow {
                         params: vec![Param {
                             name,
+                            pattern: None,
                             ty: None,
                             default: None,
                             rest: false,

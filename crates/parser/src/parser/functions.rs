@@ -12,29 +12,9 @@ impl Parser {
         let mut params = Vec::new();
         if !self.at(&TokenKind::RParen) {
             loop {
-                let rest = self.eat(&TokenKind::DotDotDot);
-                let param_token = self.expect_ident("expected parameter name")?;
-                let param_name = match param_token.kind {
-                    TokenKind::Ident(name) => name,
-                    _ => unreachable!(),
-                };
-                let ty = if self.eat(&TokenKind::Colon) {
-                    Some(self.parse_type()?)
-                } else {
-                    None
-                };
-                let default = if !rest && self.eat(&TokenKind::Assign) {
-                    Some(Box::new(self.parse_expr()?))
-                } else {
-                    None
-                };
-                params.push(Param {
-                    name: param_name,
-                    ty,
-                    default,
-                    rest,
-                    span: param_token.span,
-                });
+                let param = self.parse_param(params.len())?;
+                let rest = param.rest;
+                params.push(param);
                 if rest || !self.eat(&TokenKind::Comma) {
                     break;
                 }
@@ -42,6 +22,50 @@ impl Parser {
         }
         self.expect(&TokenKind::RParen, "expected ')' after parameters")?;
         Ok(params)
+    }
+
+    fn parse_param(&mut self, index: usize) -> Result<Param, ParseError> {
+        let rest = self.eat(&TokenKind::DotDotDot);
+        let start = self.peek().span;
+        if matches!(self.peek().kind, TokenKind::LBracket | TokenKind::LBrace) {
+            let pattern = self.parse_binding_pattern()?;
+            let default = if !rest && self.eat(&TokenKind::Assign) {
+                Some(Box::new(self.parse_expr()?))
+            } else {
+                None
+            };
+            return Ok(Param {
+                name: format!("$param{index}"),
+                pattern: Some(pattern),
+                ty: None,
+                default,
+                rest,
+                span: start,
+            });
+        }
+        let param_token = self.expect_ident("expected parameter name")?;
+        let param_name = match param_token.kind {
+            TokenKind::Ident(name) => name,
+            _ => unreachable!(),
+        };
+        let ty = if self.eat(&TokenKind::Colon) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+        let default = if !rest && self.eat(&TokenKind::Assign) {
+            Some(Box::new(self.parse_expr()?))
+        } else {
+            None
+        };
+        Ok(Param {
+            name: param_name,
+            pattern: None,
+            ty,
+            default,
+            rest,
+            span: param_token.span,
+        })
     }
 
     pub(super) fn parse_function_expr(&mut self) -> Result<Expr, ParseError> {
@@ -113,29 +137,9 @@ impl Parser {
         let mut params = Vec::new();
         if !self.at(&TokenKind::RParen) {
             loop {
-                let rest = self.eat(&TokenKind::DotDotDot);
-                let param_token = self.expect_ident("expected parameter name")?;
-                let param_name = match param_token.kind {
-                    TokenKind::Ident(name) => name,
-                    _ => unreachable!(),
-                };
-                let ty = if self.eat(&TokenKind::Colon) {
-                    Some(self.parse_type()?)
-                } else {
-                    None
-                };
-                let default = if !rest && self.eat(&TokenKind::Assign) {
-                    Some(Box::new(self.parse_expr()?))
-                } else {
-                    None
-                };
-                params.push(Param {
-                    name: param_name,
-                    ty,
-                    default,
-                    rest,
-                    span: param_token.span,
-                });
+                let param = self.parse_param(params.len())?;
+                let rest = param.rest;
+                params.push(param);
                 if rest || !self.eat(&TokenKind::Comma) {
                     break;
                 }

@@ -983,6 +983,19 @@ fn supports_object_rest_bindings() {
 }
 
 #[test]
+fn supports_destructuring_parameters() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "function f([a, b], { x, y = 7 }, ...rest) { return a + b + x + y + rest.length; } var g = ({ a = 4 }) => a; console.log(f([1, 2], { x: 3 }, 9, 9), g({}));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "15 4\n");
+}
+
+#[test]
 fn runs_finally_on_return_and_throw() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

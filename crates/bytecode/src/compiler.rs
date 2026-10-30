@@ -160,6 +160,7 @@ struct FunctionCompiler<'a> {
     uses_env: bool,
     self_slot: Option<u16>,
     arguments_slot: Option<u16>,
+    parameter_patterns: Vec<(u16, Pattern)>,
     finallys: Vec<FinallyContext>,
     completion_counter: u32,
     iterations: Vec<IterationScope>,
@@ -191,6 +192,7 @@ impl<'a> FunctionCompiler<'a> {
             uses_env: body_has_closure(body) || params_have_closure(params),
             self_slot: None,
             arguments_slot: None,
+            parameter_patterns: Vec::new(),
             finallys: Vec::new(),
             completion_counter: 1,
             iterations: Vec::new(),
@@ -199,7 +201,10 @@ impl<'a> FunctionCompiler<'a> {
             functions,
         };
         for param in params {
-            compiler.declare_parameter(&param.name);
+            let slot = compiler.declare_parameter(&param.name);
+            if let Some(pattern) = &param.pattern {
+                compiler.parameter_patterns.push((slot, pattern.clone()));
+            }
         }
         if !matches!(name, "<arrow>" | "<script>") {
             compiler.arguments_slot = compiler.declare("arguments", true, Span::empty(0));
@@ -1102,6 +1107,10 @@ impl<'a> FunctionCompiler<'a> {
         compiler.compile_arguments(span)?;
         compiler.compile_param_defaults(params)?;
         compiler.compile_rest_param(params)?;
+        let patterns = compiler.parameter_patterns.clone();
+        for (slot, pattern) in patterns {
+            compiler.bind_pattern(&pattern, slot, kagura_ast::VarKind::Let, span)?;
+        }
         for stmt in body {
             compiler.compile_stmt(stmt)?;
         }
