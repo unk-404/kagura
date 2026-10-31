@@ -17,6 +17,7 @@ mod json;
 mod math;
 pub(super) mod method_id;
 mod objects;
+mod string_methods;
 
 use self::method_id::{BuiltinMethodId, MethodOwner};
 
