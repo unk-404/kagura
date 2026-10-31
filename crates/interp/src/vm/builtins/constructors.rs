@@ -428,6 +428,14 @@ impl<'a> Interpreter<'a> {
                 "getMilliseconds",
                 "getTimezoneOffset",
                 "setTime",
+                "toJSON",
+                "toUTCString",
+                "toGMTString",
+                "toDateString",
+                "toTimeString",
+                "toLocaleDateString",
+                "toLocaleTimeString",
+                "toLocaleString",
             ] {
                 let function = self.allocate_builtin_method(method, MethodOwner::Date, span)?;
                 self.set_non_enumerable_property(prototype, method, function, span)?;

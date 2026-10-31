@@ -5,6 +5,7 @@ use kagura_value::Value;
 use crate::error::RuntimeError;
 
 use super::super::Interpreter;
+use super::method_id::BuiltinMethodId;
 
 pub(super) fn now_millis() -> f64 {
     std::time::SystemTime::now()
@@ -108,6 +109,20 @@ impl Interpreter<'_> {
         Ok(object)
     }
 
+    pub(super) fn call_date_method_id(
+        &mut self,
+        object: Value,
+        method: BuiltinMethodId,
+        args: &[Value],
+        span: Span,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let marker = self.get_property(object, "__date", span)?;
+        if marker.as_boolean() != Some(true) {
+            return Ok(None);
+        }
+        self.call_date_method(object, method.name(), args, span)
+    }
+
     pub(super) fn call_date_method(
         &mut self,
         object: Value,
@@ -133,6 +148,9 @@ impl Interpreter<'_> {
             if key == "toISOString" {
                 return Err(RuntimeError::range("Invalid time value", span));
             }
+            if key == "toJSON" {
+                return Ok(Some(Value::null()));
+            }
             return Ok(Some(self.heap.number(f64::NAN)));
         }
         let Some(value) = DateTime::<Utc>::from_timestamp_millis(millis as i64) else {
@@ -152,6 +170,32 @@ impl Interpreter<'_> {
                 ));
             }
             "toString" => {
+                return Ok(Some(
+                    self.heap.string(
+                        &value
+                            .format("%a %b %d %Y %H:%M:%S GMT+0000 (UTC)")
+                            .to_string(),
+                    ),
+                ));
+            }
+            "toUTCString" | "toGMTString" => {
+                return Ok(Some(
+                    self.heap
+                        .string(&value.format("%a, %d %b %Y %H:%M:%S GMT").to_string()),
+                ));
+            }
+            "toDateString" | "toLocaleDateString" => {
+                return Ok(Some(
+                    self.heap.string(&value.format("%a %b %d %Y").to_string()),
+                ));
+            }
+            "toTimeString" | "toLocaleTimeString" => {
+                return Ok(Some(
+                    self.heap
+                        .string(&value.format("%H:%M:%S GMT+0000 (UTC)").to_string()),
+                ));
+            }
+            "toLocaleString" => {
                 return Ok(Some(
                     self.heap.string(
                         &value

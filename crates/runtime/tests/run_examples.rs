@@ -690,6 +690,22 @@ fn constructs_error_objects() {
 }
 
 #[test]
+fn date_formatting_methods_use_utc() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var d = new Date(0); console.log(d.toISOString()); console.log(d.toUTCString()); console.log(d.toDateString()); console.log(d.toTimeString());",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(
+        host.output(),
+        "1970-01-01T00:00:00.000Z\nThu, 01 Jan 1970 00:00:00 GMT\nThu Jan 01 1970\n00:00:00 GMT+0000 (UTC)\n"
+    );
+}
+
+#[test]
 fn array_shift_unshift_and_splice_are_installed() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

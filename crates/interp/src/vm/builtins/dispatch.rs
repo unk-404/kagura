@@ -56,6 +56,11 @@ impl<'a> Interpreter<'a> {
         if owner == MethodOwner::Error && matches!(id, BuiltinMethodId::ErrorToString) {
             return self.call_error_to_string(object, args, span);
         }
+        if owner == MethodOwner::Date
+            && let Some(value) = self.call_date_method_id(object, id, args, span)?
+        {
+            return Ok(value);
+        }
         self.call_builtin(object, id.name(), args, span, roots)?
             .ok_or_else(|| RuntimeError::type_error("method is not supported", span))
     }
