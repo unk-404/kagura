@@ -83,6 +83,127 @@ impl<'a> Interpreter<'a> {
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
                 }
             }
+            BuiltinMethodId::Shift => {
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                if length == 0 {
+                    Value::undefined()
+                } else {
+                    let first = self
+                        .objects
+                        .array_get(object_id, 0)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    for index in 1..length {
+                        let value = self
+                            .objects
+                            .array_get(object_id, index)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        self.objects
+                            .array_set(object_id, index - 1, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                    self.objects
+                        .array_pop(object_id)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    first
+                }
+            }
+            BuiltinMethodId::Unshift => {
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let count = args.len() as u32;
+                if count == 0 {
+                    self.heap.number(length as f64)
+                } else {
+                    for _ in 0..count {
+                        self.objects
+                            .array_push(object_id, Value::hole())
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                    for index in (0..length).rev() {
+                        let value = self
+                            .objects
+                            .array_get(object_id, index)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                        self.objects
+                            .array_set(object_id, index + count, value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                    for (index, value) in args.iter().enumerate() {
+                        self.objects
+                            .array_set(object_id, index as u32, *value)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    }
+                    self.heap.number((length + count) as f64)
+                }
+            }
+            BuiltinMethodId::Splice => {
+                let length = self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let start_value = args.first().and_then(|value| value.as_smi()).unwrap_or(0);
+                let start = if start_value < 0 {
+                    (length as i64 + start_value as i64).max(0) as u32
+                } else {
+                    (start_value as u32).min(length)
+                };
+                let delete_count = if args.len() < 2 {
+                    length - start
+                } else {
+                    args.get(1)
+                        .and_then(|value| value.as_smi())
+                        .unwrap_or(0)
+                        .max(0) as u32
+                }
+                .min(length - start);
+                let result = self
+                    .objects
+                    .allocate_array(self.shapes.root())
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                for index in 0..delete_count {
+                    let value = self
+                        .objects
+                        .array_get(object_id, start + index)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    self.objects
+                        .array_push(result, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                let mut tail = Vec::new();
+                for index in start + delete_count..length {
+                    tail.push(
+                        self.objects
+                            .array_get(object_id, index)
+                            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
+                    );
+                }
+                while self
+                    .objects
+                    .array_length(object_id)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                    > start
+                {
+                    self.objects
+                        .array_pop(object_id)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                for value in args.iter().skip(2) {
+                    self.objects
+                        .array_push(object_id, *value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                for value in tail {
+                    self.objects
+                        .array_push(object_id, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+                Value::object(result.index())
+            }
             BuiltinMethodId::Join => {
                 let separator = args
                     .first()

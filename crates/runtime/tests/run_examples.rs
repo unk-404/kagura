@@ -690,6 +690,19 @@ fn constructs_error_objects() {
 }
 
 #[test]
+fn array_shift_unshift_and_splice_are_installed() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var a = [1, 2, 3]; console.log(a.shift(), a.join(',')); console.log(a.unshift(0, 9), a.join(',')); console.log(a.splice(1, 2, 'x').join(','), a.join(','));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "1 2,3\n4 0,9,2,3\n9,2 0,x,3\n");
+}
+
+#[test]
 fn runtime_thrown_errors_are_native_error_objects() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
