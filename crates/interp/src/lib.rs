@@ -4,4 +4,4 @@ mod vm;
 
 pub use error::{RuntimeError, RuntimeErrorKind};
 pub use host::{Host, HostCall, HostError, HostFunctionId};
-pub use vm::{FrameDescriptor, Interpreter, SafepointStats};
+pub use vm::{FrameDescriptor, GcObservability, Interpreter, SafepointStats};

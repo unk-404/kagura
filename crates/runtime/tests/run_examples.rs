@@ -1365,6 +1365,23 @@ fn gc_runs_during_script_allocations() {
 }
 
 #[test]
+fn gc_observability_records_pause_and_last_stats() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::new(64 * 1024);
+    runtime
+        .run(
+            "for (let i = 0; i < 2000; i = i + 1) { let o = { x: i }; }",
+            &mut host,
+        )
+        .unwrap();
+    let gc = runtime.gc_observability();
+    assert!(gc.collections > 0);
+    assert!(gc.pause_nanos > 0);
+    let last = gc.last.expect("last gc stats");
+    assert!(last.freed_objects > 0 || last.freed_arrays > 0);
+}
+
+#[test]
 fn records_interpreter_safepoints() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

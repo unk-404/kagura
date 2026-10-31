@@ -3,7 +3,7 @@ mod calls;
 mod properties;
 
 use kagura_bytecode::{Const, Module, Op};
-use kagura_object::{ObjectHeap, ObjectId, PropertyLocation, ShapeId, ShapeTable};
+use kagura_object::{GcStats, ObjectHeap, ObjectId, PropertyLocation, ShapeId, ShapeTable};
 use kagura_support::{FastHashMap, Span};
 use kagura_value::{Heap, Value};
 use tracing::instrument;
@@ -100,6 +100,13 @@ pub struct SafepointStats {
     pub last: Option<FrameDescriptor>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct GcObservability {
+    pub collections: u64,
+    pub pause_nanos: u128,
+    pub last: Option<GcStats>,
+}
+
 struct FrameContext<'a> {
     caller_roots: &'a [Value],
     args: &'a [Value],
@@ -134,6 +141,7 @@ pub struct Interpreter<'a> {
     property_ic_misses: u64,
     builtin_method_hits: u64,
     safepoint_stats: SafepointStats,
+    gc_observability: GcObservability,
     rng_state: u64,
     global_object: Option<ObjectId>,
     array_prototype: Option<ObjectId>,
@@ -172,6 +180,7 @@ impl<'a> Interpreter<'a> {
             property_ic_misses: 0,
             builtin_method_hits: 0,
             safepoint_stats: SafepointStats::default(),
+            gc_observability: GcObservability::default(),
             rng_state: 0x9E37_79B9_7F4A_7C15,
             global_object: None,
             array_prototype: None,
@@ -191,6 +200,10 @@ impl<'a> Interpreter<'a> {
 
     pub fn builtin_method_hits(&self) -> u64 {
         self.builtin_method_hits
+    }
+
+    pub fn gc_observability(&self) -> GcObservability {
+        self.gc_observability.clone()
     }
 
     #[instrument(skip(self), fields(entry = self.module.entry))]
@@ -1504,7 +1517,15 @@ impl<'a> Interpreter<'a> {
                             roots.push(Value::object(global.index()));
                         }
                         roots.extend(self.builtin_cache.values().copied());
+                        let started = std::time::Instant::now();
                         let stats = self.objects.collect(&roots);
+                        self.gc_observability.collections =
+                            self.gc_observability.collections.saturating_add(1);
+                        self.gc_observability.pause_nanos = self
+                            .gc_observability
+                            .pause_nanos
+                            .saturating_add(started.elapsed().as_nanos());
+                        self.gc_observability.last = Some(stats);
                         if std::env::var_os("KAGURA_GC_TRACE").is_some() {
                             eprintln!(
                                 "gc live_before={} live_after={} freed_objects={} freed_arrays={}",
