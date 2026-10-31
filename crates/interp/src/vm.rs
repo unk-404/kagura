@@ -158,8 +158,11 @@ pub struct Interpreter<'a> {
     property_ic_hits: u64,
     property_ic_misses: u64,
     keyed_feedback: FastHashMap<u64, KeyedCacheEntry>,
+    keyed_store_feedback: FastHashMap<u64, KeyedCacheEntry>,
     keyed_ic_hits: u64,
     keyed_ic_misses: u64,
+    keyed_store_hits: u64,
+    keyed_store_misses: u64,
     builtin_method_hits: u64,
     safepoint_stats: SafepointStats,
     gc_observability: GcObservability,
@@ -201,8 +204,11 @@ impl<'a> Interpreter<'a> {
             property_ic_hits: 0,
             property_ic_misses: 0,
             keyed_feedback: FastHashMap::default(),
+            keyed_store_feedback: FastHashMap::default(),
             keyed_ic_hits: 0,
             keyed_ic_misses: 0,
+            keyed_store_hits: 0,
+            keyed_store_misses: 0,
             builtin_method_hits: 0,
             safepoint_stats: SafepointStats::default(),
             gc_observability: GcObservability::default(),
@@ -221,6 +227,10 @@ impl<'a> Interpreter<'a> {
 
     pub fn keyed_ic_stats(&self) -> (u64, u64) {
         (self.keyed_ic_hits, self.keyed_ic_misses)
+    }
+
+    pub fn keyed_store_ic_stats(&self) -> (u64, u64) {
+        (self.keyed_store_hits, self.keyed_store_misses)
     }
 
     pub fn safepoint_stats(&self) -> SafepointStats {
@@ -1432,6 +1442,35 @@ impl<'a> Interpreter<'a> {
                             push(&mut stack, value, span)?;
                             continue;
                         };
+                        let site = ((function_index as u64) << 32) | pc.saturating_sub(1) as u64;
+                        if let Some(cache) = self.keyed_store_feedback.get(&site).copied()
+                            && cache.object == id
+                            && cache.index == index
+                        {
+                            if try_op!(
+                                self.objects
+                                    .is_sealed(id)
+                                    .map_err(|error| RuntimeError::runtime(
+                                        error.to_string(),
+                                        span
+                                    ))
+                            ) {
+                                let length =
+                                    try_op!(self.objects.array_length(id).map_err(|error| {
+                                        RuntimeError::runtime(error.to_string(), span)
+                                    }));
+                                if index >= length {
+                                    push(&mut stack, value, span)?;
+                                    continue;
+                                }
+                            }
+                            try_op!(self.objects.array_set(id, index, value).map_err(|error| {
+                                RuntimeError::runtime(error.to_string(), span)
+                            }));
+                            self.keyed_store_hits = self.keyed_store_hits.saturating_add(1);
+                            push(&mut stack, value, span)?;
+                            continue;
+                        }
                         if try_op!(
                             self.objects
                                 .is_sealed(id)
@@ -1450,6 +1489,9 @@ impl<'a> Interpreter<'a> {
                                 .array_set(id, index, value)
                                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                         );
+                        self.keyed_store_feedback
+                            .insert(site, KeyedCacheEntry { object: id, index });
+                        self.keyed_store_misses = self.keyed_store_misses.saturating_add(1);
                     } else {
                         let key = try_op!(self.property_key(index, span));
                         try_op!(self.set_property(object, &key, value, span));
