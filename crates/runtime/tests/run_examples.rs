@@ -1560,6 +1560,19 @@ fn provides_performance_now() {
 }
 
 #[test]
+fn array_methods_accept_array_like_receivers() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var o = { 0: 1, 2: 3, length: 3 }; console.log(Array.prototype.map.call(o, function (v) { return v * 2; }).join(',')); console.log(Array.prototype.filter.call(o, function (v) { return v > 1; }).join(',')); var s = 0; Array.prototype.forEach.call(o, function (v) { s = s + v; }); console.log(s);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "2,,6\n3\n4\n");
+}
+
+#[test]
 fn call_ic_hits_repeated_function_site() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

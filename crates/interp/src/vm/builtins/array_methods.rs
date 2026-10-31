@@ -9,6 +9,66 @@ use super::method_id::BuiltinMethodId;
 use super::relative_array_index;
 
 impl<'a> Interpreter<'a> {
+    fn array_like_length(
+        &mut self,
+        object: Value,
+        object_id: ObjectId,
+        span: Span,
+    ) -> Result<u32, RuntimeError> {
+        if self
+            .objects
+            .is_array(object_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return self
+                .objects
+                .array_length(object_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+        }
+        let length = self.get_property(object, "length", span)?;
+        let length = self.heap.to_number(length).unwrap_or(0.0);
+        Ok(length.max(0.0).min(u32::MAX as f64) as u32)
+    }
+
+    fn array_like_has(
+        &mut self,
+        object: Value,
+        object_id: ObjectId,
+        index: u32,
+        span: Span,
+    ) -> Result<bool, RuntimeError> {
+        if self
+            .objects
+            .is_array(object_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return self
+                .objects
+                .array_has(object_id, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+        }
+        self.has_own_property(object, &index.to_string(), span)
+    }
+
+    fn array_like_get(
+        &mut self,
+        object: Value,
+        object_id: ObjectId,
+        index: u32,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        if self
+            .objects
+            .is_array(object_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return self
+                .objects
+                .array_get(object_id, index)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span));
+        }
+        self.get_property(object, &index.to_string(), span)
+    }
     pub(crate) fn call_array_builtin(
         &mut self,
         object: Value,
@@ -630,10 +690,7 @@ impl<'a> Interpreter<'a> {
             }
             BuiltinMethodId::Map | BuiltinMethodId::Filter | BuiltinMethodId::ForEach => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
-                let length = self
-                    .objects
-                    .array_length(object_id)
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let length = self.array_like_length(object, object_id, span)?;
                 let result = if matches!(method, BuiltinMethodId::ForEach) {
                     None
                 } else {
@@ -648,10 +705,7 @@ impl<'a> Interpreter<'a> {
                     roots.push(Value::object(result.index()));
                 }
                 for index in 0..length {
-                    let has = self
-                        .objects
-                        .array_has(object_id, index)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let has = self.array_like_has(object, object_id, index, span)?;
                     if !has {
                         if matches!(method, BuiltinMethodId::Map)
                             && let Some(result) = result
@@ -662,10 +716,7 @@ impl<'a> Interpreter<'a> {
                         }
                         continue;
                     }
-                    let value = self
-                        .objects
-                        .array_get(object_id, index)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let value = self.array_like_get(object, object_id, index, span)?;
                     let callback_args = [value, self.heap.number(index as f64), object];
                     let mapped = self.invoke_callable(callback, &callback_args, &roots, span)?;
                     match method {
@@ -693,23 +744,14 @@ impl<'a> Interpreter<'a> {
             }
             BuiltinMethodId::Some | BuiltinMethodId::Every | BuiltinMethodId::Find => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
-                let length = self
-                    .objects
-                    .array_length(object_id)
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let length = self.array_like_length(object, object_id, span)?;
                 let roots = roots.to_vec();
                 for index in 0..length {
-                    let has = self
-                        .objects
-                        .array_has(object_id, index)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let has = self.array_like_has(object, object_id, index, span)?;
                     if !has {
                         continue;
                     }
-                    let value = self
-                        .objects
-                        .array_get(object_id, index)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let value = self.array_like_get(object, object_id, index, span)?;
                     let callback_args = [value, self.heap.number(index as f64), object];
                     let result = self.invoke_callable(callback, &callback_args, &roots, span)?;
                     let truthy = self.heap.truthy(result);
