@@ -8,6 +8,7 @@ use super::Interpreter;
 
 mod array_methods;
 mod assertions;
+mod boolean_methods;
 mod calls;
 mod constructors;
 mod date;
@@ -16,6 +17,7 @@ mod globals;
 mod json;
 mod math;
 pub(super) mod method_id;
+mod number_methods;
 mod objects;
 mod string_methods;
 

@@ -7,9 +7,7 @@ use crate::error::RuntimeError;
 use super::Interpreter;
 use super::date;
 use super::method_id::{BuiltinMethodId, MethodOwner};
-use super::{
-    format_radix, math_operation, normalize_exponent, parse_float_prefix, parse_int_value,
-};
+use super::{math_operation, parse_float_prefix, parse_int_value};
 
 impl<'a> Interpreter<'a> {
     pub(crate) fn invoke_builtin_method(
@@ -32,6 +30,20 @@ impl<'a> Interpreter<'a> {
             let text = self.heap.as_str(object).unwrap_or_default().to_owned();
             return self
                 .call_string_builtin(&text, id, args, span)?
+                .ok_or_else(|| RuntimeError::type_error("method is not supported", span));
+        }
+        if owner == MethodOwner::Number
+            && let Some(number) = self.heap.as_number(object)
+        {
+            return self
+                .call_number_builtin(number, id, args, span)?
+                .ok_or_else(|| RuntimeError::type_error("method is not supported", span));
+        }
+        if owner == MethodOwner::Boolean
+            && let Some(boolean) = object.as_boolean()
+        {
+            return self
+                .call_boolean_builtin(boolean, id, args, span)?
                 .ok_or_else(|| RuntimeError::type_error("method is not supported", span));
         }
         self.call_builtin(object, id.name(), args, span, roots)?
@@ -68,61 +80,16 @@ impl<'a> Interpreter<'a> {
             }
         }
         if let Some(boolean) = object.as_boolean() {
-            return Ok(Some(match key {
-                "valueOf" => object,
-                "toString" | "toLocaleString" => {
-                    self.heap.string(if boolean { "true" } else { "false" })
-                }
-                _ => return Ok(None),
-            }));
+            let Some(method) = BuiltinMethodId::from_name(key) else {
+                return Ok(None);
+            };
+            return self.call_boolean_builtin(boolean, method, args, span);
         }
         if let Some(number) = self.heap.as_number(object) {
-            return Ok(Some(match key {
-                "valueOf" => object,
-                "toString" | "toLocaleString" => {
-                    let radix = args
-                        .first()
-                        .and_then(|value| self.heap.to_number(*value))
-                        .unwrap_or(10.0) as u32;
-                    if radix == 10 || !(2..=36).contains(&radix) {
-                        self.heap.string(&self.heap.to_js_string(object))
-                    } else {
-                        let text = format_radix(number, radix);
-                        self.heap.string(&text)
-                    }
-                }
-                "toFixed" => {
-                    let digits = args
-                        .first()
-                        .and_then(|value| self.heap.to_number(*value))
-                        .unwrap_or(0.0)
-                        .clamp(0.0, 100.0) as usize;
-                    self.heap.string(&format!("{number:.digits$}"))
-                }
-                "toExponential" => {
-                    let digits = args
-                        .first()
-                        .and_then(|value| self.heap.to_number(*value))
-                        .unwrap_or(0.0)
-                        .clamp(0.0, 100.0) as usize;
-                    let text = if args.is_empty() {
-                        format!("{number:e}")
-                    } else {
-                        format!("{number:.digits$e}")
-                    };
-                    self.heap.string(&normalize_exponent(&text))
-                }
-                "toPrecision" => {
-                    let Some(precision) =
-                        args.first().and_then(|value| self.heap.to_number(*value))
-                    else {
-                        return Ok(Some(self.heap.string(&self.heap.to_js_string(object))));
-                    };
-                    let precision = precision.clamp(1.0, 100.0) as usize;
-                    self.heap.string(&format!("{number:.precision$}"))
-                }
-                _ => return Ok(None),
-            }));
+            let Some(method) = BuiltinMethodId::from_name(key) else {
+                return Ok(None);
+            };
+            return self.call_number_builtin(number, method, args, span);
         }
         if object.is_string() {
             let text = self.heap.as_str(object).unwrap_or_default().to_owned();
