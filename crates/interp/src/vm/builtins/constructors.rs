@@ -32,18 +32,7 @@ impl<'a> Interpreter<'a> {
                 "atan2", "cos", "sin", "tan", "exp", "log", "log2", "log10", "cbrt", "fround",
                 "clz32", "imul", "hypot", "min", "max", "random",
             ] {
-                let function = self
-                    .objects
-                    .allocate_function(
-                        self.shapes.function_shape(),
-                        u32::MAX,
-                        Value::undefined(),
-                        Value::undefined(),
-                    )
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                let function = Value::object(function.index());
-                let name_value = self.heap.string(method);
-                self.set_property(function, "name", name_value, span)?;
+                let function = self.allocate_builtin_method(method, span)?;
                 self.set_non_enumerable_property(object, method, function, span)?;
             }
             return Ok(object);
@@ -66,18 +55,7 @@ impl<'a> Interpreter<'a> {
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
             let prototype = Value::object(prototype.index());
             for method in ["call", "apply", "bind", "toString"] {
-                let function = self
-                    .objects
-                    .allocate_function(
-                        self.shapes.function_shape(),
-                        u32::MAX,
-                        Value::undefined(),
-                        Value::undefined(),
-                    )
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                let function = Value::object(function.index());
-                let name_value = self.heap.string(method);
-                self.set_property(function, "name", name_value, span)?;
+                let function = self.allocate_builtin_method(method, span)?;
                 self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             let object = self
@@ -156,18 +134,7 @@ impl<'a> Interpreter<'a> {
                 &["toString", "valueOf"]
             };
             for method in methods {
-                let function = self
-                    .objects
-                    .allocate_function(
-                        self.shapes.function_shape(),
-                        u32::MAX,
-                        Value::undefined(),
-                        Value::undefined(),
-                    )
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                let function = Value::object(function.index());
-                let name_value = self.heap.string(method);
-                self.set_property(function, "name", name_value, span)?;
+                let function = self.allocate_builtin_method(method, span)?;
                 self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             self.set_non_enumerable_property(prototype, "constructor", object, span)?;
@@ -208,18 +175,7 @@ impl<'a> Interpreter<'a> {
                 "parseInt",
                 "parseFloat",
             ] {
-                let function = self
-                    .objects
-                    .allocate_function(
-                        self.shapes.function_shape(),
-                        u32::MAX,
-                        Value::undefined(),
-                        Value::undefined(),
-                    )
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                let function = Value::object(function.index());
-                let name_value = self.heap.string(method);
-                self.set_property(function, "name", name_value, span)?;
+                let function = self.allocate_builtin_method(method, span)?;
                 self.set_non_enumerable_property(object, method, function, span)?;
             }
             let prototype_shape = self.object_shape(span)?;
@@ -240,18 +196,7 @@ impl<'a> Interpreter<'a> {
                 "toExponential",
                 "toPrecision",
             ] {
-                let function = self
-                    .objects
-                    .allocate_function(
-                        self.shapes.function_shape(),
-                        u32::MAX,
-                        Value::undefined(),
-                        Value::undefined(),
-                    )
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                let function = Value::object(function.index());
-                let name_value = self.heap.string(method);
-                self.set_property(function, "name", name_value, span)?;
+                let function = self.allocate_builtin_method(method, span)?;
                 self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             self.set_non_enumerable_property(prototype, "constructor", object, span)?;
@@ -333,18 +278,7 @@ impl<'a> Interpreter<'a> {
                 ]
             };
             for method in methods {
-                let function = self
-                    .objects
-                    .allocate_function(
-                        self.shapes.function_shape(),
-                        u32::MAX,
-                        Value::undefined(),
-                        Value::undefined(),
-                    )
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                let function = Value::object(function.index());
-                let name_value = self.heap.string(method);
-                self.set_property(function, "name", name_value, span)?;
+                let function = self.allocate_builtin_method(method, span)?;
                 self.set_non_enumerable_property(prototype_value, method, function, span)?;
             }
             let object = self
@@ -413,18 +347,7 @@ impl<'a> Interpreter<'a> {
                 "getTimezoneOffset",
                 "setTime",
             ] {
-                let function = self
-                    .objects
-                    .allocate_function(
-                        self.shapes.function_shape(),
-                        u32::MAX,
-                        Value::undefined(),
-                        Value::undefined(),
-                    )
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                let function = Value::object(function.index());
-                let name_value = self.heap.string(method);
-                self.set_property(function, "name", name_value, span)?;
+                let function = self.allocate_builtin_method(method, span)?;
                 self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             self.set_property(value, "prototype", prototype, span)?;

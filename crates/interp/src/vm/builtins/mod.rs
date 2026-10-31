@@ -14,9 +14,35 @@ mod dispatch;
 mod globals;
 mod json;
 mod math;
+pub(super) mod method_id;
 mod objects;
 
+use self::method_id::BuiltinMethodId;
+
 impl<'a> Interpreter<'a> {
+    pub(crate) fn allocate_builtin_method(
+        &mut self,
+        name: &str,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let object = self
+            .objects
+            .allocate_function(
+                self.shapes.function_shape(),
+                u32::MAX,
+                Value::undefined(),
+                Value::undefined(),
+            )
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if let Some(id) = BuiltinMethodId::from_name(name) {
+            self.builtin_methods.insert(object.index(), id);
+        }
+        let value = Value::object(object.index());
+        let name_value = self.heap.string(name);
+        self.set_property(value, "name", name_value, span)?;
+        Ok(value)
+    }
+
     fn json_stringify(&mut self, value: Value, span: Span) -> Result<Option<String>, RuntimeError> {
         if value.is_undefined() || value.is_hole() {
             return Ok(None);

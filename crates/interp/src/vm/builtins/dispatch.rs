@@ -6,12 +6,25 @@ use crate::error::RuntimeError;
 
 use super::Interpreter;
 use super::date;
+use super::method_id::BuiltinMethodId;
 use super::{
     format_radix, math_operation, normalize_exponent, parse_float_prefix, parse_int_value,
     relative_array_index,
 };
 
 impl<'a> Interpreter<'a> {
+    pub(crate) fn invoke_builtin_method(
+        &mut self,
+        id: BuiltinMethodId,
+        object: Value,
+        args: &[Value],
+        span: Span,
+        roots: &[Value],
+    ) -> Result<Value, RuntimeError> {
+        self.call_builtin(object, id.name(), args, span, roots)?
+            .ok_or_else(|| RuntimeError::type_error("method is not supported", span))
+    }
+
     pub(crate) fn call_builtin(
         &mut self,
         object: Value,

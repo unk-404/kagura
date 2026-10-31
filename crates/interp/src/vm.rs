@@ -10,6 +10,7 @@ use tracing::instrument;
 
 use crate::error::{RuntimeError, RuntimeErrorKind};
 use crate::host::{Host, HostFunctionId};
+use crate::vm::builtins::method_id::BuiltinMethodId;
 
 const MAX_CALL_DEPTH: usize = 256;
 const MAX_STACK: usize = 4096;
@@ -126,10 +127,12 @@ pub struct Interpreter<'a> {
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     builtin_cache: FastHashMap<String, Value>,
+    builtin_methods: FastHashMap<u32, BuiltinMethodId>,
     feedback: Vec<PropertyFeedback>,
     property_feedback: Vec<Vec<PropertyFeedback>>,
     property_ic_hits: u64,
     property_ic_misses: u64,
+    builtin_method_hits: u64,
     safepoint_stats: SafepointStats,
     rng_state: u64,
     global_object: Option<ObjectId>,
@@ -158,6 +161,7 @@ impl<'a> Interpreter<'a> {
             host,
             host_cache: vec![None; module.constants.len()],
             builtin_cache: FastHashMap::default(),
+            builtin_methods: FastHashMap::default(),
             feedback: vec![PropertyFeedback::Empty; module.feedback.len()],
             property_feedback: module
                 .functions
@@ -166,6 +170,7 @@ impl<'a> Interpreter<'a> {
                 .collect(),
             property_ic_hits: 0,
             property_ic_misses: 0,
+            builtin_method_hits: 0,
             safepoint_stats: SafepointStats::default(),
             rng_state: 0x9E37_79B9_7F4A_7C15,
             global_object: None,
@@ -182,6 +187,10 @@ impl<'a> Interpreter<'a> {
 
     pub fn safepoint_stats(&self) -> SafepointStats {
         self.safepoint_stats.clone()
+    }
+
+    pub fn builtin_method_hits(&self) -> u64 {
+        self.builtin_method_hits
     }
 
     #[instrument(skip(self), fields(entry = self.module.entry))]
@@ -1038,12 +1047,22 @@ impl<'a> Interpreter<'a> {
                                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                         );
                         if function == u32::MAX {
-                            try_op!(
-                                self.call_builtin(object, &key, &args, span, &roots)
-                                    .and_then(|value| value.ok_or_else(|| {
-                                        RuntimeError::type_error("method is not supported", span)
-                                    }))
-                            )
+                            if let Some(id) = self.builtin_methods.get(&method_id.index()).copied()
+                            {
+                                self.builtin_method_hits =
+                                    self.builtin_method_hits.saturating_add(1);
+                                try_op!(self.invoke_builtin_method(id, object, &args, span, &roots))
+                            } else {
+                                try_op!(
+                                    self.call_builtin(object, &key, &args, span, &roots)
+                                        .and_then(|value| value.ok_or_else(|| {
+                                            RuntimeError::type_error(
+                                                "method is not supported",
+                                                span,
+                                            )
+                                        }))
+                                )
+                            }
                         } else {
                             try_op!(self.invoke_method(method, &args, &roots, object, span))
                         }

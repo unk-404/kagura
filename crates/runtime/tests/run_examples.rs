@@ -1205,6 +1205,20 @@ fn creates_implicit_global_in_sloppy_mode() {
 }
 
 #[test]
+fn builtin_methods_use_registered_ids() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var values = []; values.push(1); values.push(2); console.log(values.join(','));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "1,2\n");
+    assert!(runtime.builtin_method_hits() >= 2);
+}
+
+#[test]
 fn math_methods_are_installed() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
