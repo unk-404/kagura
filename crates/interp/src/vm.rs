@@ -142,6 +142,13 @@ struct KeyedCacheEntry {
     index: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct CallCacheEntry {
+    callee: ObjectId,
+    function: u32,
+    env: Option<ObjectId>,
+}
+
 pub struct Interpreter<'a> {
     module: &'a Module,
     heap: &'a mut Heap,
@@ -163,6 +170,9 @@ pub struct Interpreter<'a> {
     keyed_ic_misses: u64,
     keyed_store_hits: u64,
     keyed_store_misses: u64,
+    call_feedback: FastHashMap<u64, CallCacheEntry>,
+    call_ic_hits: u64,
+    call_ic_misses: u64,
     builtin_method_hits: u64,
     safepoint_stats: SafepointStats,
     gc_observability: GcObservability,
@@ -209,6 +219,9 @@ impl<'a> Interpreter<'a> {
             keyed_ic_misses: 0,
             keyed_store_hits: 0,
             keyed_store_misses: 0,
+            call_feedback: FastHashMap::default(),
+            call_ic_hits: 0,
+            call_ic_misses: 0,
             builtin_method_hits: 0,
             safepoint_stats: SafepointStats::default(),
             gc_observability: GcObservability::default(),
@@ -231,6 +244,10 @@ impl<'a> Interpreter<'a> {
 
     pub fn keyed_store_ic_stats(&self) -> (u64, u64) {
         (self.keyed_store_hits, self.keyed_store_misses)
+    }
+
+    pub fn call_ic_stats(&self) -> (u64, u64) {
+        (self.call_ic_hits, self.call_ic_misses)
     }
 
     pub fn safepoint_stats(&self) -> SafepointStats {
@@ -1001,7 +1018,13 @@ impl<'a> Interpreter<'a> {
                     if let Some(capture_env) = capture_env {
                         roots.push(Value::object(capture_env.index()));
                     }
-                    let value = match self.invoke_callable(callee, &args, &roots, span) {
+                    let value = match self.invoke_callable_cached(
+                        callee,
+                        &args,
+                        &roots,
+                        span,
+                        ((function_index as u64) << 32) | pc.saturating_sub(1) as u64,
+                    ) {
                         Ok(value) => value,
                         Err(error) => {
                             let catch_pc = self.catch_error(&mut handlers, &mut stack, error)?;
@@ -1632,6 +1655,9 @@ impl<'a> Interpreter<'a> {
                         roots.extend(self.builtin_cache.values().copied());
                         let started = std::time::Instant::now();
                         let stats = self.objects.collect(&roots);
+                        self.keyed_feedback.clear();
+                        self.keyed_store_feedback.clear();
+                        self.call_feedback.clear();
                         self.gc_observability.collections =
                             self.gc_observability.collections.saturating_add(1);
                         self.gc_observability.pause_nanos = self

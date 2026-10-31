@@ -1560,6 +1560,22 @@ fn provides_performance_now() {
 }
 
 #[test]
+fn call_ic_hits_repeated_function_site() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "function f(x) { return x + 1; } var total = 0; for (var i = 0; i < 2000; i = i + 1) { total = total + f(i); } console.log(total);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "2001000\n");
+    let (hits, misses) = runtime.call_ic_stats();
+    assert!(hits > 0);
+    assert!(misses > 0);
+}
+
+#[test]
 fn keyed_array_store_ic_hits_repeated_site() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

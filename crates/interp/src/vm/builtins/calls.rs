@@ -72,6 +72,71 @@ impl<'a> Interpreter<'a> {
         Ok(receiver)
     }
 
+    pub(crate) fn invoke_callable_cached(
+        &mut self,
+        callee: Value,
+        args: &[Value],
+        caller_roots: &[Value],
+        span: Span,
+        site: u64,
+    ) -> Result<Value, RuntimeError> {
+        let object = self.object_id(callee, span)?;
+        if !self
+            .objects
+            .is_function(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return Err(RuntimeError::type_error("value is not callable", span));
+        }
+        if self
+            .objects
+            .is_bound(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+        {
+            return self.invoke_bound(callee, args, caller_roots, span);
+        }
+        let (function, env_value) = self
+            .objects
+            .function_data(object)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let env = env_value.object_offset().map(ObjectId::new);
+        let cacheable = function != u32::MAX
+            && self
+                .module
+                .functions
+                .get(function as usize)
+                .is_some_and(|proto| proto.name != "<arrow>");
+        if cacheable
+            && let Some(cache) = self.call_feedback.get(&site).copied()
+            && cache.callee == object
+            && cache.function == function
+            && cache.env == env
+        {
+            self.call_ic_hits = self.call_ic_hits.saturating_add(1);
+            return self.call(
+                function as usize,
+                args,
+                caller_roots,
+                env,
+                Some(callee),
+                None,
+            );
+        }
+        let value = self.invoke_callable(callee, args, caller_roots, span)?;
+        if cacheable {
+            self.call_feedback.insert(
+                site,
+                super::super::CallCacheEntry {
+                    callee: object,
+                    function,
+                    env,
+                },
+            );
+            self.call_ic_misses = self.call_ic_misses.saturating_add(1);
+        }
+        Ok(value)
+    }
+
     pub(crate) fn invoke_callable(
         &mut self,
         callee: Value,
