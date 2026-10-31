@@ -536,6 +536,7 @@ impl<'a> Interpreter<'a> {
                     .allocate(shape)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 let object = Value::object(object.index());
+                self.set_non_enumerable_property(object, "__error", Value::boolean(true), span)?;
                 if let Some(message) = args.first().copied().filter(|value| !value.is_undefined()) {
                     let message = self.heap.to_js_string(message);
                     let message_value = self.heap.string(&message);

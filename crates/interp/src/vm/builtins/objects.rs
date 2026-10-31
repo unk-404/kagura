@@ -111,6 +111,27 @@ impl<'a> Interpreter<'a> {
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
             {
                 Ok("Function")
+            } else if self
+                .get_own_data_property(value, "__error")?
+                .and_then(|value| value.as_boolean())
+                == Some(true)
+            {
+                Ok("Error")
+            } else if self
+                .get_own_data_property(value, "__date")?
+                .and_then(|value| value.as_boolean())
+                == Some(true)
+            {
+                Ok("Date")
+            } else if let Some(wrapper) = self.get_own_data_property(value, "__wrapper")?
+                && let Some(wrapper) = self.heap.as_str(wrapper)
+            {
+                Ok(match wrapper {
+                    "string" => "String",
+                    "number" => "Number",
+                    "boolean" => "Boolean",
+                    _ => "Object",
+                })
             } else {
                 Ok("Object")
             }
