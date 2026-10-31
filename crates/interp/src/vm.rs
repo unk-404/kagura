@@ -1481,6 +1481,19 @@ impl<'a> Interpreter<'a> {
                         .max_operand_depth
                         .max(descriptor.operand_depth);
                     self.safepoint_stats.last = Some(descriptor.clone());
+                    if let Some(safepoint) = self.module.safepoint_at(function_index, descriptor.pc)
+                        && safepoint.operand_depth != kagura_bytecode::SAFEPOINT_DEPTH_UNKNOWN
+                        && safepoint.operand_depth as u32 != descriptor.operand_depth
+                    {
+                        eprintln!(
+                            "safepoint mismatch fn={} pc={} expected={} actual={}",
+                            function.name,
+                            descriptor.pc,
+                            safepoint.operand_depth,
+                            descriptor.operand_depth
+                        );
+                        return Err(RuntimeError::runtime("safepoint stack map mismatch", span));
+                    }
                     if self.objects.live_bytes() >= GC_THRESHOLD {
                         let mut roots = Vec::with_capacity(
                             self.external_roots.len()

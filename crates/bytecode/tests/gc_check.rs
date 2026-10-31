@@ -20,5 +20,16 @@ fn emits_gc_checks_in_entry_loop_body() {
     assert!(!entry.safepoints.is_empty());
     for safepoint in &entry.safepoints {
         assert_eq!(entry.code[safepoint.pc as usize], Op::GcCheck as u8);
+        assert_eq!(safepoint.operand_depth, 0);
+    }
+}
+
+#[test]
+fn gc_checks_have_balanced_operand_stack() {
+    let program = parse("var o = { x: 1 }; ++o.x; o.x++;").unwrap();
+    let module = compile(&program).unwrap();
+    let entry = &module.functions[module.entry];
+    for safepoint in &entry.safepoints {
+        assert_eq!(safepoint.operand_depth, 0);
     }
 }

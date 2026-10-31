@@ -1365,6 +1365,19 @@ fn gc_runs_during_script_allocations() {
 }
 
 #[test]
+fn prefix_member_updates_leave_no_operand_residue() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var o = { x: 1 }; ++o.x; console.log(o.x, ++o.x); o.x++; console.log(o.x);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "2 3\n4\n");
+}
+
+#[test]
 fn gc_observability_records_pause_and_last_stats() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::new(64 * 1024);
