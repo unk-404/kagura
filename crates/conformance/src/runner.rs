@@ -228,11 +228,12 @@ fn source_with_includes(case: &TestCase) -> Result<String, String> {
         .any(|include| include == "propertyHelper.js")
     {
         String::from(
-            "var assert = {\n\
-             sameValue: function (actual, expected, message) { return __kaguraAssertSameValue(actual, expected, message); },\n\
-             notSameValue: function (actual, expected, message) { return __kaguraAssertNotSameValue(actual, expected, message); },\n\
-             fail: function (message) { return __kaguraAssertFail(message); }\n\
-             };\n",
+            "var assert = function (condition, message) {\n\
+             if (!condition) { __kaguraAssertFail(message === undefined ? 'assertion failed' : String(message)); }\n\
+             };\n\
+             assert.sameValue = function (actual, expected, message) { return __kaguraAssertSameValue(actual, expected, message); };\n\
+             assert.notSameValue = function (actual, expected, message) { return __kaguraAssertNotSameValue(actual, expected, message); };\n\
+             assert.fail = function (message) { return __kaguraAssertFail(message); };\n",
         )
     } else {
         String::new()

@@ -34,6 +34,9 @@ impl<'a> Interpreter<'a> {
             .objects
             .function_data(object)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if function == u32::MAX {
+            return self.call_with_this(callee, receiver, args, caller_roots, span);
+        }
         let closure_env = env_value.object_offset().map(ObjectId::new);
         let receiver = self.callee_receiver(callee, function, Some(receiver), span)?;
         self.call(
@@ -95,6 +98,9 @@ impl<'a> Interpreter<'a> {
             .objects
             .function_data(object)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        if function == u32::MAX {
+            return self.call_with_this(callee, Value::undefined(), args, caller_roots, span);
+        }
         let closure_env = env_value.object_offset().map(ObjectId::new);
         let receiver = self.callee_receiver(callee, function, None, span)?;
         self.call(
@@ -196,6 +202,37 @@ impl<'a> Interpreter<'a> {
             .function_data(object)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         let closure_env = env_value.object_offset().map(ObjectId::new);
+        let mut all_args = Vec::new();
+        for level in levels.into_iter().rev() {
+            all_args.extend(level);
+        }
+        all_args.extend_from_slice(args);
+        if function == u32::MAX {
+            if let Some(path) = self.builtin_statics.get(&object.index()).cloned() {
+                return self.call_global(&path, &all_args, span)?.ok_or_else(|| {
+                    RuntimeError::type_error("static builtin is not callable", span)
+                });
+            }
+            if let Some((id, owner)) = self.builtin_methods.get(&object.index()).copied() {
+                return self.invoke_builtin_method(
+                    id,
+                    owner,
+                    bound_this,
+                    &all_args,
+                    span,
+                    caller_roots,
+                );
+            }
+            let name = self.get_property(current, "name", span)?;
+            let name = self
+                .heap
+                .as_str(name)
+                .map(str::to_owned)
+                .unwrap_or_default();
+            return self
+                .call_builtin(bound_this, &name, &all_args, span, caller_roots)?
+                .ok_or_else(|| RuntimeError::type_error("builtin is not callable", span));
+        }
         let receiver = if self
             .module
             .functions
@@ -210,11 +247,6 @@ impl<'a> Interpreter<'a> {
         } else {
             Some(bound_this)
         };
-        let mut all_args = Vec::new();
-        for level in levels.into_iter().rev() {
-            all_args.extend(level);
-        }
-        all_args.extend_from_slice(args);
         self.call(
             function as usize,
             &all_args,

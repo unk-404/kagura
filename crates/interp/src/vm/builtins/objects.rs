@@ -334,6 +334,25 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub(crate) fn set_non_enumerable_readonly_property(
+        &mut self,
+        target: Value,
+        key: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let descriptor = self
+            .objects
+            .allocate(self.shapes.root())
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let descriptor = Value::object(descriptor.index());
+        self.set_property(descriptor, "value", value, span)?;
+        self.set_property(descriptor, "writable", Value::boolean(false), span)?;
+        self.set_property(descriptor, "enumerable", Value::boolean(false), span)?;
+        self.set_property(descriptor, "configurable", Value::boolean(true), span)?;
+        self.define_property(target, key, descriptor, span)
+    }
+
     pub(crate) fn set_non_enumerable_property(
         &mut self,
         target: Value,

@@ -44,9 +44,9 @@ impl<'a> Interpreter<'a> {
         let value = Value::object(object.index());
         let name = path.rsplit('.').next().unwrap_or(path);
         let name_value = self.heap.string(name);
-        self.set_property(value, "name", name_value, span)?;
+        self.set_non_enumerable_readonly_property(value, "name", name_value, span)?;
         let length = self.heap.number(arity as f64);
-        self.set_property(value, "length", length, span)?;
+        self.set_non_enumerable_readonly_property(value, "length", length, span)?;
         Ok(value)
     }
 
@@ -70,7 +70,7 @@ impl<'a> Interpreter<'a> {
         }
         let value = Value::object(object.index());
         let name_value = self.heap.string(name);
-        self.set_property(value, "name", name_value, span)?;
+        self.set_non_enumerable_readonly_property(value, "name", name_value, span)?;
         Ok(value)
     }
 
