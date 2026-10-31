@@ -1205,6 +1205,19 @@ fn creates_implicit_global_in_sloppy_mode() {
 }
 
 #[test]
+fn math_methods_are_installed() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(typeof Math.abs, typeof Math.max, Math.abs(-2), Math.max(1, 3));",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "function function 2 3\n");
+}
+
+#[test]
 fn wrapper_prototypes_are_installed() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
