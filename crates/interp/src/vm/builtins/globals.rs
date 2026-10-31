@@ -569,7 +569,12 @@ impl<'a> Interpreter<'a> {
             for (index, ch) in text.chars().enumerate() {
                 pairs.push((index.to_string(), self.heap.string(&ch.to_string())));
             }
-        } else {
+        } else if target.is_null() || target.is_undefined() {
+            return Err(RuntimeError::type_error(
+                "Object.keys requires a coercible value",
+                span,
+            ));
+        } else if self.heap.as_number(target).is_none() && target.as_boolean().is_none() {
             let object = self.object_id(target, span)?;
             if self
                 .objects
@@ -593,6 +598,31 @@ impl<'a> Interpreter<'a> {
                         .array_get(object, index)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                     pairs.push((index.to_string(), value));
+                }
+                let shape = self
+                    .objects
+                    .shape(object)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let keys = own_property_keys(self.shapes, shape)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                for key in keys {
+                    let descriptor = self
+                        .shapes
+                        .lookup(shape, &key)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    if !descriptor.is_some_and(|descriptor| descriptor.attributes.enumerable) {
+                        continue;
+                    }
+                    let key_string = match &key {
+                        PropertyKey::Index(index) => index.to_string(),
+                        PropertyKey::String(key) => key.clone(),
+                        PropertyKey::Symbol(_) => continue,
+                    };
+                    if key_string == "length" || pairs.iter().any(|(key, _)| *key == key_string) {
+                        continue;
+                    }
+                    let value = self.get_property(target, &key_string, span)?;
+                    pairs.push((key_string, value));
                 }
             } else {
                 let shape = self
