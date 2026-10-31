@@ -18,13 +18,13 @@ mod math;
 pub(super) mod method_id;
 mod objects;
 
-use self::method_id::BuiltinMethodId;
+use self::method_id::{BuiltinMethodId, MethodOwner};
 
 impl<'a> Interpreter<'a> {
     pub(crate) fn allocate_builtin_method(
         &mut self,
         name: &str,
-        array_method: bool,
+        owner: MethodOwner,
         span: Span,
     ) -> Result<Value, RuntimeError> {
         let object = self
@@ -37,8 +37,7 @@ impl<'a> Interpreter<'a> {
             )
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         if let Some(id) = BuiltinMethodId::from_name(name) {
-            self.builtin_methods
-                .insert(object.index(), (id, array_method));
+            self.builtin_methods.insert(object.index(), (id, owner));
         }
         let value = Value::object(object.index());
         let name_value = self.heap.string(name);

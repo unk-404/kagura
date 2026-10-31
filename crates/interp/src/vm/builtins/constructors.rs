@@ -5,6 +5,7 @@ use kagura_value::Value;
 use crate::error::RuntimeError;
 
 use super::Interpreter;
+use super::method_id::MethodOwner;
 
 impl<'a> Interpreter<'a> {
     pub(crate) fn build_builtin(&mut self, name: &str, span: Span) -> Result<Value, RuntimeError> {
@@ -32,7 +33,7 @@ impl<'a> Interpreter<'a> {
                 "atan2", "cos", "sin", "tan", "exp", "log", "log2", "log10", "cbrt", "fround",
                 "clz32", "imul", "hypot", "min", "max", "random",
             ] {
-                let function = self.allocate_builtin_method(method, false, span)?;
+                let function = self.allocate_builtin_method(method, MethodOwner::Math, span)?;
                 self.set_non_enumerable_property(object, method, function, span)?;
             }
             return Ok(object);
@@ -55,7 +56,7 @@ impl<'a> Interpreter<'a> {
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
             let prototype = Value::object(prototype.index());
             for method in ["call", "apply", "bind", "toString"] {
-                let function = self.allocate_builtin_method(method, false, span)?;
+                let function = self.allocate_builtin_method(method, MethodOwner::Function, span)?;
                 self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             let object = self
@@ -134,7 +135,15 @@ impl<'a> Interpreter<'a> {
                 &["toString", "valueOf"]
             };
             for method in methods {
-                let function = self.allocate_builtin_method(method, false, span)?;
+                let function = self.allocate_builtin_method(
+                    method,
+                    if name == "String" {
+                        MethodOwner::String
+                    } else {
+                        MethodOwner::Boolean
+                    },
+                    span,
+                )?;
                 self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             self.set_non_enumerable_property(prototype, "constructor", object, span)?;
@@ -175,7 +184,7 @@ impl<'a> Interpreter<'a> {
                 "parseInt",
                 "parseFloat",
             ] {
-                let function = self.allocate_builtin_method(method, false, span)?;
+                let function = self.allocate_builtin_method(method, MethodOwner::Number, span)?;
                 self.set_non_enumerable_property(object, method, function, span)?;
             }
             let prototype_shape = self.object_shape(span)?;
@@ -196,7 +205,7 @@ impl<'a> Interpreter<'a> {
                 "toExponential",
                 "toPrecision",
             ] {
-                let function = self.allocate_builtin_method(method, false, span)?;
+                let function = self.allocate_builtin_method(method, MethodOwner::Number, span)?;
                 self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             self.set_non_enumerable_property(prototype, "constructor", object, span)?;
@@ -280,7 +289,15 @@ impl<'a> Interpreter<'a> {
                 ]
             };
             for method in methods {
-                let function = self.allocate_builtin_method(method, name == "Array", span)?;
+                let function = self.allocate_builtin_method(
+                    method,
+                    if name == "Array" {
+                        MethodOwner::Array
+                    } else {
+                        MethodOwner::Object
+                    },
+                    span,
+                )?;
                 self.set_non_enumerable_property(prototype_value, method, function, span)?;
             }
             let object = self
@@ -349,7 +366,7 @@ impl<'a> Interpreter<'a> {
                 "getTimezoneOffset",
                 "setTime",
             ] {
-                let function = self.allocate_builtin_method(method, false, span)?;
+                let function = self.allocate_builtin_method(method, MethodOwner::Date, span)?;
                 self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             self.set_property(value, "prototype", prototype, span)?;

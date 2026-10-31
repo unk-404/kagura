@@ -6,7 +6,7 @@ use crate::error::RuntimeError;
 
 use super::Interpreter;
 use super::date;
-use super::method_id::BuiltinMethodId;
+use super::method_id::{BuiltinMethodId, MethodOwner};
 use super::{
     format_radix, math_operation, normalize_exponent, parse_float_prefix, parse_int_value,
 };
@@ -15,13 +15,15 @@ impl<'a> Interpreter<'a> {
     pub(crate) fn invoke_builtin_method(
         &mut self,
         id: BuiltinMethodId,
-        is_array_method: bool,
+        owner: MethodOwner,
         object: Value,
         args: &[Value],
         span: Span,
         roots: &[Value],
     ) -> Result<Value, RuntimeError> {
-        if is_array_method && let Some(object_id) = object.object_offset().map(ObjectId::new) {
+        if owner == MethodOwner::Array
+            && let Some(object_id) = object.object_offset().map(ObjectId::new)
+        {
             return self
                 .call_array_builtin(object, object_id, id, args, span, roots)?
                 .ok_or_else(|| RuntimeError::type_error("method is not supported", span));

@@ -128,17 +128,9 @@ impl<'a> Interpreter<'a> {
             .function_data(object)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         if function == u32::MAX {
-            if let Some((id, is_array_method)) = self.builtin_methods.get(&object.index()).copied()
-            {
+            if let Some((id, owner)) = self.builtin_methods.get(&object.index()).copied() {
                 self.builtin_method_hits = self.builtin_method_hits.saturating_add(1);
-                return self.invoke_builtin_method(
-                    id,
-                    is_array_method,
-                    this_value,
-                    args,
-                    span,
-                    caller_roots,
-                );
+                return self.invoke_builtin_method(id, owner, this_value, args, span, caller_roots);
             }
             let name = self.get_property(target, "name", span)?;
             let name = self

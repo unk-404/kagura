@@ -1,3 +1,15 @@
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MethodOwner {
+    Array,
+    String,
+    Number,
+    Boolean,
+    Object,
+    Function,
+    Date,
+    Math,
+}
+
 macro_rules! define_builtin_methods {
     ($( $variant:ident => $name:literal ),* $(,)?) => {
         #[repr(u16)]

@@ -10,7 +10,7 @@ use tracing::instrument;
 
 use crate::error::{RuntimeError, RuntimeErrorKind};
 use crate::host::{Host, HostFunctionId};
-use crate::vm::builtins::method_id::BuiltinMethodId;
+use crate::vm::builtins::method_id::{BuiltinMethodId, MethodOwner};
 
 const MAX_CALL_DEPTH: usize = 256;
 const MAX_STACK: usize = 4096;
@@ -127,7 +127,7 @@ pub struct Interpreter<'a> {
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     builtin_cache: FastHashMap<String, Value>,
-    builtin_methods: FastHashMap<u32, (BuiltinMethodId, bool)>,
+    builtin_methods: FastHashMap<u32, (BuiltinMethodId, MethodOwner)>,
     feedback: Vec<PropertyFeedback>,
     property_feedback: Vec<Vec<PropertyFeedback>>,
     property_ic_hits: u64,
@@ -1034,54 +1034,49 @@ impl<'a> Interpreter<'a> {
                     } else {
                         Value::undefined()
                     };
-                    let value = if method.is_object()
-                        && self
-                            .objects
-                            .is_function(ObjectId::new(method.object_offset().unwrap_or(0)))
-                            .unwrap_or(false)
-                    {
-                        let method_id = ObjectId::new(method.object_offset().unwrap_or(0));
-                        let (function, _) = try_op!(
-                            self.objects
-                                .function_data(method_id)
-                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))
-                        );
-                        if function == u32::MAX {
-                            if let Some((id, is_array_method)) =
-                                self.builtin_methods.get(&method_id.index()).copied()
-                            {
-                                self.builtin_method_hits =
-                                    self.builtin_method_hits.saturating_add(1);
-                                try_op!(self.invoke_builtin_method(
-                                    id,
-                                    is_array_method,
-                                    object,
-                                    &args,
-                                    span,
-                                    &roots
-                                ))
+                    let value =
+                        if method.is_object()
+                            && self
+                                .objects
+                                .is_function(ObjectId::new(method.object_offset().unwrap_or(0)))
+                                .unwrap_or(false)
+                        {
+                            let method_id = ObjectId::new(method.object_offset().unwrap_or(0));
+                            let (function, _) =
+                                try_op!(self.objects.function_data(method_id).map_err(|error| {
+                                    RuntimeError::runtime(error.to_string(), span)
+                                }));
+                            if function == u32::MAX {
+                                if let Some((id, owner)) =
+                                    self.builtin_methods.get(&method_id.index()).copied()
+                                {
+                                    self.builtin_method_hits =
+                                        self.builtin_method_hits.saturating_add(1);
+                                    try_op!(self.invoke_builtin_method(
+                                        id, owner, object, &args, span, &roots
+                                    ))
+                                } else {
+                                    try_op!(
+                                        self.call_builtin(object, &key, &args, span, &roots)
+                                            .and_then(|value| value.ok_or_else(|| {
+                                                RuntimeError::type_error(
+                                                    "method is not supported",
+                                                    span,
+                                                )
+                                            }))
+                                    )
+                                }
                             } else {
-                                try_op!(
-                                    self.call_builtin(object, &key, &args, span, &roots)
-                                        .and_then(|value| value.ok_or_else(|| {
-                                            RuntimeError::type_error(
-                                                "method is not supported",
-                                                span,
-                                            )
-                                        }))
-                                )
+                                try_op!(self.invoke_method(method, &args, &roots, object, span))
                             }
                         } else {
-                            try_op!(self.invoke_method(method, &args, &roots, object, span))
-                        }
-                    } else {
-                        try_op!(
-                            self.call_builtin(object, &key, &args, span, &roots)
-                                .and_then(|value| value.ok_or_else(|| {
-                                    RuntimeError::type_error("method is not supported", span)
-                                }))
-                        )
-                    };
+                            try_op!(
+                                self.call_builtin(object, &key, &args, span, &roots)
+                                    .and_then(|value| value.ok_or_else(|| {
+                                        RuntimeError::type_error("method is not supported", span)
+                                    }))
+                            )
+                        };
                     push(&mut stack, value, span)?;
                 }
                 Op::CallBuiltin => {
