@@ -89,7 +89,18 @@ pub struct FrameDescriptor {
     pub param_count: u16,
     pub local_count: u16,
     pub defined_locals: u16,
+    pub defined_local_mask: [u64; 8],
     pub operand_depth: u32,
+}
+
+fn defined_local_mask(defined: &[bool]) -> [u64; 8] {
+    let mut mask = [0u64; 8];
+    for (index, is_defined) in defined.iter().take(512).enumerate() {
+        if *is_defined {
+            mask[index / 64] |= 1u64 << (index % 64);
+        }
+    }
+    mask
 }
 
 /// Observability for interpreter safepoints.
@@ -1473,6 +1484,7 @@ impl<'a> Interpreter<'a> {
                         param_count: function.param_count,
                         local_count: function.local_count,
                         defined_locals: defined.iter().filter(|defined| **defined).count() as u16,
+                        defined_local_mask: defined_local_mask(defined),
                         operand_depth: stack.len() as u32,
                     };
                     self.safepoint_stats.count = self.safepoint_stats.count.saturating_add(1);

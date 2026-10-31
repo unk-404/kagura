@@ -1438,6 +1438,12 @@ fn records_interpreter_safepoints() {
     let last = stats.last.as_ref().expect("last safepoint");
     assert!(last.local_count > 0);
     assert!(last.defined_locals > 0);
+    let bits: u32 = last
+        .defined_local_mask
+        .iter()
+        .map(|word| word.count_ones())
+        .sum();
+    assert_eq!(bits, last.defined_locals as u32);
 }
 
 #[test]
