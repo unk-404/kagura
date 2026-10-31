@@ -18,6 +18,7 @@ mod json;
 mod math;
 pub(super) mod method_id;
 mod number_methods;
+mod object_methods;
 mod objects;
 mod string_methods;
 

@@ -436,7 +436,15 @@ impl<'a> Interpreter<'a> {
                         Value::boolean(self.heap.truthy(value))
                     }
                 };
-                let shape = self.object_shape(span)?;
+                let builtin = self.load_builtin(name, span)?;
+                let prototype = self.get_property(builtin, "prototype", span)?;
+                let shape = if let Some(prototype) = prototype.object_offset().map(ObjectId::new) {
+                    self.shapes
+                        .with_prototype(self.shapes.root(), Some(prototype))
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                } else {
+                    self.shapes.root()
+                };
                 let object = self
                     .objects
                     .allocate(shape)

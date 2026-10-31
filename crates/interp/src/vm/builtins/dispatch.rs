@@ -1,4 +1,4 @@
-use kagura_object::{ObjectId, PropertyKey};
+use kagura_object::ObjectId;
 use kagura_support::Span;
 use kagura_value::Value;
 
@@ -45,6 +45,13 @@ impl<'a> Interpreter<'a> {
             return self
                 .call_boolean_builtin(boolean, id, args, span)?
                 .ok_or_else(|| RuntimeError::type_error("method is not supported", span));
+        }
+        if matches!(owner, MethodOwner::Object | MethodOwner::Function)
+            && let Some(object_id) = object.object_offset().map(ObjectId::new)
+            && let Some(value) =
+                self.call_object_builtin(object, object_id, id, args, span, roots)?
+        {
+            return Ok(value);
         }
         self.call_builtin(object, id.name(), args, span, roots)?
             .ok_or_else(|| RuntimeError::type_error("method is not supported", span))
@@ -101,131 +108,15 @@ impl<'a> Interpreter<'a> {
         let Ok(object_id) = self.object_id(object, span) else {
             return Ok(None);
         };
-        let is_function = self
-            .objects
-            .is_function(object_id)
-            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-        if is_function && key == "bind" {
-            let receiver = args.first().copied().unwrap_or_else(Value::undefined);
-            let array = self
-                .objects
-                .allocate_array(self.shapes.root())
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            for argument in args.get(1..).unwrap_or_default() {
-                self.objects
-                    .array_push(array, *argument)
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            }
-            let (function, env_value) = self
-                .objects
-                .function_data(object_id)
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            let bound = self
-                .objects
-                .allocate_bound_function(
-                    self.shapes.bound_function_shape(),
-                    function,
-                    env_value,
-                    receiver,
-                    Value::object(array.index()),
-                    object,
-                )
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            return Ok(Some(Value::object(bound.index())));
+        let Some(method) = BuiltinMethodId::from_name(key) else {
+            return Ok(None);
+        };
+        if let Some(value) =
+            self.call_object_builtin(object, object_id, method, args, span, roots)?
+        {
+            return Ok(Some(value));
         }
-        if is_function && (key == "call" || key == "apply") {
-            let receiver = args.first().copied().unwrap_or_else(Value::undefined);
-            let rest = if key == "call" {
-                args.get(1..).unwrap_or_default().to_vec()
-            } else {
-                let values = args.get(1).copied().unwrap_or_else(Value::undefined);
-                if values.is_undefined() {
-                    Vec::new()
-                } else {
-                    let array = self.object_id(values, span)?;
-                    if !self
-                        .objects
-                        .is_array(array)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-                    {
-                        return Err(RuntimeError::type_error(
-                            "apply expects an array-like argument list",
-                            span,
-                        ));
-                    }
-                    let length = self
-                        .objects
-                        .array_length(array)
-                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                    let mut values = Vec::with_capacity(length as usize);
-                    for index in 0..length {
-                        values.push(
-                            self.objects
-                                .array_get(array, index)
-                                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?,
-                        );
-                    }
-                    values
-                }
-            };
-            return self
-                .invoke_method(object, &rest, roots, receiver, span)
-                .map(Some);
-        }
-        if key == "hasOwnProperty" {
-            let key = self
-                .heap
-                .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
-            return self
-                .has_own_property(object, &key, span)
-                .map(|own| Some(Value::boolean(own)));
-        }
-        if key == "isPrototypeOf" {
-            let mut value = args.first().copied().unwrap_or_else(Value::undefined);
-            while let Some(offset) = value.object_offset() {
-                let id = ObjectId::new(offset);
-                let shape = self
-                    .objects
-                    .shape(id)
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                let Some(prototype) = self
-                    .shapes
-                    .get(shape)
-                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
-                    .prototype
-                else {
-                    break;
-                };
-                if prototype == object_id {
-                    return Ok(Some(Value::boolean(true)));
-                }
-                value = Value::object(prototype.index());
-            }
-            return Ok(Some(Value::boolean(false)));
-        }
-        if key == "propertyIsEnumerable" {
-            let key = self
-                .heap
-                .to_js_string(args.first().copied().unwrap_or_else(Value::undefined));
-            let shape = self
-                .objects
-                .shape(object_id)
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            let descriptor = self
-                .shapes
-                .lookup(shape, &PropertyKey::from_string(&key))
-                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            return Ok(Some(Value::boolean(
-                descriptor.is_some_and(|descriptor| descriptor.attributes.enumerable),
-            )));
-        }
-        if key == "valueOf" {
-            return Ok(Some(object));
-        }
-        if key == "toString" || key == "toLocaleString" {
-            let tag = self.object_to_string_tag(object, span)?;
-            return Ok(Some(self.heap.string(&format!("[object {tag}]"))));
-        }
+
         if !self
             .objects
             .is_array(object_id)
