@@ -6,6 +6,7 @@ use crate::error::RuntimeError;
 
 use super::Interpreter;
 
+mod array_methods;
 mod assertions;
 mod calls;
 mod constructors;
