@@ -1886,6 +1886,84 @@ impl<'a> Interpreter<'a> {
             self.set_non_enumerable_property(prototype, "constructor", object, span)?;
             return Ok(object);
         }
+        if name == "String" || name == "Boolean" {
+            let object = self
+                .objects
+                .allocate_function(
+                    self.shapes.function_shape(),
+                    u32::MAX,
+                    Value::undefined(),
+                    Value::undefined(),
+                )
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let object = Value::object(object.index());
+            let name_value = self.heap.string(name);
+            self.set_property(object, "name", name_value, span)?;
+            let prototype_shape = self.object_shape(span)?;
+            let prototype = self
+                .objects
+                .allocate(prototype_shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let prototype = Value::object(prototype.index());
+            let wrapper = self.heap.string(&name.to_lowercase());
+            self.set_non_enumerable_property(prototype, "__wrapper", wrapper, span)?;
+            let primitive = if name == "String" {
+                self.heap.string("")
+            } else {
+                Value::boolean(false)
+            };
+            self.set_non_enumerable_property(prototype, "__primitive", primitive, span)?;
+            let methods: &[&str] = if name == "String" {
+                &[
+                    "charAt",
+                    "charCodeAt",
+                    "codePointAt",
+                    "includes",
+                    "indexOf",
+                    "slice",
+                    "toUpperCase",
+                    "toLowerCase",
+                    "trim",
+                    "trimStart",
+                    "trimEnd",
+                    "replace",
+                    "replaceAll",
+                    "startsWith",
+                    "endsWith",
+                    "repeat",
+                    "substring",
+                    "substr",
+                    "at",
+                    "concat",
+                    "localeCompare",
+                    "padStart",
+                    "padEnd",
+                    "split",
+                    "toString",
+                    "valueOf",
+                ]
+            } else {
+                &["toString", "valueOf"]
+            };
+            for method in methods {
+                let function = self
+                    .objects
+                    .allocate_function(
+                        self.shapes.function_shape(),
+                        u32::MAX,
+                        Value::undefined(),
+                        Value::undefined(),
+                    )
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let function = Value::object(function.index());
+                let name_value = self.heap.string(method);
+                self.set_property(function, "name", name_value, span)?;
+                self.set_non_enumerable_property(prototype, method, function, span)?;
+            }
+            self.set_non_enumerable_property(prototype, "constructor", object, span)?;
+            self.set_property(object, "prototype", prototype, span)?;
+            return Ok(object);
+        }
         if name == "Number" {
             let object = self
                 .objects
@@ -1934,6 +2012,40 @@ impl<'a> Interpreter<'a> {
                 self.set_property(function, "name", name_value, span)?;
                 self.set_non_enumerable_property(object, method, function, span)?;
             }
+            let prototype_shape = self.object_shape(span)?;
+            let prototype = self
+                .objects
+                .allocate(prototype_shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let prototype = Value::object(prototype.index());
+            let wrapper = self.heap.string("number");
+            self.set_non_enumerable_property(prototype, "__wrapper", wrapper, span)?;
+            let zero = self.heap.number(0.0);
+            self.set_non_enumerable_property(prototype, "__primitive", zero, span)?;
+            for method in [
+                "toString",
+                "toLocaleString",
+                "valueOf",
+                "toFixed",
+                "toExponential",
+                "toPrecision",
+            ] {
+                let function = self
+                    .objects
+                    .allocate_function(
+                        self.shapes.function_shape(),
+                        u32::MAX,
+                        Value::undefined(),
+                        Value::undefined(),
+                    )
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                let function = Value::object(function.index());
+                let name_value = self.heap.string(method);
+                self.set_property(function, "name", name_value, span)?;
+                self.set_non_enumerable_property(prototype, method, function, span)?;
+            }
+            self.set_non_enumerable_property(prototype, "constructor", object, span)?;
+            self.set_property(object, "prototype", prototype, span)?;
             return Ok(object);
         }
         if name == "Object" || name == "Array" {

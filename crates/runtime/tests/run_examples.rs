@@ -1205,6 +1205,19 @@ fn creates_implicit_global_in_sloppy_mode() {
 }
 
 #[test]
+fn wrapper_prototypes_are_installed() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "console.log(typeof String.prototype.slice, typeof Number.prototype.toFixed, typeof Boolean.prototype.toString);",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(host.output(), "function function function\n");
+}
+
+#[test]
 fn array_flat_reduce_right_and_find_last_are_available() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
