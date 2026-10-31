@@ -45,6 +45,9 @@ impl<'a> Interpreter<'a> {
             return Ok(self.heap.number(f64::INFINITY));
         }
         if name == "Function" {
+            if self.object_prototype.is_none() {
+                self.load_builtin("Object", span)?;
+            }
             let prototype = self
                 .objects
                 .allocate_function(
@@ -54,6 +57,16 @@ impl<'a> Interpreter<'a> {
                     Value::undefined(),
                 )
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            if let Some(object_prototype) = self.object_prototype {
+                let function_shape = self.shapes.function_shape();
+                let shape = self
+                    .shapes
+                    .with_prototype(function_shape, Some(object_prototype))
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                self.objects
+                    .set_shape(prototype, shape)
+                    .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            }
             let prototype = Value::object(prototype.index());
             for method in ["call", "apply", "bind", "toString"] {
                 let function = self.allocate_builtin_method(method, MethodOwner::Function, span)?;
@@ -424,6 +437,67 @@ impl<'a> Interpreter<'a> {
             }
             return Ok(value);
         }
+        if matches!(
+            name,
+            "Error"
+                | "TypeError"
+                | "RangeError"
+                | "ReferenceError"
+                | "SyntaxError"
+                | "EvalError"
+                | "URIError"
+                | "Test262Error"
+        ) {
+            let prototype_shape = self.object_shape(span)?;
+            let prototype = self
+                .objects
+                .allocate(prototype_shape)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let prototype_value = Value::object(prototype.index());
+            let object = self
+                .objects
+                .allocate_function(
+                    self.shapes.function_shape(),
+                    u32::MAX,
+                    Value::undefined(),
+                    Value::undefined(),
+                )
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+            let value = Value::object(object.index());
+            let name_value = self.heap.string(name);
+            self.set_non_enumerable_property(value, "name", name_value, span)?;
+            self.set_non_enumerable_frozen_property(value, "prototype", prototype_value, span)?;
+            let length = self.heap.number(1.0);
+            self.set_non_enumerable_readonly_property(value, "length", length, span)?;
+            self.set_non_enumerable_property(prototype_value, "constructor", value, span)?;
+            self.set_non_enumerable_property(prototype_value, "name", name_value, span)?;
+            let empty = self.heap.string("");
+            self.set_non_enumerable_property(prototype_value, "message", empty, span)?;
+            let to_string =
+                self.allocate_builtin_method("Error.prototype.toString", MethodOwner::Error, span)?;
+            let to_string_name = self.heap.string("toString");
+            self.set_non_enumerable_readonly_property(to_string, "name", to_string_name, span)?;
+            self.set_non_enumerable_property(prototype_value, "toString", to_string, span)?;
+            if name != "Error" {
+                let parent = self.load_builtin("Error", span)?;
+                let parent_prototype = self.get_property(parent, "prototype", span)?;
+                if let Some(parent_prototype) = parent_prototype.object_offset().map(ObjectId::new)
+                {
+                    let current_shape = self
+                        .objects
+                        .shape(prototype)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    let shape = self
+                        .shapes
+                        .with_prototype(current_shape, Some(parent_prototype))
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                    self.objects
+                        .set_shape(prototype, shape)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+            }
+            return Ok(value);
+        }
         let object = self
             .objects
             .allocate_function(
@@ -448,21 +522,25 @@ impl<'a> Interpreter<'a> {
         match name {
             "Error" | "TypeError" | "RangeError" | "ReferenceError" | "SyntaxError"
             | "EvalError" | "URIError" | "Test262Error" => {
+                let builtin = self.load_builtin(name, span)?;
+                let prototype = self.get_property(builtin, "prototype", span)?;
+                let shape = if let Some(prototype) = prototype.object_offset().map(ObjectId::new) {
+                    self.shapes
+                        .with_prototype(self.shapes.root(), Some(prototype))
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+                } else {
+                    self.shapes.root()
+                };
                 let object = self
                     .objects
-                    .allocate(self.shapes.root())
+                    .allocate(shape)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 let object = Value::object(object.index());
-                let name_value = self.heap.string(name);
-                self.set_property(object, "name", name_value, span)?;
-                let message = args
-                    .first()
-                    .copied()
-                    .filter(|value| !value.is_undefined())
-                    .map(|value| self.heap.to_js_string(value))
-                    .unwrap_or_default();
-                let message_value = self.heap.string(&message);
-                self.set_property(object, "message", message_value, span)?;
+                if let Some(message) = args.first().copied().filter(|value| !value.is_undefined()) {
+                    let message = self.heap.to_js_string(message);
+                    let message_value = self.heap.string(&message);
+                    self.set_non_enumerable_property(object, "message", message_value, span)?;
+                }
                 Ok(object)
             }
             "String" | "Number" | "Boolean" => {

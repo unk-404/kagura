@@ -17,6 +17,32 @@ impl<'a> Interpreter<'a> {
             return Ok(value);
         }
         let value = self.build_builtin(name, span)?;
+        if matches!(
+            name,
+            "Object"
+                | "Array"
+                | "String"
+                | "Number"
+                | "Boolean"
+                | "Function"
+                | "Date"
+                | "Error"
+                | "TypeError"
+                | "RangeError"
+                | "ReferenceError"
+                | "SyntaxError"
+                | "EvalError"
+                | "URIError"
+                | "Test262Error"
+        ) {
+            let function = if name == "Function" {
+                value
+            } else {
+                self.load_builtin("Function", span)?
+            };
+            let prototype = self.get_property(function, "prototype", span)?;
+            self.set_function_prototype(value, prototype, span)?;
+        }
         self.builtin_cache.insert(name.to_owned(), value);
         Ok(value)
     }
@@ -380,7 +406,7 @@ impl<'a> Interpreter<'a> {
             let text = if value.is_undefined() {
                 String::new()
             } else {
-                self.heap.to_js_string(value)
+                self.string_value(value, span)?
             };
             return Ok(Some(self.heap.string(&text)));
         }

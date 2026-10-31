@@ -151,9 +151,19 @@ impl<'a> Interpreter<'a> {
             return Err(error);
         };
         stack.truncate(handler.stack_depth);
-        let value = error
-            .thrown
-            .unwrap_or_else(|| self.heap.string(&error.message));
+        let value = if let Some(value) = error.thrown {
+            value
+        } else {
+            let name = match error.kind {
+                RuntimeErrorKind::Syntax => "SyntaxError",
+                RuntimeErrorKind::Type => "TypeError",
+                RuntimeErrorKind::Reference => "ReferenceError",
+                RuntimeErrorKind::Range => "RangeError",
+                RuntimeErrorKind::Runtime => "Error",
+            };
+            let message = self.heap.string(&error.message);
+            self.new_name(name, &[message], error.span)?
+        };
         stack.push(value);
         Ok(handler.catch_pc)
     }

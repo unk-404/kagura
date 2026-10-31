@@ -690,6 +690,22 @@ fn constructs_error_objects() {
 }
 
 #[test]
+fn runtime_thrown_errors_are_native_error_objects() {
+    let mut host = CaptureHost::default();
+    let mut runtime = Runtime::default();
+    runtime
+        .run(
+            "var e = new TypeError('x'); console.log(e instanceof TypeError, e instanceof Error, e.name, String(e)); try { null.x; } catch (e) { console.log(e instanceof TypeError, e instanceof Error, e.name); }",
+            &mut host,
+        )
+        .unwrap();
+    assert_eq!(
+        host.output(),
+        "true true TypeError TypeError: x\ntrue true TypeError\n"
+    );
+}
+
+#[test]
 fn constructs_user_objects() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();

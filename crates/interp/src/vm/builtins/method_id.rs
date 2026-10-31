@@ -7,6 +7,7 @@ pub(crate) enum MethodOwner {
     Object,
     Function,
     Date,
+    Error,
     Math,
 }
 
@@ -121,6 +122,7 @@ define_builtin_methods! {
     Random => "random",
     GetTime => "getTime",
     ToISOString => "toISOString",
+    ErrorToString => "Error.prototype.toString",
     GetYear => "getYear",
     GetUTCFullYear => "getUTCFullYear",
     GetFullYear => "getFullYear",

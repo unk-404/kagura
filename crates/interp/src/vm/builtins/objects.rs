@@ -334,6 +334,54 @@ impl<'a> Interpreter<'a> {
         }
     }
 
+    pub(crate) fn string_value(
+        &mut self,
+        value: Value,
+        span: Span,
+    ) -> Result<String, RuntimeError> {
+        if !value.is_object() {
+            return Ok(self.heap.to_js_string(value));
+        }
+        let roots = [value];
+        for key in ["toString", "valueOf"] {
+            let method = self.get_property(value, key, span)?;
+            let Some(method_id) = method.object_offset().map(ObjectId::new) else {
+                continue;
+            };
+            if !self
+                .objects
+                .is_function(method_id)
+                .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
+            {
+                continue;
+            }
+            let primitive = self.call_with_this(method, value, &[], &roots, span)?;
+            if !primitive.is_object() {
+                return Ok(self.heap.to_js_string(primitive));
+            }
+        }
+        Ok(self.heap.to_js_string(value))
+    }
+
+    pub(crate) fn set_non_enumerable_frozen_property(
+        &mut self,
+        target: Value,
+        key: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let descriptor = self
+            .objects
+            .allocate(self.shapes.root())
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let descriptor = Value::object(descriptor.index());
+        self.set_property(descriptor, "value", value, span)?;
+        self.set_property(descriptor, "writable", Value::boolean(false), span)?;
+        self.set_property(descriptor, "enumerable", Value::boolean(false), span)?;
+        self.set_property(descriptor, "configurable", Value::boolean(false), span)?;
+        self.define_property(target, key, descriptor, span)
+    }
+
     pub(crate) fn set_non_enumerable_readonly_property(
         &mut self,
         target: Value,

@@ -13,6 +13,7 @@ mod calls;
 mod constructors;
 mod date;
 mod dispatch;
+mod error_methods;
 mod globals;
 mod json;
 mod math;
@@ -25,6 +26,27 @@ mod string_methods;
 use self::method_id::{BuiltinMethodId, MethodOwner};
 
 impl<'a> Interpreter<'a> {
+    pub(crate) fn set_function_prototype(
+        &mut self,
+        function: Value,
+        prototype: Value,
+        span: Span,
+    ) -> Result<(), RuntimeError> {
+        let function_id = self.object_id(function, span)?;
+        let shape = self
+            .objects
+            .shape(function_id)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        let prototype = prototype.object_offset().map(ObjectId::new);
+        let shape = self
+            .shapes
+            .with_prototype(shape, prototype)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        self.objects
+            .set_shape(function_id, shape)
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))
+    }
+
     pub(crate) fn allocate_static_builtin(
         &mut self,
         path: &str,
