@@ -16,6 +16,7 @@ pub struct Runtime {
     weak_handles: WeakHandleTable,
     step_limit: u64,
     last_property_ic: (u64, u64),
+    last_keyed_ic: (u64, u64),
     last_builtin_method_hits: u64,
     last_safepoints: SafepointStats,
     last_gc: GcObservability,
@@ -37,6 +38,7 @@ impl Runtime {
             weak_handles: WeakHandleTable::new(),
             step_limit: 1_000_000,
             last_property_ic: (0, 0),
+            last_keyed_ic: (0, 0),
             last_builtin_method_hits: 0,
             last_safepoints: SafepointStats::default(),
             last_gc: GcObservability::default(),
@@ -49,6 +51,10 @@ impl Runtime {
 
     pub fn property_ic_stats(&self) -> (u64, u64) {
         self.last_property_ic
+    }
+
+    pub fn keyed_ic_stats(&self) -> (u64, u64) {
+        self.last_keyed_ic
     }
 
     pub fn safepoint_stats(&self) -> &SafepointStats {
@@ -154,7 +160,7 @@ impl Runtime {
     #[instrument(skip(self, module, host), fields(version = module.version))]
     pub fn run_module(&mut self, module: &Module, host: &mut dyn Host) -> Result<Value, RunError> {
         let external_roots: Vec<Value> = self.handles.roots().collect();
-        let (value, property_ic, builtin_method_hits, safepoints, gc) = {
+        let (value, property_ic, keyed_ic, builtin_method_hits, safepoints, gc) = {
             let mut interpreter = Interpreter::new(
                 module,
                 &mut self.heap,
@@ -168,12 +174,14 @@ impl Runtime {
             (
                 value,
                 interpreter.property_ic_stats(),
+                interpreter.keyed_ic_stats(),
                 interpreter.builtin_method_hits(),
                 interpreter.safepoint_stats(),
                 interpreter.gc_observability(),
             )
         };
         self.last_property_ic = property_ic;
+        self.last_keyed_ic = keyed_ic;
         self.last_builtin_method_hits = builtin_method_hits;
         self.last_safepoints = safepoints;
         self.last_gc = gc;

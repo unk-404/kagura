@@ -136,6 +136,12 @@ struct TryHandler {
     stack_depth: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct KeyedCacheEntry {
+    object: ObjectId,
+    index: u32,
+}
+
 pub struct Interpreter<'a> {
     module: &'a Module,
     heap: &'a mut Heap,
@@ -151,6 +157,9 @@ pub struct Interpreter<'a> {
     property_feedback: Vec<Vec<PropertyFeedback>>,
     property_ic_hits: u64,
     property_ic_misses: u64,
+    keyed_feedback: FastHashMap<u64, KeyedCacheEntry>,
+    keyed_ic_hits: u64,
+    keyed_ic_misses: u64,
     builtin_method_hits: u64,
     safepoint_stats: SafepointStats,
     gc_observability: GcObservability,
@@ -191,6 +200,9 @@ impl<'a> Interpreter<'a> {
                 .collect(),
             property_ic_hits: 0,
             property_ic_misses: 0,
+            keyed_feedback: FastHashMap::default(),
+            keyed_ic_hits: 0,
+            keyed_ic_misses: 0,
             builtin_method_hits: 0,
             safepoint_stats: SafepointStats::default(),
             gc_observability: GcObservability::default(),
@@ -205,6 +217,10 @@ impl<'a> Interpreter<'a> {
 
     pub fn property_ic_stats(&self) -> (u64, u64) {
         (self.property_ic_hits, self.property_ic_misses)
+    }
+
+    pub fn keyed_ic_stats(&self) -> (u64, u64) {
+        (self.keyed_ic_hits, self.keyed_ic_misses)
     }
 
     pub fn safepoint_stats(&self) -> SafepointStats {
@@ -1359,10 +1375,27 @@ impl<'a> Interpreter<'a> {
                             .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                     ) {
                         if let Some(index) = self.array_index(index) {
+                            let site =
+                                ((function_index as u64) << 32) | pc.saturating_sub(1) as u64;
+                            if let Some(cache) = self.keyed_feedback.get(&site).copied()
+                                && cache.object == id
+                                && cache.index == index
+                            {
+                                let value =
+                                    try_op!(self.objects.array_get(id, index).map_err(|error| {
+                                        RuntimeError::runtime(error.to_string(), span)
+                                    }));
+                                self.keyed_ic_hits = self.keyed_ic_hits.saturating_add(1);
+                                push(&mut stack, value, span)?;
+                                continue;
+                            }
                             let value =
                                 try_op!(self.objects.array_get(id, index).map_err(|error| {
                                     RuntimeError::runtime(error.to_string(), span)
                                 }));
+                            self.keyed_feedback
+                                .insert(site, KeyedCacheEntry { object: id, index });
+                            self.keyed_ic_misses = self.keyed_ic_misses.saturating_add(1);
                             push(&mut stack, value, span)?;
                         } else {
                             let key = try_op!(self.property_key(index, span));
