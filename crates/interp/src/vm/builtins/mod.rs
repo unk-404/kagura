@@ -24,6 +24,7 @@ impl<'a> Interpreter<'a> {
     pub(crate) fn allocate_builtin_method(
         &mut self,
         name: &str,
+        array_method: bool,
         span: Span,
     ) -> Result<Value, RuntimeError> {
         let object = self
@@ -36,7 +37,8 @@ impl<'a> Interpreter<'a> {
             )
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         if let Some(id) = BuiltinMethodId::from_name(name) {
-            self.builtin_methods.insert(object.index(), id);
+            self.builtin_methods
+                .insert(object.index(), (id, array_method));
         }
         let value = Value::object(object.index());
         let name_value = self.heap.string(name);

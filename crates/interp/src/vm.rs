@@ -127,7 +127,7 @@ pub struct Interpreter<'a> {
     host: &'a mut dyn Host,
     host_cache: Vec<Option<HostFunctionId>>,
     builtin_cache: FastHashMap<String, Value>,
-    builtin_methods: FastHashMap<u32, BuiltinMethodId>,
+    builtin_methods: FastHashMap<u32, (BuiltinMethodId, bool)>,
     feedback: Vec<PropertyFeedback>,
     property_feedback: Vec<Vec<PropertyFeedback>>,
     property_ic_hits: u64,
@@ -1047,11 +1047,19 @@ impl<'a> Interpreter<'a> {
                                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))
                         );
                         if function == u32::MAX {
-                            if let Some(id) = self.builtin_methods.get(&method_id.index()).copied()
+                            if let Some((id, is_array_method)) =
+                                self.builtin_methods.get(&method_id.index()).copied()
                             {
                                 self.builtin_method_hits =
                                     self.builtin_method_hits.saturating_add(1);
-                                try_op!(self.invoke_builtin_method(id, object, &args, span, &roots))
+                                try_op!(self.invoke_builtin_method(
+                                    id,
+                                    is_array_method,
+                                    object,
+                                    &args,
+                                    span,
+                                    &roots
+                                ))
                             } else {
                                 try_op!(
                                     self.call_builtin(object, &key, &args, span, &roots)

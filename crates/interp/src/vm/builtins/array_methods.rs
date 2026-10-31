@@ -5,6 +5,7 @@ use kagura_value::Value;
 use crate::error::RuntimeError;
 
 use super::Interpreter;
+use super::method_id::BuiltinMethodId;
 use super::relative_array_index;
 
 impl<'a> Interpreter<'a> {
@@ -12,7 +13,7 @@ impl<'a> Interpreter<'a> {
         &mut self,
         object: Value,
         object_id: ObjectId,
-        key: &str,
+        method: BuiltinMethodId,
         args: &[Value],
         span: Span,
         roots: &[Value],
@@ -23,8 +24,8 @@ impl<'a> Interpreter<'a> {
                 .unwrap_or(0)
                 .max(0) as usize
         };
-        Ok(Some(match key {
-            "toString" | "toLocaleString" => {
+        Ok(Some(match method {
+            BuiltinMethodId::ToString | BuiltinMethodId::ToLocaleString => {
                 let length = self
                     .objects
                     .array_length(object_id)
@@ -43,7 +44,7 @@ impl<'a> Interpreter<'a> {
                 }
                 self.heap.string(&parts.join(","))
             }
-            "push" => {
+            BuiltinMethodId::Push => {
                 let frozen = self
                     .objects
                     .is_frozen(object_id)
@@ -65,7 +66,7 @@ impl<'a> Interpreter<'a> {
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                 self.heap.number(length as f64)
             }
-            "pop" => {
+            BuiltinMethodId::Pop => {
                 if self
                     .objects
                     .is_frozen(object_id)
@@ -82,7 +83,7 @@ impl<'a> Interpreter<'a> {
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
                 }
             }
-            "join" => {
+            BuiltinMethodId::Join => {
                 let separator = args
                     .first()
                     .map(|value| self.heap.to_js_string(*value))
@@ -105,7 +106,7 @@ impl<'a> Interpreter<'a> {
                 }
                 self.heap.string(&parts.join(&separator))
             }
-            "indexOf" | "includes" => {
+            BuiltinMethodId::IndexOf | BuiltinMethodId::Includes => {
                 let needle = args.first().copied().unwrap_or_else(Value::undefined);
                 let from = arg_index(args, 1) as u32;
                 let length = self
@@ -118,7 +119,7 @@ impl<'a> Interpreter<'a> {
                         .objects
                         .array_has(object_id, index)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                    if !has && key == "indexOf" {
+                    if !has && matches!(method, BuiltinMethodId::IndexOf) {
                         continue;
                     }
                     let value = if has {
@@ -133,7 +134,7 @@ impl<'a> Interpreter<'a> {
                         break;
                     }
                 }
-                if key == "includes" {
+                if matches!(method, BuiltinMethodId::Includes) {
                     Value::boolean(found.is_some())
                 } else {
                     found
@@ -141,7 +142,7 @@ impl<'a> Interpreter<'a> {
                         .unwrap_or_else(|| self.heap.number(-1.0))
                 }
             }
-            "slice" => {
+            BuiltinMethodId::Slice => {
                 let length = self
                     .objects
                     .array_length(object_id)
@@ -179,7 +180,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(array.index())
             }
-            "reverse" => {
+            BuiltinMethodId::Reverse => {
                 if self
                     .objects
                     .is_frozen(object_id)
@@ -227,7 +228,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(object_id.index())
             }
-            "concat" => {
+            BuiltinMethodId::Concat => {
                 let array = self
                     .objects
                     .allocate_array(self.shapes.root())
@@ -287,7 +288,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(array.index())
             }
-            "findLast" | "findLastIndex" => {
+            BuiltinMethodId::FindLast | BuiltinMethodId::FindLastIndex => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self
                     .objects
@@ -311,20 +312,20 @@ impl<'a> Interpreter<'a> {
                     let callback_args = [value, self.heap.number(index as f64), object];
                     let result = self.invoke_callable(callback, &callback_args, &roots, span)?;
                     if self.heap.truthy(result) {
-                        return Ok(Some(if key == "findLast" {
+                        return Ok(Some(if matches!(method, BuiltinMethodId::FindLast) {
                             value
                         } else {
                             self.heap.number(index as f64)
                         }));
                     }
                 }
-                if key == "findLast" {
+                if matches!(method, BuiltinMethodId::FindLast) {
                     Value::undefined()
                 } else {
                     self.heap.number(-1.0)
                 }
             }
-            "findIndex" => {
+            BuiltinMethodId::FindIndex => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self
                     .objects
@@ -351,7 +352,7 @@ impl<'a> Interpreter<'a> {
                 }
                 self.heap.number(-1.0)
             }
-            "fill" => {
+            BuiltinMethodId::Fill => {
                 let value = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self
                     .objects
@@ -366,7 +367,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(object_id.index())
             }
-            "at" => {
+            BuiltinMethodId::At => {
                 let length = self
                     .objects
                     .array_length(object_id)
@@ -384,7 +385,7 @@ impl<'a> Interpreter<'a> {
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?
                 }
             }
-            "lastIndexOf" => {
+            BuiltinMethodId::LastIndexOf => {
                 let needle = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self
                     .objects
@@ -421,7 +422,7 @@ impl<'a> Interpreter<'a> {
                 }
                 self.heap.number(-1.0)
             }
-            "sort" => {
+            BuiltinMethodId::Sort => {
                 if self
                     .objects
                     .is_frozen(object_id)
@@ -506,13 +507,13 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(object_id.index())
             }
-            "map" | "filter" | "forEach" => {
+            BuiltinMethodId::Map | BuiltinMethodId::Filter | BuiltinMethodId::ForEach => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self
                     .objects
                     .array_length(object_id)
                     .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-                let result = if key == "forEach" {
+                let result = if matches!(method, BuiltinMethodId::ForEach) {
                     None
                 } else {
                     Some(
@@ -531,7 +532,7 @@ impl<'a> Interpreter<'a> {
                         .array_has(object_id, index)
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                     if !has {
-                        if key == "map"
+                        if matches!(method, BuiltinMethodId::Map)
                             && let Some(result) = result
                         {
                             self.objects
@@ -546,8 +547,8 @@ impl<'a> Interpreter<'a> {
                         .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
                     let callback_args = [value, self.heap.number(index as f64), object];
                     let mapped = self.invoke_callable(callback, &callback_args, &roots, span)?;
-                    match key {
-                        "map" => {
+                    match method {
+                        BuiltinMethodId::Map => {
                             if let Some(result) = result {
                                 self.objects.array_push(result, mapped).map_err(|error| {
                                     RuntimeError::runtime(error.to_string(), span)
@@ -555,7 +556,7 @@ impl<'a> Interpreter<'a> {
                                 roots.push(mapped);
                             }
                         }
-                        "filter" => {
+                        BuiltinMethodId::Filter => {
                             if let Some(result) = result
                                 && self.heap.truthy(mapped)
                             {
@@ -569,7 +570,7 @@ impl<'a> Interpreter<'a> {
                 }
                 result.map_or_else(Value::undefined, |array| Value::object(array.index()))
             }
-            "some" | "every" | "find" => {
+            BuiltinMethodId::Some | BuiltinMethodId::Every | BuiltinMethodId::Find => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self
                     .objects
@@ -591,22 +592,24 @@ impl<'a> Interpreter<'a> {
                     let callback_args = [value, self.heap.number(index as f64), object];
                     let result = self.invoke_callable(callback, &callback_args, &roots, span)?;
                     let truthy = self.heap.truthy(result);
-                    match key {
-                        "some" if truthy => return Ok(Some(Value::boolean(true))),
-                        "every" if !truthy => return Ok(Some(Value::boolean(false))),
-                        "find" if truthy => return Ok(Some(value)),
+                    match method {
+                        BuiltinMethodId::Some if truthy => return Ok(Some(Value::boolean(true))),
+                        BuiltinMethodId::Every if !truthy => {
+                            return Ok(Some(Value::boolean(false)));
+                        }
+                        BuiltinMethodId::Find if truthy => return Ok(Some(value)),
                         _ => {}
                     }
                 }
-                if key == "some" {
+                if matches!(method, BuiltinMethodId::Some) {
                     Value::boolean(false)
-                } else if key == "every" {
+                } else if matches!(method, BuiltinMethodId::Every) {
                     Value::boolean(true)
                 } else {
                     Value::undefined()
                 }
             }
-            "reduce" => {
+            BuiltinMethodId::Reduce => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self
                     .objects
@@ -660,7 +663,7 @@ impl<'a> Interpreter<'a> {
                 }
                 accumulator
             }
-            "reduceRight" => {
+            BuiltinMethodId::ReduceRight => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self
                     .objects
@@ -716,7 +719,7 @@ impl<'a> Interpreter<'a> {
                 }
                 accumulator
             }
-            "copyWithin" => {
+            BuiltinMethodId::CopyWithin => {
                 let length = self
                     .objects
                     .array_length(object_id)
@@ -748,7 +751,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(object_id.index())
             }
-            "flat" => {
+            BuiltinMethodId::Flat => {
                 let depth = args
                     .first()
                     .and_then(|value| self.heap.to_number(*value))
@@ -767,7 +770,7 @@ impl<'a> Interpreter<'a> {
                 }
                 Value::object(result.index())
             }
-            "flatMap" => {
+            BuiltinMethodId::FlatMap => {
                 let callback = args.first().copied().unwrap_or_else(Value::undefined);
                 let length = self
                     .objects

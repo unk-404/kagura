@@ -767,10 +767,7 @@ fn runs_function_call_and_array_prototype_methods() {
     let mut host = CaptureHost::default();
     let mut runtime = Runtime::default();
     runtime.run(FUNCTION_CALL, &mut host).unwrap();
-    assert_eq!(
-        host.output(),
-        "1,2 2\ntrue\n[object Array]\n[object Array]\n"
-    );
+    assert_eq!(host.output(), "1,2 2\ntrue\n[object Array]\n1,2\n");
 }
 
 #[test]

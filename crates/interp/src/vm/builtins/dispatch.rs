@@ -15,11 +15,17 @@ impl<'a> Interpreter<'a> {
     pub(crate) fn invoke_builtin_method(
         &mut self,
         id: BuiltinMethodId,
+        is_array_method: bool,
         object: Value,
         args: &[Value],
         span: Span,
         roots: &[Value],
     ) -> Result<Value, RuntimeError> {
+        if is_array_method && let Some(object_id) = object.object_offset().map(ObjectId::new) {
+            return self
+                .call_array_builtin(object, object_id, id, args, span, roots)?
+                .ok_or_else(|| RuntimeError::type_error("method is not supported", span));
+        }
         self.call_builtin(object, id.name(), args, span, roots)?
             .ok_or_else(|| RuntimeError::type_error("method is not supported", span))
     }
@@ -490,7 +496,10 @@ impl<'a> Interpreter<'a> {
         {
             return Ok(None);
         }
-        self.call_array_builtin(object, object_id, key, args, span, roots)
+        let Some(method) = BuiltinMethodId::from_name(key) else {
+            return Ok(None);
+        };
+        self.call_array_builtin(object, object_id, method, args, span, roots)
     }
 
     pub(crate) fn flatten_array(
