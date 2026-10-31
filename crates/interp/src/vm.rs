@@ -135,6 +135,7 @@ pub struct Interpreter<'a> {
     host_cache: Vec<Option<HostFunctionId>>,
     builtin_cache: FastHashMap<String, Value>,
     builtin_methods: FastHashMap<u32, (BuiltinMethodId, MethodOwner)>,
+    builtin_statics: FastHashMap<u32, String>,
     feedback: Vec<PropertyFeedback>,
     property_feedback: Vec<Vec<PropertyFeedback>>,
     property_ic_hits: u64,
@@ -170,6 +171,7 @@ impl<'a> Interpreter<'a> {
             host_cache: vec![None; module.constants.len()],
             builtin_cache: FastHashMap::default(),
             builtin_methods: FastHashMap::default(),
+            builtin_statics: FastHashMap::default(),
             feedback: vec![PropertyFeedback::Empty; module.feedback.len()],
             property_feedback: module
                 .functions
@@ -1060,7 +1062,18 @@ impl<'a> Interpreter<'a> {
                                     RuntimeError::runtime(error.to_string(), span)
                                 }));
                             if function == u32::MAX {
-                                if let Some((id, owner)) =
+                                if let Some(path) =
+                                    self.builtin_statics.get(&method_id.index()).cloned()
+                                {
+                                    try_op!(self.call_global(&path, &args, span).and_then(
+                                        |value| value.ok_or_else(|| {
+                                            RuntimeError::type_error(
+                                                "static builtin is not callable",
+                                                span,
+                                            )
+                                        })
+                                    ))
+                                } else if let Some((id, owner)) =
                                     self.builtin_methods.get(&method_id.index()).copied()
                                 {
                                     self.builtin_method_hits =

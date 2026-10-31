@@ -335,7 +335,14 @@ impl<'a> Interpreter<'a> {
                 .allocate_array(self.shapes.root())
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
             let source = args.first().copied().unwrap_or_else(Value::undefined);
-            if let Some(source_id) = source.object_offset().map(ObjectId::new) {
+            if let Some(text) = self.heap.as_str(source).map(str::to_owned) {
+                for ch in text.chars() {
+                    let value = self.heap.string(&ch.to_string());
+                    self.objects
+                        .array_push(array, value)
+                        .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+                }
+            } else if let Some(source_id) = source.object_offset().map(ObjectId::new) {
                 if self
                     .objects
                     .is_array(source_id)

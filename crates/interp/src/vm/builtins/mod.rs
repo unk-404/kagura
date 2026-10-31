@@ -25,6 +25,31 @@ mod string_methods;
 use self::method_id::{BuiltinMethodId, MethodOwner};
 
 impl<'a> Interpreter<'a> {
+    pub(crate) fn allocate_static_builtin(
+        &mut self,
+        path: &str,
+        arity: u16,
+        span: Span,
+    ) -> Result<Value, RuntimeError> {
+        let object = self
+            .objects
+            .allocate_function(
+                self.shapes.function_shape(),
+                u32::MAX,
+                Value::undefined(),
+                Value::undefined(),
+            )
+            .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
+        self.builtin_statics.insert(object.index(), path.to_owned());
+        let value = Value::object(object.index());
+        let name = path.rsplit('.').next().unwrap_or(path);
+        let name_value = self.heap.string(name);
+        self.set_property(value, "name", name_value, span)?;
+        let length = self.heap.number(arity as f64);
+        self.set_property(value, "length", length, span)?;
+        Ok(value)
+    }
+
     pub(crate) fn allocate_builtin_method(
         &mut self,
         name: &str,

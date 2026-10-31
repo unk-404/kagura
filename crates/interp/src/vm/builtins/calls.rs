@@ -128,6 +128,11 @@ impl<'a> Interpreter<'a> {
             .function_data(object)
             .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
         if function == u32::MAX {
+            if let Some(path) = self.builtin_statics.get(&object.index()).cloned() {
+                return self.call_global(&path, args, span)?.ok_or_else(|| {
+                    RuntimeError::type_error("static builtin is not callable", span)
+                });
+            }
             if let Some((id, owner)) = self.builtin_methods.get(&object.index()).copied() {
                 self.builtin_method_hits = self.builtin_method_hits.saturating_add(1);
                 return self.invoke_builtin_method(id, owner, this_value, args, span, caller_roots);

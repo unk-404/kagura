@@ -148,6 +148,13 @@ impl<'a> Interpreter<'a> {
             }
             self.set_non_enumerable_property(prototype, "constructor", object, span)?;
             self.set_property(object, "prototype", prototype, span)?;
+            if name == "String" {
+                for (method, arity) in [("fromCharCode", 1), ("fromCodePoint", 1)] {
+                    let path = format!("String.{method}");
+                    let function = self.allocate_static_builtin(&path, arity, span)?;
+                    self.set_non_enumerable_property(object, method, function, span)?;
+                }
+            }
             return Ok(object);
         }
         if name == "Number" {
@@ -314,6 +321,40 @@ impl<'a> Interpreter<'a> {
             self.set_property(value, "name", name_value, span)?;
             self.set_property(value, "prototype", prototype_value, span)?;
             self.set_non_enumerable_property(prototype_value, "constructor", value, span)?;
+            if name == "Object" {
+                for (method, arity) in [
+                    ("assign", 2),
+                    ("create", 2),
+                    ("defineProperty", 3),
+                    ("defineProperties", 2),
+                    ("entries", 1),
+                    ("freeze", 1),
+                    ("getOwnPropertyDescriptor", 2),
+                    ("getOwnPropertyDescriptors", 1),
+                    ("getOwnPropertyNames", 1),
+                    ("getPrototypeOf", 1),
+                    ("hasOwn", 2),
+                    ("is", 2),
+                    ("isExtensible", 1),
+                    ("isFrozen", 1),
+                    ("isSealed", 1),
+                    ("keys", 1),
+                    ("preventExtensions", 1),
+                    ("seal", 1),
+                    ("setPrototypeOf", 2),
+                    ("values", 1),
+                ] {
+                    let path = format!("Object.{method}");
+                    let function = self.allocate_static_builtin(&path, arity, span)?;
+                    self.set_non_enumerable_property(value, method, function, span)?;
+                }
+            } else if name == "Array" {
+                for (method, arity) in [("from", 1), ("isArray", 1), ("of", 0)] {
+                    let path = format!("Array.{method}");
+                    let function = self.allocate_static_builtin(&path, arity, span)?;
+                    self.set_non_enumerable_property(value, method, function, span)?;
+                }
+            }
             return Ok(value);
         }
         if name == "JSON" {
@@ -321,7 +362,13 @@ impl<'a> Interpreter<'a> {
                 .objects
                 .allocate(self.shapes.root())
                 .map_err(|error| RuntimeError::runtime(error.to_string(), span))?;
-            return Ok(Value::object(object.index()));
+            let object = Value::object(object.index());
+            for (method, arity) in [("parse", 2), ("stringify", 3)] {
+                let path = format!("JSON.{method}");
+                let function = self.allocate_static_builtin(&path, arity, span)?;
+                self.set_non_enumerable_property(object, method, function, span)?;
+            }
+            return Ok(object);
         }
         if name == "Date" {
             let object = self
@@ -370,6 +417,11 @@ impl<'a> Interpreter<'a> {
                 self.set_non_enumerable_property(prototype, method, function, span)?;
             }
             self.set_property(value, "prototype", prototype, span)?;
+            for (method, arity) in [("now", 0), ("parse", 1), ("UTC", 7)] {
+                let path = format!("Date.{method}");
+                let function = self.allocate_static_builtin(&path, arity, span)?;
+                self.set_non_enumerable_property(value, method, function, span)?;
+            }
             return Ok(value);
         }
         let object = self
